@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Build
+dist/
+build/
+
+# Database
+*.db
+*.sqlite
+prisma/dev.db
+prisma/dev.db-journal
+
+# Facebook automation
+server/.facebook-storage-state.json
+server/.facebook-playwright-profile/
+
+# Uploads
+server/uploads/
+
+# Posts history (local JSON storage)
+server/posts-history.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Coverage
+coverage/

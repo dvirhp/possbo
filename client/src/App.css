@@ -1,0 +1,9 @@
+html, body {
+  direction: rtl;
+  text-align: right;
+}
+
+.App {
+  min-height: 100vh;
+  direction: rtl;
+}
