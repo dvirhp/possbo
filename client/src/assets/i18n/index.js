@@ -1,16 +1,16 @@
-import he from './he'
+import he from "./he";
 
-const locales = { he }
-const currentLocale = 'he'
+const locales = { he };
+const currentLocale = "he";
 
 export function t(path) {
-  const keys = path.split('.')
-  let value = locales[currentLocale]
+  const keys = path.split(".");
+  let value = locales[currentLocale];
   for (const key of keys) {
-    if (value == null) return path
-    value = value[key]
+    if (value == null) return path;
+    value = value[key];
   }
-  return value ?? path
+  return value ?? path;
 }
 
-export default locales[currentLocale]
+export default locales[currentLocale];

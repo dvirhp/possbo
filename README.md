@@ -49,6 +49,7 @@ cp .env.example .env
 ```
 
 Edit `.env` with:
+
 ```
 DATABASE_URL="file:./dev.db"
 PORT=5000
@@ -59,11 +60,13 @@ CLIENT_URL=http://localhost:3000
 ```
 
 Initialize database:
+
 ```bash
 npm run prisma:migrate
 ```
 
 Start server:
+
 ```bash
 npm run dev
 ```
