@@ -1,53 +1,53 @@
-import { spawn } from 'node:child_process'
+import { spawn } from "node:child_process";
 
-const npmCommand = process.platform === 'win32' ? 'npm' : 'npm'
+const npmCommand = process.platform === "win32" ? "npm" : "npm";
 
 function run(label, args) {
-  const child = spawn(`${npmCommand} ${args.join(' ')}`, {
-    stdio: 'inherit',
+  const child = spawn(`${npmCommand} ${args.join(" ")}`, {
+    stdio: "inherit",
     shell: true,
-  })
+  });
 
-  child.on('exit', (code, signal) => {
+  child.on("exit", (code, signal) => {
     if (signal) {
-      console.log(`${label} stopped with signal ${signal}`)
-      return
+      console.log(`${label} stopped with signal ${signal}`);
+      return;
     }
 
     if (code && code !== 0) {
-      console.error(`${label} exited with code ${code}`)
-      shutdown(code)
+      console.error(`${label} exited with code ${code}`);
+      shutdown(code);
     }
-  })
+  });
 
-  child.on('error', (error) => {
-    console.error(`${label} failed:`, error.message)
-    shutdown(1)
-  })
+  child.on("error", (error) => {
+    console.error(`${label} failed:`, error.message);
+    shutdown(1);
+  });
 
-  return child
+  return child;
 }
 
-const server = run('server', ['--prefix', 'server', 'run', 'dev'])
-const client = run('client', ['--prefix', 'client', 'run', 'dev'])
+const server = run("server", ["--prefix", "server", "run", "dev"]);
+const client = run("client", ["--prefix", "client", "run", "dev"]);
 
-let shuttingDown = false
+let shuttingDown = false;
 
 function shutdown(exitCode = 0) {
   if (shuttingDown) {
-    return
+    return;
   }
 
-  shuttingDown = true
+  shuttingDown = true;
 
   for (const child of [server, client]) {
     if (!child.killed) {
-      child.kill('SIGTERM')
+      child.kill("SIGTERM");
     }
   }
 
-  setTimeout(() => process.exit(exitCode), 200)
+  setTimeout(() => process.exit(exitCode), 200);
 }
 
-process.on('SIGINT', () => shutdown(0))
-process.on('SIGTERM', () => shutdown(0))
+process.on("SIGINT", () => shutdown(0));
+process.on("SIGTERM", () => shutdown(0));

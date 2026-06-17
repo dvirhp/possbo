@@ -1,6 +1,6 @@
-import passport from 'passport';
-import FacebookStrategy from 'passport-facebook';
-import { PrismaClient } from '@prisma/client';
+import passport from "passport";
+import FacebookStrategy from "passport-facebook";
+import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -9,8 +9,13 @@ passport.use(
     {
       clientID: process.env.FACEBOOK_APP_ID,
       clientSecret: process.env.FACEBOOK_APP_SECRET,
-      callbackURL: 'http://localhost:5001/api/auth/facebook/callback',
-      profileFields: ['id', 'displayName', 'email', 'picture.width(200).height(200)'],
+      callbackURL: "http://localhost:5001/api/auth/facebook/callback",
+      profileFields: [
+        "id",
+        "displayName",
+        "email",
+        "picture.width(200).height(200)",
+      ],
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -34,8 +39,8 @@ passport.use(
       } catch (error) {
         return done(error);
       }
-    }
-  )
+    },
+  ),
 );
 
 passport.serializeUser((user, done) => {
