@@ -13,10 +13,21 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/ --ext .js,.jsx"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.0",
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.0.8"
+    "@vitest/coverage-v8": "^3.2.0",
+    "eslint": "^9.0.0",
+    "jsdom": "^26.1.0",
+    "vite": "^5.0.8",
+    "vitest": "^3.2.0"
   }
 }
