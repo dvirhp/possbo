@@ -14,6 +14,7 @@ import {
   imageFileFilter,
   MAX_FILE_SIZE,
 } from "../utils/security.js";
+import { asyncHandler } from "../utils/async-handler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
@@ -42,66 +43,57 @@ const requireAuth = (req, res, next) => {
 };
 
 // Publish a post to a Facebook group
-router.post("/", requireAuth, upload.single("image"), async (req, res) => {
-  const { groupUrl, groupName, text, anonymous, location } = req.body;
-  if (!groupUrl || !text) {
-    return res
-      .status(400)
-      .json({ success: false, error: "groupUrl and text are required" });
-  }
-  const sanitizedText = sanitizeText(text);
-  if (!sanitizedText) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Text is invalid or too long" });
-  }
-  const sanitizedLocation = location ? sanitizeText(location, 200) : null;
-  if (!groupUrl || !text) {
-    return res
-      .status(400)
-      .json({ success: false, error: "groupUrl and text are required" });
-  }
-  const imagePath = req.file ? req.file.path : null;
-  const isAnonymous = anonymous === "true";
-  try {
-    const result = await publishToGroup(groupUrl, sanitizedText, imagePath, {
-      anonymous: isAnonymous,
-      location: sanitizedLocation,
-    });
-
-    // Save post to storage
-    const saved = await savePost({
-      userId: req.user.id,
-      groupUrl,
-      groupName,
-      text: sanitizedText,
-      postUrl: result.postUrl,
-      screenshot: result.screenshot,
-      anonymous: isAnonymous,
-      location: sanitizedLocation,
-    });
-    console.log(
-      "[publish] Post saved with id:",
-      saved.id,
-      "postUrl:",
-      saved.postUrl,
-    );
-
-    res.json({ ...result, savedPost: saved });
-  } catch (error) {
-    console.error("Publish error:", error.message);
-    if (error.message === "FACEBOOK_SESSION_REQUIRED") {
+router.post(
+  "/",
+  requireAuth,
+  upload.single("image"),
+  asyncHandler(async (req, res) => {
+    const { groupUrl, groupName, text, anonymous, location } = req.body;
+    if (!groupUrl || !text) {
       return res
-        .status(428)
-        .json({ success: false, error: "FACEBOOK_SESSION_REQUIRED" });
+        .status(400)
+        .json({ success: false, error: "groupUrl and text are required" });
     }
-    res.status(500).json({ success: false, error: error.message });
-  } finally {
-    if (imagePath && fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
+    const sanitizedText = sanitizeText(text);
+    if (!sanitizedText) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Text is invalid or too long" });
     }
-  }
-});
+    const sanitizedLocation = location ? sanitizeText(location, 200) : null;
+    const imagePath = req.file ? req.file.path : null;
+    const isAnonymous = anonymous === "true";
+    try {
+      const result = await publishToGroup(groupUrl, sanitizedText, imagePath, {
+        anonymous: isAnonymous,
+        location: sanitizedLocation,
+      });
+
+      const saved = await savePost({
+        userId: req.user.id,
+        groupUrl,
+        groupName,
+        text: sanitizedText,
+        postUrl: result.postUrl,
+        screenshot: result.screenshot,
+        anonymous: isAnonymous,
+        location: sanitizedLocation,
+      });
+      console.log(
+        "[publish] Post saved with id:",
+        saved.id,
+        "postUrl:",
+        saved.postUrl,
+      );
+
+      res.json({ ...result, savedPost: saved });
+    } finally {
+      if (imagePath && fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+  }),
+);
 
 // Get all published posts history
 router.get("/history", requireAuth, async (req, res) => {

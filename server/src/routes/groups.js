@@ -18,6 +18,7 @@ import {
   imageFileFilter,
   MAX_FILE_SIZE,
 } from "../utils/security.js";
+import { asyncHandler } from "../utils/async-handler.js";
 
 const uploadsDir = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -126,9 +127,11 @@ router.post("/search", requireAuth, async (req, res) => {
 });
 
 // Refresh screenshot by running authenticated automation and persisting result
-router.get("/refresh-screenshot", requireAuth, async (req, res) => {
-  const { groupName = "פשפשוק - רכב" } = req.query;
-  try {
+router.get(
+  "/refresh-screenshot",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { groupName = "פשפשוק - רכב" } = req.query;
     if (!req.user?.facebookAccessToken) {
       return res
         .status(400)
@@ -200,24 +203,8 @@ router.get("/refresh-screenshot", requireAuth, async (req, res) => {
       groupName,
       screenshot,
     });
-  } catch (error) {
-    console.error("Refresh screenshot error:", error.message);
-    if (error.message === "FACEBOOK_SESSION_REQUIRED") {
-      return res.status(428).json({
-        success: false,
-        error: "FACEBOOK_SESSION_REQUIRED",
-        message:
-          "Facebook browser session is not initialized. Run session bootstrap first.",
-      });
-    }
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: error.message || "Failed to refresh screenshot",
-      });
-  }
-});
+  }),
+);
 
 // One-time session bootstrap: instructs user to run setup script
 router.post("/session/bootstrap", async (_req, res) => {
@@ -249,8 +236,9 @@ router.post("/session/bootstrap", async (_req, res) => {
 });
 
 // Scrape user's groups from Facebook using Playwright
-router.get("/scrape-my-groups", async (req, res) => {
-  try {
+router.get(
+  "/scrape-my-groups",
+  asyncHandler(async (req, res) => {
     const groups = await scrapeMyGroups();
 
     // Save scraped groups to DB if user is authenticated
@@ -277,21 +265,14 @@ router.get("/scrape-my-groups", async (req, res) => {
     }
 
     res.json({ success: true, groups });
-  } catch (error) {
-    console.error("Scrape my groups error:", error.message);
-    if (error.message === "FACEBOOK_SESSION_REQUIRED") {
-      return res.status(428).json({
-        success: false,
-        error: "FACEBOOK_SESSION_REQUIRED",
-      });
-    }
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+  }),
+);
 
 // Get user's Facebook groups
-router.get("/my-groups", requireAuth, async (req, res) => {
-  try {
+router.get(
+  "/my-groups",
+  requireAuth,
+  asyncHandler(async (req, res) => {
     const user = req.user;
 
     if (!user.facebookAccessToken) {
@@ -309,30 +290,26 @@ router.get("/my-groups", requireAuth, async (req, res) => {
     );
 
     res.json(response.data.data || []);
-  } catch (error) {
-    console.error("Error fetching groups:", error);
-    res.status(500).json({ error: "Failed to fetch groups" });
-  }
-});
+  }),
+);
 
 // Get saved groups from database
-router.get("/saved", requireAuth, async (req, res) => {
-  try {
+router.get(
+  "/saved",
+  requireAuth,
+  asyncHandler(async (req, res) => {
     const groups = await prisma.facebookGroup.findMany({
       where: { userId: req.user.id },
     });
     res.json(groups);
-  } catch (error) {
-    console.error("Error fetching saved groups:", error);
-    res.status(500).json({ error: "Failed to fetch saved groups" });
-  }
-});
+  }),
+);
 
 // Take screenshot of Facebook group using Playwright with saved session
-router.get("/facebook-screenshot", async (req, res) => {
-  const { groupName = "פשפשוק - רכב" } = req.query;
-  try {
-    // If groupName is a URL, validate and pass it as targetUrl directly
+router.get(
+  "/facebook-screenshot",
+  asyncHandler(async (req, res) => {
+    const { groupName = "פשפשוק - רכב" } = req.query;
     const isUrl = groupName.startsWith("http");
     if (isUrl && !isAllowedUrl(groupName)) {
       return res
@@ -346,23 +323,16 @@ router.get("/facebook-screenshot", async (req, res) => {
       screenshot,
       groupName,
     });
-  } catch (error) {
-    console.error("Facebook screenshot error:", error.message);
-    if (error.message === "FACEBOOK_SESSION_REQUIRED") {
-      return res.status(428).json({
-        success: false,
-        error: "FACEBOOK_SESSION_REQUIRED",
-        message:
-          "Facebook browser session is not initialized. Run session bootstrap first.",
-      });
-    }
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+  }),
+);
 
 // Publish a post to a Facebook group
-router.post("/publish", requireAuth, upload.single("image"), async (req, res) => {
-  const { groupUrl, groupName, text, anonymous, location } = req.body;
+router.post(
+  "/publish",
+  requireAuth,
+  upload.single("image"),
+  asyncHandler(async (req, res) => {
+    const { groupUrl, groupName, text, anonymous, location } = req.body;
   if (!groupUrl || !text) {
     return res
       .status(400)
@@ -395,20 +365,12 @@ router.post("/publish", requireAuth, upload.single("image"), async (req, res) =>
     });
 
     res.json({ ...result, savedPost: saved });
-  } catch (error) {
-    console.error("Publish error:", error.message);
-    if (error.message === "FACEBOOK_SESSION_REQUIRED") {
-      return res
-        .status(428)
-        .json({ success: false, error: "FACEBOOK_SESSION_REQUIRED" });
+    } finally {
+      if (imagePath && fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
     }
-    res.status(500).json({ success: false, error: error.message });
-  } finally {
-    // Clean up uploaded file
-    if (imagePath && fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
-    }
-  }
-});
+  }),
+);
 
 export default router;
