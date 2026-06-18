@@ -23,6 +23,15 @@ vi.mock("@prisma/client", () => ({
   })),
 }));
 
+vi.mock("../../src/utils/posts-storage.js", () => ({
+  savePost: vi.fn(async (data) => ({
+    id: "mock-id-123",
+    ...data,
+    createdAt: "2024-01-01T00:00:00.000Z",
+    hasScreenshot: false,
+  })),
+}));
+
 // We need to spy on fs.existsSync at the module level
 import fs from "fs";
 vi.spyOn(fs, "existsSync").mockReturnValue(false);

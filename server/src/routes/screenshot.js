@@ -1,5 +1,6 @@
 import express from "express";
 import { captureGroupScreenshot } from "../utils/facebook-automation.js";
+import { isAllowedUrl } from "../utils/security.js";
 
 const router = express.Router();
 
@@ -8,6 +9,11 @@ router.get("/", async (req, res) => {
   const { url } = req.query;
   if (!url) {
     return res.status(400).json({ success: false, error: "url is required" });
+  }
+  if (!isAllowedUrl(url)) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Only Facebook URLs are allowed" });
   }
   try {
     const screenshot = await captureGroupScreenshot(null, null, url);

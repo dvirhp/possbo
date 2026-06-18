@@ -83,4 +83,31 @@ describe("GET /api/screenshot", () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("url is required");
   });
+
+  it("should reject non-Facebook URLs (SSRF protection)", async () => {
+    const res = await request(app)
+      .get("/api/screenshot")
+      .query({ url: "http://169.254.169.254/latest/meta-data" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Only Facebook URLs are allowed");
+  });
+
+  it("should reject non-HTTPS Facebook URLs", async () => {
+    const res = await request(app)
+      .get("/api/screenshot")
+      .query({ url: "http://facebook.com/groups/123" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Only Facebook URLs are allowed");
+  });
+
+  it("should reject internal network URLs", async () => {
+    const res = await request(app)
+      .get("/api/screenshot")
+      .query({ url: "http://localhost:3000" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Only Facebook URLs are allowed");
+  });
 });

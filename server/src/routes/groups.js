@@ -10,6 +10,14 @@ import {
   scrapeMyGroups,
   publishToGroup,
 } from "../utils/facebook-automation.js";
+import { savePost } from "../utils/posts-storage.js";
+import {
+  isAllowedUrl,
+  isValidGroupName,
+  sanitizeText,
+  imageFileFilter,
+  MAX_FILE_SIZE,
+} from "../utils/security.js";
 
 const uploadsDir = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -24,7 +32,11 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + "-" + Math.round(Math.random() * 1e6) + ext);
   },
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: imageFileFilter,
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -237,9 +249,33 @@ router.post("/session/bootstrap", async (_req, res) => {
 });
 
 // Scrape user's groups from Facebook using Playwright
-router.get("/scrape-my-groups", async (_req, res) => {
+router.get("/scrape-my-groups", async (req, res) => {
   try {
     const groups = await scrapeMyGroups();
+
+    // Save scraped groups to DB if user is authenticated
+    if (req.user) {
+      for (const g of groups) {
+        if (g.id && g.name) {
+          await prisma.facebookGroup.upsert({
+            where: {
+              userId_groupId: { userId: req.user.id, groupId: g.id },
+            },
+            update: {
+              groupName: g.name,
+              groupImage: g.image || null,
+            },
+            create: {
+              userId: req.user.id,
+              groupId: g.id,
+              groupName: g.name,
+              groupImage: g.image || null,
+            },
+          });
+        }
+      }
+    }
+
     res.json({ success: true, groups });
   } catch (error) {
     console.error("Scrape my groups error:", error.message);
@@ -296,8 +332,13 @@ router.get("/saved", requireAuth, async (req, res) => {
 router.get("/facebook-screenshot", async (req, res) => {
   const { groupName = "פשפשוק - רכב" } = req.query;
   try {
-    // If groupName is a URL, pass it as targetUrl directly
+    // If groupName is a URL, validate and pass it as targetUrl directly
     const isUrl = groupName.startsWith("http");
+    if (isUrl && !isAllowedUrl(groupName)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Only Facebook URLs are allowed" });
+    }
     const targetUrl = isUrl ? groupName : null;
     const screenshot = await captureGroupScreenshot(groupName, null, targetUrl);
     res.json({
@@ -320,17 +361,40 @@ router.get("/facebook-screenshot", async (req, res) => {
 });
 
 // Publish a post to a Facebook group
-router.post("/publish", upload.single("image"), async (req, res) => {
-  const { groupUrl, text } = req.body;
+router.post("/publish", requireAuth, upload.single("image"), async (req, res) => {
+  const { groupUrl, groupName, text, anonymous, location } = req.body;
   if (!groupUrl || !text) {
     return res
       .status(400)
       .json({ success: false, error: "groupUrl and text are required" });
   }
+  const sanitizedText = sanitizeText(text);
+  if (!sanitizedText) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Text is invalid or too long" });
+  }
+  const sanitizedLocation = location ? sanitizeText(location, 200) : null;
+  const isAnonymous = anonymous === "true";
   const imagePath = req.file ? req.file.path : null;
   try {
-    const result = await publishToGroup(groupUrl, text, imagePath);
-    res.json(result);
+    const result = await publishToGroup(groupUrl, sanitizedText, imagePath, {
+      anonymous: isAnonymous,
+      location: sanitizedLocation,
+    });
+
+    const saved = await savePost({
+      userId: req.user.id,
+      groupUrl,
+      groupName,
+      text: sanitizedText,
+      postUrl: result.postUrl,
+      screenshot: result.screenshot,
+      anonymous: isAnonymous,
+      location: sanitizedLocation,
+    });
+
+    res.json({ ...result, savedPost: saved });
   } catch (error) {
     console.error("Publish error:", error.message);
     if (error.message === "FACEBOOK_SESSION_REQUIRED") {
