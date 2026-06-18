@@ -12,14 +12,14 @@ vi.mock("../../src/utils/facebook-automation.js", () => ({
 
 // Mock the posts-storage module
 vi.mock("../../src/utils/posts-storage.js", () => ({
-  savePost: vi.fn((data) => ({
+  savePost: vi.fn(async (data) => ({
     id: "mock-id-123",
     ...data,
     createdAt: "2024-01-01T00:00:00.000Z",
     hasScreenshot: !!data.screenshot,
   })),
-  getAllPosts: vi.fn(() => []),
-  getPostsByGroup: vi.fn(() => []),
+  getAllPosts: vi.fn(async () => []),
+  getPostsByGroup: vi.fn(async () => []),
 }));
 
 // Mock multer - parse multipart fields manually for supertest
@@ -66,6 +66,11 @@ beforeEach(async () => {
   app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  // Inject mock user for auth
+  app.use((req, _res, next) => {
+    req.user = { id: "test-user-id", name: "Test User" };
+    next();
+  });
   app.use("/api/publish", publishModule.default);
 });
 
@@ -148,7 +153,7 @@ describe("POST /api/publish", () => {
       "https://facebook.com/groups/123",
       "Test post",
       null,
-      { anonymous: false, location: undefined },
+      { anonymous: false, location: null },
     );
     expect(savePost).toHaveBeenCalled();
   });
@@ -200,7 +205,7 @@ describe("POST /api/publish", () => {
 describe("GET /api/publish/history", () => {
   it("should return all posts when no groupUrl param", async () => {
     const { getAllPosts } = await import("../../src/utils/posts-storage.js");
-    vi.mocked(getAllPosts).mockReturnValue([
+    vi.mocked(getAllPosts).mockResolvedValue([
       { id: "1", text: "Post 1", groupUrl: "url1" },
       { id: "2", text: "Post 2", groupUrl: "url2" },
     ]);
@@ -215,7 +220,7 @@ describe("GET /api/publish/history", () => {
   it("should filter posts by groupUrl when param provided", async () => {
     const { getPostsByGroup } =
       await import("../../src/utils/posts-storage.js");
-    vi.mocked(getPostsByGroup).mockReturnValue([
+    vi.mocked(getPostsByGroup).mockResolvedValue([
       { id: "1", text: "Post 1", groupUrl: "https://fb.com/groups/1" },
     ]);
 
@@ -230,7 +235,7 @@ describe("GET /api/publish/history", () => {
 
   it("should return empty array when no posts exist", async () => {
     const { getAllPosts } = await import("../../src/utils/posts-storage.js");
-    vi.mocked(getAllPosts).mockReturnValue([]);
+    vi.mocked(getAllPosts).mockResolvedValue([]);
 
     const res = await request(app).get("/api/publish/history");
 

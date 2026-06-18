@@ -18,12 +18,23 @@ app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
 app.use(express.json());
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "dev-secret",
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false, httpOnly: true, maxAge: 1000 * 60 * 60 * 24 }, // 24 hours
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: 1000 * 60 * 60 * 24, // 24 hours
+    },
   }),
 );
+
+if (!process.env.SESSION_SECRET) {
+  console.warn(
+    "WARNING: SESSION_SECRET is not set. Sessions will not work correctly.",
+  );
+}
 
 // Initialize Passport
 app.use(passport.initialize());

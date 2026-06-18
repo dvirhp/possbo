@@ -1,162 +1,194 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import fs from "fs";
-import path from "path";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock fs
-vi.mock("fs");
+const mockGroup = { id: "group-1", name: "Test Group", url: "https://fb.com/groups/1" };
+const mockPost = {
+  id: "post-1",
+  content: "Hello world",
+  isAnonymous: false,
+  location: null,
+  createdAt: new Date("2025-01-01"),
+};
+const mockPostGroup = { id: "pg-1", postId: "post-1", groupId: "group-1", userId: "user-1" };
 
-// We need to mock fileURLToPath for the module's __dirname calculation
-vi.mock("url", () => ({
-  fileURLToPath: () => "/mock/server/src/utils/posts-storage.js",
+const prismaInstance = {
+  group: {
+    findFirst: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue(mockGroup),
+  },
+  post: {
+    findMany: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockResolvedValue(mockPost),
+  },
+  postGroup: {
+    findMany: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockResolvedValue(mockPostGroup),
+  },
+  publicationHistory: {
+    create: vi.fn().mockResolvedValue({ id: "pub-1" }),
+  },
+};
+
+vi.mock("@prisma/client", () => ({
+  PrismaClient: vi.fn(() => prismaInstance),
 }));
 
 describe("posts-storage", () => {
   let savePost, getAllPosts, getPostsByGroup;
 
   beforeEach(async () => {
+    // Reset all mock call counts but keep implementations
+    Object.values(prismaInstance).forEach((model) => {
+      Object.values(model).forEach((fn) => {
+        if (typeof fn.mockClear === "function") fn.mockClear();
+      });
+    });
+    // Reset defaults
+    prismaInstance.group.findFirst.mockResolvedValue(null);
+    prismaInstance.post.findMany.mockResolvedValue([]);
+    prismaInstance.postGroup.findMany.mockResolvedValue([]);
+
     vi.resetModules();
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    vi.mocked(fs.readFileSync).mockReturnValue("[]");
-    vi.mocked(fs.writeFileSync).mockImplementation(() => {});
+    vi.mock("@prisma/client", () => ({
+      PrismaClient: vi.fn(() => prismaInstance),
+    }));
 
-    const module = await import("../../src/utils/posts-storage.js");
-    savePost = module.savePost;
-    getAllPosts = module.getAllPosts;
-    getPostsByGroup = module.getPostsByGroup;
-  });
-
-  describe("getAllPosts", () => {
-    it("should return empty array when file does not exist", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-      expect(getAllPosts()).toEqual([]);
-    });
-
-    it("should return parsed posts from file", () => {
-      const posts = [{ id: "1", text: "Hello" }];
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(posts));
-
-      expect(getAllPosts()).toEqual(posts);
-    });
-
-    it("should return empty array when file contains empty array", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue("[]");
-
-      expect(getAllPosts()).toEqual([]);
-    });
+    const mod = await import("../../src/utils/posts-storage.js");
+    savePost = mod.savePost;
+    getAllPosts = mod.getAllPosts;
+    getPostsByGroup = mod.getPostsByGroup;
   });
 
   describe("savePost", () => {
-    it("should save a post with all fields", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue("[]");
-
-      const result = savePost({
+    it("should create group, post, postGroup and publication", async () => {
+      const result = await savePost({
+        userId: "user-1",
         groupUrl: "https://fb.com/groups/1",
         groupName: "Test Group",
         text: "Hello world",
         postUrl: "https://fb.com/post/1",
         screenshot: "base64data",
+        anonymous: false,
+        location: null,
       });
 
+      expect(prismaInstance.group.findFirst).toHaveBeenCalledWith({
+        where: { url: "https://fb.com/groups/1" },
+      });
+      expect(prismaInstance.group.create).toHaveBeenCalled();
+      expect(prismaInstance.post.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: "user-1",
+          content: "Hello world",
+          status: "ACTIVE",
+          isAnonymous: false,
+        }),
+      });
+      expect(prismaInstance.postGroup.create).toHaveBeenCalled();
+      expect(prismaInstance.publicationHistory.create).toHaveBeenCalled();
+
+      expect(result.id).toBe("post-1");
       expect(result.groupUrl).toBe("https://fb.com/groups/1");
-      expect(result.groupName).toBe("Test Group");
-      expect(result.text).toBe("Hello world");
       expect(result.postUrl).toBe("https://fb.com/post/1");
       expect(result.hasScreenshot).toBe(true);
-      expect(result.id).toBeDefined();
-      expect(result.createdAt).toBeDefined();
     });
 
-    it("should save post with null postUrl when not provided", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
+    it("should use existing group if found", async () => {
+      prismaInstance.group.findFirst.mockResolvedValue(mockGroup);
 
-      const result = savePost({
+      await savePost({
+        userId: "user-1",
+        groupUrl: "https://fb.com/groups/1",
+        text: "Test",
+      });
+
+      expect(prismaInstance.group.create).not.toHaveBeenCalled();
+    });
+
+    it("should save anonymous and location fields", async () => {
+      await savePost({
+        userId: "user-1",
+        groupUrl: "https://fb.com/groups/1",
+        text: "Test",
+        anonymous: true,
+        location: "Tel Aviv",
+      });
+
+      expect(prismaInstance.post.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          isAnonymous: true,
+          location: "Tel Aviv",
+        }),
+      });
+    });
+
+    it("should handle missing postUrl", async () => {
+      const result = await savePost({
+        userId: "user-1",
         groupUrl: "https://fb.com/groups/1",
         text: "Test",
       });
 
       expect(result.postUrl).toBeNull();
-      expect(result.groupName).toBeNull();
       expect(result.hasScreenshot).toBe(false);
     });
+  });
 
-    it("should prepend new post to existing posts", () => {
-      const existing = [{ id: "old", text: "old post" }];
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(existing));
-      vi.mocked(fs.writeFileSync).mockClear();
-
-      savePost({
-        groupUrl: "https://fb.com/groups/1",
-        text: "New post",
-      });
-
-      const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
-      const written = JSON.parse(writeCall[1]);
-      expect(written[0].text).toBe("New post");
-      expect(written[1].id).toBe("old");
-      expect(written).toHaveLength(2);
+  describe("getAllPosts", () => {
+    it("should return empty array when no posts", async () => {
+      const result = await getAllPosts("user-1");
+      expect(result).toEqual([]);
     });
 
-    it("should generate unique IDs for each post", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
+    it("should return formatted posts with group info", async () => {
+      prismaInstance.post.findMany.mockResolvedValue([
+        {
+          id: "post-1",
+          content: "Hello",
+          location: "TLV",
+          isAnonymous: false,
+          createdAt: new Date("2025-01-01"),
+          postGroups: [
+            {
+              group: { name: "Test Group", url: "https://fb.com/groups/1" },
+              publications: [{ externalPostUrl: "https://fb.com/post/1", screenshotUrl: "stored" }],
+            },
+          ],
+        },
+      ]);
 
-      const result1 = savePost({ groupUrl: "u1", text: "t1" });
-      const result2 = savePost({ groupUrl: "u2", text: "t2" });
-
-      // IDs based on Date.now() - they should differ
-      expect(result1.id).toBeDefined();
-      expect(result2.id).toBeDefined();
-    });
-
-    it("should write valid JSON to the file", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-
-      savePost({ groupUrl: "url", text: "txt" });
-
-      expect(fs.writeFileSync).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.any(String),
-        "utf-8",
-      );
-
-      const written = JSON.parse(vi.mocked(fs.writeFileSync).mock.calls[0][1]);
-      expect(Array.isArray(written)).toBe(true);
+      const result = await getAllPosts("user-1");
+      expect(result).toHaveLength(1);
+      expect(result[0].text).toBe("Hello");
+      expect(result[0].groupName).toBe("Test Group");
+      expect(result[0].postUrl).toBe("https://fb.com/post/1");
+      expect(result[0].hasScreenshot).toBe(true);
     });
   });
 
   describe("getPostsByGroup", () => {
-    it("should filter posts by groupUrl", () => {
-      const posts = [
-        { id: "1", groupUrl: "https://fb.com/groups/1", text: "a" },
-        { id: "2", groupUrl: "https://fb.com/groups/2", text: "b" },
-        { id: "3", groupUrl: "https://fb.com/groups/1", text: "c" },
-      ];
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(posts));
-
-      const result = getPostsByGroup("https://fb.com/groups/1");
-      expect(result).toHaveLength(2);
-      expect(
-        result.every((p) => p.groupUrl === "https://fb.com/groups/1"),
-      ).toBe(true);
+    it("should return empty array when group not found", async () => {
+      const result = await getPostsByGroup("https://fb.com/groups/999");
+      expect(result).toEqual([]);
     });
 
-    it("should return empty array when no posts match", () => {
-      const posts = [
-        { id: "1", groupUrl: "https://fb.com/groups/1", text: "a" },
-      ];
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(posts));
+    it("should return posts for a specific group", async () => {
+      prismaInstance.group.findFirst.mockResolvedValue(mockGroup);
+      prismaInstance.postGroup.findMany.mockResolvedValue([
+        {
+          post: {
+            id: "post-1",
+            content: "Test",
+            location: null,
+            isAnonymous: false,
+            createdAt: new Date("2025-01-01"),
+          },
+          publications: [{ externalPostUrl: null, screenshotUrl: null }],
+        },
+      ]);
 
-      expect(getPostsByGroup("https://fb.com/groups/999")).toEqual([]);
-    });
-
-    it("should return empty array when file does not exist", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-      expect(getPostsByGroup("anything")).toEqual([]);
+      const result = await getPostsByGroup("https://fb.com/groups/1");
+      expect(result).toHaveLength(1);
+      expect(result[0].text).toBe("Test");
     });
   });
 });

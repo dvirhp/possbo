@@ -9,6 +9,12 @@ import {
   getAllPosts,
   getPostsByGroup,
 } from "../utils/posts-storage.js";
+import {
+  sanitizeText,
+  imageFileFilter,
+  MAX_FILE_SIZE,
+} from "../utils/security.js";
+import { asyncHandler } from "../utils/async-handler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
@@ -20,63 +26,81 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + "-" + Math.round(Math.random() * 1e6) + ext);
   },
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: imageFileFilter,
+});
 
 const router = express.Router();
 
+// Require auth for all publish routes
+const requireAuth = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  next();
+};
+
 // Publish a post to a Facebook group
-router.post("/", upload.single("image"), async (req, res) => {
-  const { groupUrl, groupName, text, anonymous, location } = req.body;
-  if (!groupUrl || !text) {
-    return res
-      .status(400)
-      .json({ success: false, error: "groupUrl and text are required" });
-  }
-  const imagePath = req.file ? req.file.path : null;
-  const isAnonymous = anonymous === "true";
-  try {
-    const result = await publishToGroup(groupUrl, text, imagePath, {
-      anonymous: isAnonymous,
-      location,
-    });
-
-    // Save post to storage
-    const saved = savePost({
-      groupUrl,
-      groupName,
-      text,
-      postUrl: result.postUrl,
-      screenshot: result.screenshot,
-      anonymous: isAnonymous,
-      location: location || null,
-    });
-    console.log(
-      "[publish] Post saved with id:",
-      saved.id,
-      "postUrl:",
-      saved.postUrl,
-    );
-
-    res.json({ ...result, savedPost: saved });
-  } catch (error) {
-    console.error("Publish error:", error.message);
-    if (error.message === "FACEBOOK_SESSION_REQUIRED") {
+router.post(
+  "/",
+  requireAuth,
+  upload.single("image"),
+  asyncHandler(async (req, res) => {
+    const { groupUrl, groupName, text, anonymous, location } = req.body;
+    if (!groupUrl || !text) {
       return res
-        .status(428)
-        .json({ success: false, error: "FACEBOOK_SESSION_REQUIRED" });
+        .status(400)
+        .json({ success: false, error: "groupUrl and text are required" });
     }
-    res.status(500).json({ success: false, error: error.message });
-  } finally {
-    if (imagePath && fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
+    const sanitizedText = sanitizeText(text);
+    if (!sanitizedText) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Text is invalid or too long" });
     }
-  }
-});
+    const sanitizedLocation = location ? sanitizeText(location, 200) : null;
+    const imagePath = req.file ? req.file.path : null;
+    const isAnonymous = anonymous === "true";
+    try {
+      const result = await publishToGroup(groupUrl, sanitizedText, imagePath, {
+        anonymous: isAnonymous,
+        location: sanitizedLocation,
+      });
+
+      const saved = await savePost({
+        userId: req.user.id,
+        groupUrl,
+        groupName,
+        text: sanitizedText,
+        postUrl: result.postUrl,
+        screenshot: result.screenshot,
+        anonymous: isAnonymous,
+        location: sanitizedLocation,
+      });
+      console.log(
+        "[publish] Post saved with id:",
+        saved.id,
+        "postUrl:",
+        saved.postUrl,
+      );
+
+      res.json({ ...result, savedPost: saved });
+    } finally {
+      if (imagePath && fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+  }),
+);
 
 // Get all published posts history
-router.get("/history", async (req, res) => {
+router.get("/history", requireAuth, async (req, res) => {
   const { groupUrl } = req.query;
-  const posts = groupUrl ? getPostsByGroup(groupUrl) : getAllPosts();
+  const posts = groupUrl
+    ? await getPostsByGroup(groupUrl)
+    : await getAllPosts(req.user.id);
   res.json({ success: true, posts });
 });
 

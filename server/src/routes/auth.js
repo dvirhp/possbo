@@ -110,41 +110,4 @@ router.get("/logout", (req, res) => {
   });
 });
 
-// Test endpoint - take screenshot of Google
-router.get("/test-screenshot", async (req, res) => {
-  try {
-    const { chromium } = await import("playwright");
-
-    const browser = await chromium.launch({
-      headless: true,
-      args: ["--disable-blink-features=AutomationControlled"],
-    });
-
-    const page = await browser.newPage();
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto("https://www.google.com", {
-      waitUntil: "networkidle",
-      timeout: 30000,
-    });
-
-    const screenshot = await page.screenshot({ type: "png", fullPage: false });
-    const base64 = screenshot.toString("base64");
-
-    await browser.close();
-
-    res.json({
-      success: true,
-      message: "Screenshot captured successfully",
-      screenshot: base64,
-      size: screenshot.length,
-    });
-  } catch (error) {
-    console.error("Test screenshot error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
 export default router;

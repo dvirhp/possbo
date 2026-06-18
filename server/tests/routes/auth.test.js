@@ -9,14 +9,20 @@ vi.mock("../../src/utils/facebook-automation.js", () => ({
   captureGroupScreenshot: vi.fn(),
 }));
 
-vi.mock("@prisma/client", () => ({
-  PrismaClient: vi.fn(() => ({
-    facebookGroup: {
-      upsert: vi.fn().mockResolvedValue({}),
-      findFirst: vi.fn(),
-    },
-  })),
-}));
+vi.mock("@prisma/client", () => {
+  const mockFindFirst = vi.fn();
+  const mockUpsert = vi.fn().mockResolvedValue({});
+  return {
+    PrismaClient: vi.fn(() => ({
+      facebookGroup: {
+        upsert: mockUpsert,
+        findFirst: mockFindFirst,
+      },
+    })),
+    __mockFindFirst: mockFindFirst,
+    __mockUpsert: mockUpsert,
+  };
+});
 
 vi.mock("passport", () => ({
   default: {
@@ -91,9 +97,8 @@ describe("GET /api/auth/screenshot", () => {
   });
 
   it("should return 404 when no screenshot found", async () => {
-    const { PrismaClient } = await import("@prisma/client");
-    const mockPrisma = new PrismaClient();
-    vi.mocked(mockPrisma.facebookGroup.findFirst).mockResolvedValue(null);
+    const { __mockFindFirst } = await import("@prisma/client");
+    vi.mocked(__mockFindFirst).mockResolvedValue(null);
 
     const res = await request(app).get("/api/auth/screenshot");
     expect(res.status).toBe(404);
@@ -122,5 +127,61 @@ describe("GET /api/auth/logout", () => {
     const res = await request(failApp).get("/api/auth/logout");
     expect(res.status).toBe(500);
     expect(res.body.error).toBe("Logout failed");
+  });
+});
+
+describe("GET /api/auth/facebook/callback", () => {
+  it("should redirect to dashboard on successful auth", async () => {
+    process.env.CLIENT_URL = "http://localhost:3000";
+    const { captureGroupScreenshot } = await import(
+      "../../src/utils/facebook-automation.js"
+    );
+    vi.mocked(captureGroupScreenshot).mockResolvedValue("base64screenshot");
+
+    const res = await request(app).get("/api/auth/facebook/callback");
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe("http://localhost:3000/dashboard");
+  });
+
+  it("should handle automation error gracefully", async () => {
+    process.env.CLIENT_URL = "http://localhost:3000";
+    const { captureGroupScreenshot } = await import(
+      "../../src/utils/facebook-automation.js"
+    );
+    vi.mocked(captureGroupScreenshot).mockRejectedValue(
+      new Error("Browser crashed"),
+    );
+
+    const res = await request(app).get("/api/auth/facebook/callback");
+
+    // Should still redirect to dashboard even if automation fails
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe("http://localhost:3000/dashboard");
+  });
+});
+
+describe("GET /api/auth/screenshot", () => {
+  it("should return screenshot data when found", async () => {
+    const { __mockFindFirst } = await import("@prisma/client");
+    vi.mocked(__mockFindFirst).mockResolvedValue({
+      screenshot: "base64data",
+      groupName: "Test Group",
+      createdAt: new Date("2025-01-01"),
+    });
+
+    const res = await request(app).get("/api/auth/screenshot");
+    expect(res.status).toBe(200);
+    expect(res.body.screenshot).toBe("base64data");
+    expect(res.body.groupName).toBe("Test Group");
+  });
+
+  it("should return 500 on database error", async () => {
+    const { __mockFindFirst } = await import("@prisma/client");
+    vi.mocked(__mockFindFirst).mockRejectedValue(new Error("DB error"));
+
+    const res = await request(app).get("/api/auth/screenshot");
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe("Failed to fetch screenshot");
   });
 });
