@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { screenshotService } from '../services/screenshotService'
 import { publishService } from '../services/publishService'
+import { groupsService } from '../services/groupsService'
 import GenericList from '../components/GenericList'
 import LocationAutocomplete from '../components/LocationAutocomplete'
 import locale from '../assets/i18n'
@@ -34,14 +35,14 @@ export default function GroupDetails() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    if (group?.url) {
+    if (group?.id) {
       loadPosts()
     }
-  }, [group?.url])
+  }, [group?.id])
 
   const loadPosts = async () => {
     try {
-      const res = await publishService.getHistory(group.url)
+      const res = await groupsService.getGroupPosts(group.id)
       if (res.data.success) {
         setPosts(res.data.posts)
       }

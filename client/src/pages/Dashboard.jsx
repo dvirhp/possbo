@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { authAPI } from '../services/api'
 import { groupsService } from '../services/groupsService'
 import GenericList from '../components/GenericList'
 import locale from '../assets/i18n'
@@ -7,19 +8,44 @@ import '../styles/dashboard.css'
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const [user, setUser] = useState(null)
   const [groups, setGroups] = useState([])
   const [loadingGroups, setLoadingGroups] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    const sessionReady = localStorage.getItem('fbSessionReady')
-    if (!sessionReady) {
-      navigate('/')
+    // On page load, try to refresh token from cookie, then get user
+    const init = async () => {
+      try {
+        await authAPI.refresh()
+        const res = await authAPI.getMe()
+        setUser(res.data)
+        loadSavedGroups()
+      } catch {
+        navigate('/')
+      }
     }
+    init()
   }, [navigate])
 
-  const loadMyGroups = async () => {
+  const loadSavedGroups = async () => {
     setLoadingGroups(true)
+    setError(null)
+    try {
+      const res = await groupsService.getSavedGroups()
+      if (res.data.success && res.data.groups?.length > 0) {
+        setGroups(res.data.groups)
+      }
+    } catch {
+      // Silent - will show empty state with load button
+    } finally {
+      setLoadingGroups(false)
+    }
+  }
+
+  const refreshGroups = async () => {
+    setRefreshing(true)
     setError(null)
     try {
       const res = await groupsService.scrapeMyGroups()
@@ -31,18 +57,21 @@ export default function Dashboard() {
     } catch (err) {
       const msg = err.response?.data?.error || err.message
       if (msg === 'FACEBOOK_SESSION_REQUIRED') {
-        localStorage.removeItem('fbSessionReady')
-        navigate('/')
+        setError(locale.errors.fbSessionRequired)
       } else {
         setError(`${locale.errors.generic} ${msg}`)
       }
     } finally {
-      setLoadingGroups(false)
+      setRefreshing(false)
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('fbSessionReady')
+  const handleLogout = async () => {
+    try {
+      await authAPI.logout()
+    } catch {
+      // silent
+    }
     navigate('/')
   }
 
@@ -51,6 +80,7 @@ export default function Dashboard() {
       <div className="dashboard-header">
         <div className="user-info">
           <h2>{locale.dashboard.title}</h2>
+          {user && <span className="user-name">👤 {user.name || user.email}</span>}
         </div>
         <button onClick={handleLogout} className="logout-btn">
           {locale.logout}
@@ -63,11 +93,11 @@ export default function Dashboard() {
           <p>{locale.dashboard.description}</p>
 
           <button
-            onClick={loadMyGroups}
-            disabled={loadingGroups}
+            onClick={refreshGroups}
+            disabled={refreshing || loadingGroups}
             className="search-btn"
           >
-            {loadingGroups ? `🔄 ${locale.dashboard.loadingGroups}` : `📋 ${locale.dashboard.loadGroups}`}
+            {refreshing ? `🔄 ${locale.dashboard.loadingGroups}` : groups.length > 0 ? `🔄 ${locale.dashboard.refreshGroups}` : `📋 ${locale.dashboard.loadGroups}`}
           </button>
 
           {error && <div className="error-message">{error}</div>}

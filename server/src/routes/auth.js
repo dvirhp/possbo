@@ -1,113 +1,249 @@
 import express from "express";
-import passport from "passport";
-import "../config/passport.js";
-import { captureGroupScreenshot } from "../utils/facebook-automation.js";
+import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";
+import { encrypt, decrypt } from "../utils/encryption.js";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+} from "../utils/jwt.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const SALT_ROUNDS = 12;
 
-// Facebook authentication
-router.get(
-  "/facebook",
-  passport.authenticate("facebook", { scope: ["email", "public_profile"] }),
-);
+const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-// Facebook callback
-router.get(
-  "/facebook/callback",
-  passport.authenticate("facebook", { failureRedirect: "/login" }),
-  async (req, res) => {
-    try {
-      // Successful authentication - redirect to dashboard
-      res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+function setRefreshCookie(res, token) {
+  res.cookie("refreshToken", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: REFRESH_TOKEN_MAX_AGE,
+    path: "/api/auth",
+  });
+}
 
-      // Run automation in background (non-blocking)
-      if (req.user && req.user.facebookAccessToken) {
-        console.log("Starting automated Facebook group search...");
-
-        try {
-          const screenshot = await captureGroupScreenshot(
-            "פשפשוק - רכב",
-            req.user.facebookAccessToken,
-          );
-
-          // Save to database
-          await prisma.facebookGroup.upsert({
-            where: {
-              userId_groupId: {
-                userId: req.user.id,
-                groupId: "pshpshuk-rehev-auto",
-              },
-            },
-            update: {
-              groupName: "פשפשוק - רכב",
-              screenshot: screenshot,
-            },
-            create: {
-              userId: req.user.id,
-              groupId: "pshpshuk-rehev-auto",
-              groupName: "פשפשוק - רכב",
-              screenshot: screenshot,
-            },
-          });
-
-          console.log("Screenshot saved successfully");
-        } catch (automationError) {
-          console.error("Automation error:", automationError.message);
-          // Don't fail the whole auth flow if automation fails
-        }
-      }
-    } catch (error) {
-      console.error("Callback error:", error);
-      res.redirect(`${process.env.CLIENT_URL}/login?error=callback_failed`);
-    }
-  },
-);
-
-// Get current user
-router.get("/me", (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-  res.json(req.user);
-});
-
-// Get captured screenshot from Facebook automation
-router.get("/screenshot", async (req, res) => {
+// Register with email + password + Facebook App credentials
+router.post("/register", async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: "Not authenticated" });
+    const { email, password, name, facebookAppId, facebookAppSecret } =
+      req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const group = await prisma.facebookGroup.findFirst({
-      where: {
-        userId: req.user.id,
-        groupId: "pshpshuk-rehev-auto",
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ error: "Password must be at least 6 characters" });
+    }
+
+    if (!facebookAppId || !facebookAppSecret) {
+      return res.status(400).json({
+        error: "Facebook App ID and App Secret are required",
+      });
+    }
+
+    // Check if user already exists
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+
+    // Hash password (bcrypt includes salt automatically)
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+    // Encrypt Facebook credentials (AES-256-GCM with unique salt per value)
+    const encryptedAppId = encrypt(facebookAppId);
+    const encryptedAppSecret = encrypt(facebookAppSecret);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        name: name || null,
+        facebookAppId: encryptedAppId,
+        facebookAppSecret: encryptedAppSecret,
       },
     });
 
-    if (!group || !group.screenshot) {
-      return res.status(404).json({ error: "Screenshot not found yet" });
-    }
+    // Generate JWT tokens
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
 
-    res.json({
-      screenshot: group.screenshot,
-      groupName: group.groupName,
-      capturedAt: group.createdAt,
+    // Store refresh token hash in DB
+    const refreshTokenHash = await bcrypt.hash(refreshToken, SALT_ROUNDS);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: refreshTokenHash },
+    });
+
+    setRefreshCookie(res, refreshToken);
+
+    res.status(201).json({
+      success: true,
+      accessToken,
+      user: { id: user.id, email: user.email, name: user.name },
     });
   } catch (error) {
-    console.error("Screenshot fetch error:", error);
-    res.status(500).json({ error: "Failed to fetch screenshot" });
+    console.error("Register error:", error);
+    res.status(500).json({ error: "Registration failed" });
   }
 });
 
-// Logout
-router.get("/logout", (req, res) => {
-  req.logout((err) => {
-    if (err) return res.status(500).json({ error: "Logout failed" });
-    res.json({ message: "Logged out successfully" });
+// Login with email + password
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // Generate JWT tokens
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+
+    // Store refresh token hash in DB
+    const refreshTokenHash = await bcrypt.hash(refreshToken, SALT_ROUNDS);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: refreshTokenHash, lastLoginAt: new Date() },
+    });
+
+    setRefreshCookie(res, refreshToken);
+
+    res.json({
+      success: true,
+      accessToken,
+      user: { id: user.id, email: user.email, name: user.name },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// Refresh access token using refresh token from cookie
+router.post("/refresh", async (req, res) => {
+  try {
+    const token = req.cookies?.refreshToken;
+    if (!token) {
+      return res.status(401).json({ error: "No refresh token" });
+    }
+
+    // Verify JWT signature and expiry
+    let payload;
+    try {
+      payload = verifyRefreshToken(token);
+    } catch {
+      return res.status(401).json({ error: "Invalid refresh token" });
+    }
+
+    // Verify token matches what's stored in DB
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+    });
+    if (!user || !user.refreshToken) {
+      return res.status(401).json({ error: "Invalid refresh token" });
+    }
+
+    const tokenValid = await bcrypt.compare(token, user.refreshToken);
+    if (!tokenValid) {
+      // Token reuse detected - invalidate all tokens (security measure)
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { refreshToken: null },
+      });
+      return res.status(401).json({ error: "Token reuse detected" });
+    }
+
+    // Rotate: issue new tokens
+    const newAccessToken = generateAccessToken(user.id);
+    const newRefreshToken = generateRefreshToken(user.id);
+
+    const newRefreshHash = await bcrypt.hash(newRefreshToken, SALT_ROUNDS);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: newRefreshHash },
+    });
+
+    setRefreshCookie(res, newRefreshToken);
+
+    res.json({ success: true, accessToken: newAccessToken });
+  } catch (error) {
+    console.error("Refresh error:", error);
+    res.status(500).json({ error: "Token refresh failed" });
+  }
+});
+
+// Get current user (requires valid access token via middleware)
+router.get("/me", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  res.json({
+    id: req.user.id,
+    email: req.user.email,
+    name: req.user.name,
+    profileImage: req.user.profileImage,
+    hasFacebookCredentials: !!(
+      req.user.facebookAppId && req.user.facebookAppSecret
+    ),
   });
+});
+
+// Get decrypted Facebook credentials (internal use / for automation)
+router.get("/facebook-credentials", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  if (!req.user.facebookAppId || !req.user.facebookAppSecret) {
+    return res
+      .status(404)
+      .json({ error: "No Facebook credentials configured" });
+  }
+
+  try {
+    const appId = decrypt(req.user.facebookAppId);
+    const appSecret = decrypt(req.user.facebookAppSecret);
+    res.json({ success: true, facebookAppId: appId, facebookAppSecret: appSecret });
+  } catch {
+    res.status(500).json({ error: "Failed to decrypt credentials" });
+  }
+});
+
+// Logout - invalidate refresh token
+router.post("/logout", async (req, res) => {
+  try {
+    // Clear refresh token from DB if user is authenticated
+    if (req.user) {
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { refreshToken: null },
+      });
+    }
+
+    res.clearCookie("refreshToken", { path: "/api/auth" });
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch {
+    res.clearCookie("refreshToken", { path: "/api/auth" });
+    res.json({ success: true, message: "Logged out" });
+  }
 });
 
 export default router;

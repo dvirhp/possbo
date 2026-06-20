@@ -5,8 +5,12 @@ vi.mock("axios", () => ({
     create: vi.fn(() => ({
       get: vi.fn(),
       post: vi.fn(),
-      interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
+      interceptors: {
+        request: { use: vi.fn() },
+        response: { use: vi.fn() },
+      },
     })),
+    post: vi.fn(),
   },
 }));
 
@@ -28,5 +32,12 @@ describe("http (client/src/services/http.js)", () => {
     expect(module.default).toBeDefined();
     expect(typeof module.default.get).toBe("function");
     expect(typeof module.default.post).toBe("function");
+  });
+
+  it("should export token management functions", async () => {
+    const module = await import("../../services/http.js");
+    expect(typeof module.setAccessToken).toBe("function");
+    expect(typeof module.getAccessToken).toBe("function");
+    expect(typeof module.clearAccessToken).toBe("function");
   });
 });

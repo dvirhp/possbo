@@ -7,6 +7,16 @@ const he = {
   login: {
     title: "PostIt",
     subtitle: "חיפוש וצילום קבוצות פייסבוק",
+    loginTab: "התחברות",
+    registerTab: "הרשמה",
+    emailPlaceholder: "אימייל",
+    passwordPlaceholder: "סיסמה (לפחות 6 תווים)",
+    namePlaceholder: "שם (אופציונלי)",
+    loginBtn: "🔑 התחבר",
+    registerBtn: "📝 הירשם",
+    facebookCredentialsLabel: "🔗 פרטי אפליקציית פייסבוק",
+    facebookAppIdPlaceholder: "Facebook App ID",
+    facebookAppSecretPlaceholder: "Facebook App Secret",
     description: "לחץ על הכפתור. אחרי זה, בטרמינל, הרץ את הפקודה שתתקבל.",
     checkSession: "בדוק סשן פייסבוק",
     checkingSession: "בודק סשן...",
@@ -25,6 +35,7 @@ const he = {
     description:
       'לחץ לטעון את רשימת הקבוצות. לחץ "פרטים" כדי לצלם או לפרסם פוסט.',
     loadGroups: "טען את הקבוצות שלי",
+    refreshGroups: "רענן קבוצות",
     loadingGroups: "טוען קבוצות...",
     groupsFound: (count) => `נמצאו ${count} קבוצות:`,
     noGroupsFound: "לא נמצאו קבוצות",
@@ -74,6 +85,8 @@ const he = {
   errors: {
     generic: "שגיאה:",
     sessionRequired: "יש להתחבר מחדש לפייסבוק",
+    fbSessionRequired:
+      "נדרש סשן פייסבוק. הרץ בטרמינל: npm run bootstrap-session",
   },
 };
 

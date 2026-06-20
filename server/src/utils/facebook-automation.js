@@ -2,23 +2,80 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "playwright";
+import { PrismaClient } from "@prisma/client";
+import { encrypt, decrypt } from "./encryption.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// __dirname = server/src/utils -> go up to server/
-const STORAGE_STATE_PATH = path.join(
+const LEGACY_STORAGE_STATE_PATH = path.join(
   __dirname,
   "..",
   "..",
   ".facebook-storage-state.json",
 );
-console.log(
-  "Storage state path:",
-  STORAGE_STATE_PATH,
-  "exists:",
-  fs.existsSync(STORAGE_STATE_PATH),
-);
+
+const prisma = new PrismaClient();
+
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+// ─── Per-user storage state helpers ───────────────────────
+
+/**
+ * Load storage state for a user from DB.
+ * Returns parsed JSON object or null if not found.
+ */
+async function loadUserStorageState(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { facebookStorageState: true },
+  });
+
+  if (!user?.facebookStorageState) {
+    return null;
+  }
+
+  try {
+    const decrypted = decrypt(user.facebookStorageState);
+    return JSON.parse(decrypted);
+  } catch (e) {
+    console.error("[fb-auto] Failed to decrypt storage state for user:", userId, e.message);
+    return null;
+  }
+}
+
+/**
+ * Save storage state for a user to DB (encrypted).
+ */
+async function saveUserStorageState(userId, storageState) {
+  const json = JSON.stringify(storageState);
+  const encrypted = encrypt(json);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { facebookStorageState: encrypted },
+  });
+}
+
+/**
+ * Get storage state - either from DB (per user) or legacy file.
+ * Returns the storage state object or throws FACEBOOK_SESSION_REQUIRED.
+ */
+async function getStorageState(userId) {
+  if (userId) {
+    const state = await loadUserStorageState(userId);
+    if (state) return state;
+  }
+
+  // Fallback to legacy file
+  if (fs.existsSync(LEGACY_STORAGE_STATE_PATH)) {
+    const content = fs.readFileSync(LEGACY_STORAGE_STATE_PATH, "utf-8");
+    return JSON.parse(content);
+  }
+
+  throw new Error("FACEBOOK_SESSION_REQUIRED");
+}
+
+// ─── Utility functions ────────────────────────────────────
 
 function isLikelyLoggedOut(text) {
   const markers = [
@@ -47,7 +104,9 @@ async function hasFacebookLoginCookies(context) {
   return names.has("c_user") && names.has("xs");
 }
 
-export async function bootstrapFacebookSession() {
+// ─── Bootstrap session ────────────────────────────────────
+
+export async function bootstrapFacebookSession(userId) {
   const browser = await chromium.launch({
     headless: false,
     args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
@@ -108,7 +167,17 @@ export async function bootstrapFacebookSession() {
       throw new Error("FACEBOOK_SESSION_NOT_COMPLETED");
     }
 
-    await context.storageState({ path: STORAGE_STATE_PATH });
+    // Save storage state
+    const storageState = await context.storageState();
+
+    if (userId) {
+      // Save to DB per user (encrypted)
+      await saveUserStorageState(userId, storageState);
+      console.log("[fb-auto] Storage state saved to DB for user:", userId);
+    }
+
+    // Also save to legacy file for backward compat
+    await context.storageState({ path: LEGACY_STORAGE_STATE_PATH });
 
     return { ok: true };
   } finally {
@@ -116,14 +185,14 @@ export async function bootstrapFacebookSession() {
   }
 }
 
+// ─── Scrape groups ────────────────────────────────────────
+
 /**
  * Scrape list of groups the user is a member of from Facebook.
  * Returns array of { name, url, id, image }
  */
-export async function scrapeMyGroups() {
-  if (!fs.existsSync(STORAGE_STATE_PATH)) {
-    throw new Error("FACEBOOK_SESSION_REQUIRED");
-  }
+export async function scrapeMyGroups(userId) {
+  const storageState = await getStorageState(userId);
 
   const browser = await chromium.launch({
     headless: false,
@@ -134,7 +203,7 @@ export async function scrapeMyGroups() {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
       userAgent: USER_AGENT,
-      storageState: STORAGE_STATE_PATH,
+      storageState,
     });
     const page = await context.newPage();
 
@@ -179,7 +248,6 @@ export async function scrapeMyGroups() {
     const groups = await page.evaluate(() => {
       const results = [];
       const seen = new Set();
-      // Skip known non-group paths
       const skipPaths = new Set([
         "joins",
         "feed",
@@ -196,17 +264,14 @@ export async function scrapeMyGroups() {
 
       for (const link of links) {
         const href = link.getAttribute("href") || "";
-        // Match /groups/<id-or-slug> - accept numeric IDs and text slugs
         const match = href.match(/\/groups\/([A-Za-z0-9._-]+)\/?/);
         if (!match) continue;
 
         const groupSlug = match[1];
-        // Skip navigation/utility paths
         if (skipPaths.has(groupSlug.toLowerCase())) continue;
         if (seen.has(groupSlug)) continue;
         seen.add(groupSlug);
 
-        // Strategy: walk up from the link to find a container that holds the group name
         let name = "";
 
         // 1. aria-label on the link itself
@@ -224,7 +289,7 @@ export async function scrapeMyGroups() {
           }
         }
 
-        // 3. Walk up to parent/grandparent and look for text in sibling elements
+        // 3. Walk up to parent/grandparent
         if (!name || name.length < 2) {
           let container = link.parentElement;
           for (let depth = 0; depth < 5 && container; depth++) {
@@ -253,7 +318,6 @@ export async function scrapeMyGroups() {
           }
         }
 
-        // If no name found, use group slug as fallback
         if (!name || name.length < 2) {
           name = `קבוצה: ${groupSlug}`;
         }
@@ -270,8 +334,13 @@ export async function scrapeMyGroups() {
 
     console.log(`Total groups found: ${groups.length}`);
 
-    // Save updated storage state
-    await context.storageState({ path: STORAGE_STATE_PATH });
+    // Save updated storage state back to DB
+    const updatedState = await context.storageState();
+    if (userId) {
+      await saveUserStorageState(userId, updatedState);
+    }
+    // Also update legacy file
+    await context.storageState({ path: LEGACY_STORAGE_STATE_PATH });
 
     return groups;
   } finally {
@@ -279,15 +348,16 @@ export async function scrapeMyGroups() {
   }
 }
 
+// ─── Screenshot ───────────────────────────────────────────
+
 export async function captureGroupScreenshot(
   groupName,
   _accessToken,
   targetUrl,
+  userId,
 ) {
+  const storageState = await getStorageState(userId);
   const headless = process.env.FB_AUTOMATION_HEADLESS === "true";
-  if (!fs.existsSync(STORAGE_STATE_PATH)) {
-    throw new Error("FACEBOOK_SESSION_REQUIRED");
-  }
 
   const browser = await chromium.launch({
     headless,
@@ -298,7 +368,7 @@ export async function captureGroupScreenshot(
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
       userAgent: USER_AGENT,
-      storageState: STORAGE_STATE_PATH,
+      storageState,
     });
     const page = await context.newPage();
 
@@ -310,7 +380,6 @@ export async function captureGroupScreenshot(
     const currentUrl = page.url();
     console.log("Facebook home URL:", currentUrl);
 
-    // Only check login by URL - the text check gives false positives in Hebrew
     if (/login|checkpoint/i.test(currentUrl)) {
       console.log("Not logged in - redirected to login page");
       throw new Error("FACEBOOK_SESSION_REQUIRED");
@@ -325,7 +394,6 @@ export async function captureGroupScreenshot(
       console.log("Arrived at:", page.url());
       await page.waitForTimeout(3000);
     } else {
-      // Navigate directly to Facebook Groups search URL
       const searchQuery = encodeURIComponent(groupName);
       const groupSearchUrl = `https://www.facebook.com/search/groups/?q=${searchQuery}`;
       console.log(`Navigating to groups search: ${groupSearchUrl}`);
@@ -335,7 +403,6 @@ export async function captureGroupScreenshot(
       });
       await page.waitForTimeout(4000);
 
-      // Find the first link that points to a specific group (has /groups/ followed by a numeric ID)
       const allLinks = page.locator('a[href*="/groups/"]');
       const totalLinks = await allLinks.count();
       console.log(`Found ${totalLinks} total links with /groups/ in href`);
@@ -343,7 +410,6 @@ export async function captureGroupScreenshot(
       let clicked = false;
       for (let i = 0; i < totalLinks; i++) {
         const href = await allLinks.nth(i).getAttribute("href");
-        // Match only links to actual groups (numeric ID), skip /groups/feed/, /groups/discover/, etc.
         if (href && /\/groups\/\d+/.test(href)) {
           console.log(`Clicking group link: ${href}`);
           await allLinks.nth(i).click();
@@ -365,24 +431,30 @@ export async function captureGroupScreenshot(
       throw new Error("FACEBOOK_BLOCKED_OR_NOT_AVAILABLE");
     }
 
-    // Scroll down a bit to show group content, not just the header
     await page.evaluate(() => window.scrollBy(0, 200));
     await page.waitForTimeout(1000);
 
     console.log("Taking screenshot...");
     const screenshot = await page.screenshot({ type: "png", fullPage: false });
     console.log("Screenshot taken, size:", screenshot.length, "bytes");
+
+    // Save updated storage state
+    if (userId) {
+      const updatedState = await context.storageState();
+      await saveUserStorageState(userId, updatedState);
+    }
+
     return screenshot.toString("base64");
   } finally {
     await browser.close();
   }
 }
 
+// ─── Publish to group ─────────────────────────────────────
+
 export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
-  const { anonymous = false, location = "" } = options;
-  if (!fs.existsSync(STORAGE_STATE_PATH)) {
-    throw new Error("FACEBOOK_SESSION_REQUIRED");
-  }
+  const { anonymous = false, location = "", userId } = options;
+  const storageState = await getStorageState(userId);
 
   const browser = await chromium.launch({
     headless: false,
@@ -393,7 +465,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
       userAgent: USER_AGENT,
-      storageState: STORAGE_STATE_PATH,
+      storageState,
     });
     const page = await context.newPage();
 
@@ -419,8 +491,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     await page.waitForTimeout(3000);
     console.log("[publish] Arrived at:", page.url());
 
-    // Click on the "Write something..." / "כתוב משהו..." post composer box
-    // Facebook uses different selectors - try multiple approaches
+    // Click on the "Write something..." post composer box
     const composerSelectors = [
       'div[role="button"] span:has-text("כתב/י משהו")',
       'div[role="button"] span:has-text("כתוב משהו")',
@@ -441,7 +512,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     }
 
     if (!composerClicked) {
-      // Fallback: try clicking any element that looks like a post input area
       const fallback = page
         .locator('[role="button"]')
         .filter({ hasText: /כתב|משהו|Write|what's/i })
@@ -457,7 +527,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       throw new Error("POST_COMPOSER_NOT_FOUND");
     }
 
-    // Wait for the post dialog to open
     await page.waitForTimeout(2000);
 
     // Handle anonymous posting toggle
@@ -486,7 +555,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         }
       }
 
-      // Facebook shows a confirmation dialog - click "Got it" / "הבנתי"
       if (anonEnabled) {
         await page.waitForTimeout(1500);
         const confirmSelectors = [
@@ -508,7 +576,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     }
 
     // Type the text into the composer
-    // The active editor is usually a contenteditable div with role="textbox"
     const editor = page
       .locator('div[role="dialog"] div[role="textbox"][contenteditable="true"]')
       .first();
@@ -522,7 +589,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     if (imagePath && fs.existsSync(imagePath)) {
       console.log("[publish] Uploading image:", imagePath);
 
-      // Click the photo/video button in the post dialog
       const photoButtonSelectors = [
         'div[role="dialog"] div[role="button"] span:has-text("תמונה/סרטון")',
         'div[role="dialog"] div[role="button"] span:has-text("Photo/video")',
@@ -541,7 +607,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       }
 
       if (!photoClicked) {
-        // Try the icon-based button (usually has an aria-label)
         const iconBtn = page
           .locator(
             'div[role="dialog"] [aria-label*="תמונה"], div[role="dialog"] [aria-label*="Photo"], div[role="dialog"] [aria-label*="photo"]',
@@ -554,7 +619,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         }
       }
 
-      // Wait for file input and upload
       await page.waitForTimeout(1000);
       const fileInput = page
         .locator('div[role="dialog"] input[type="file"]')
@@ -562,7 +626,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       await fileInput.setInputFiles(imagePath);
       console.log("[publish] Image file sent to input");
 
-      // Wait for image preview to appear in the dialog (Facebook shows a thumbnail)
       try {
         await page
           .locator(
@@ -576,7 +639,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
           "[publish] Image preview not detected, waiting extra time...",
         );
       }
-      // Extra wait for upload to process
       await page.waitForTimeout(3000);
       console.log("[publish] Image uploaded");
     }
@@ -585,7 +647,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     if (location) {
       console.log("[publish] Adding location:", location);
       try {
-        // Try clicking the location/check-in button in the dialog toolbar
         const locationBtnSelectors = [
           'div[role="dialog"] [aria-label*="צ\'ק אין"]',
           'div[role="dialog"] [aria-label*="Check in"]',
@@ -606,10 +667,8 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         }
 
         if (locationClicked) {
-          // Wait for the location search screen to load
           await page.waitForTimeout(2000);
 
-          // The location search screen has an input with placeholder "Where are you?" / "איפה את/ה?"
           const locationInputSelectors = [
             'input[placeholder*="Where"]',
             'input[placeholder*="where"]',
@@ -634,10 +693,8 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
             await locationInput.fill(location);
             console.log("[publish] Typed location:", location);
 
-            // Wait for results to appear
             await page.waitForTimeout(3000);
 
-            // Check if any result matches the search text (partial match)
             const resultSelectors = [
               'div[role="listbox"] div[role="option"]',
               'ul[role="listbox"] li',
@@ -653,7 +710,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
               const rCount = await results.count().catch(() => 0);
               if (rCount === 0) continue;
 
-              // Check each result for an EXACT text match
               for (let ri = 0; ri < Math.min(rCount, 7); ri++) {
                 const resultEl = results.nth(ri);
                 const resultText = (
@@ -663,7 +719,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
                   `[publish]   location result[${ri}]: "${resultText.substring(0, 80)}"`,
                 );
 
-                // Exact match: the full location name must appear in the result text
                 const hasMatch = resultText.includes(locationLower);
 
                 if (hasMatch) {
@@ -680,11 +735,9 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
             }
 
             if (!resultClicked) {
-              // No matching result - go back to post dialog without location
               console.log(
                 "[publish] No matching location found, going back without location",
               );
-              // Try clicking back button
               const backBtnSelectors = [
                 'div[role="dialog"] [aria-label*="Back"]',
                 'div[role="dialog"] [aria-label*="חזרה"]',
@@ -704,7 +757,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
               }
             }
 
-            // Wait for return to post dialog
             await page.waitForTimeout(2000);
           } else {
             console.log("[publish] Location input not found");
@@ -717,33 +769,30 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       }
     }
 
-    // Click the submit/post button - supports multiple languages
-    // Known labels: Post (EN), פרסם/פרסום (HE), Submit, Publier (FR), Publicar (ES/PT),
-    // Veröffentlichen (DE), Опубликовать (RU), نشر (AR), Yayınla (TR), etc.
+    // Click the submit/post button
     let posted = false;
 
-    // All known post button texts across languages
     const postButtonTexts = [
       "post",
       "publish",
       "submit",
-      "send", // English
+      "send",
       "פרסם",
       "פרסום",
-      "שלח", // Hebrew
+      "שלח",
       "publier",
-      "publié", // French
-      "publicar", // Spanish / Portuguese
-      "veröffentlichen", // German
+      "publié",
+      "publicar",
+      "veröffentlichen",
       "pubblicare",
-      "pubblica", // Italian
-      "опубликовать", // Russian
-      "نشر", // Arabic
-      "yayınla", // Turkish
-      "opublikuj", // Polish
+      "pubblica",
+      "опубликовать",
+      "نشر",
+      "yayınla",
+      "opublikuj",
       "publiceren",
-      "plaatsen", // Dutch
-      "פאָרלייגן", // Yiddish
+      "plaatsen",
+      "פאָרלייגן",
     ];
     const postTextRegex = new RegExp(`^(${postButtonTexts.join("|")})$`, "i");
 
@@ -813,13 +862,9 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     // Try to find the URL of the newly published post
     let postUrl = null;
     try {
-      // Scroll to top to see the new post
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForTimeout(2000);
 
-      // Strategy 1: Look for the timestamp/permalink of the most recent post
-      // Facebook wraps post time in an <a> that links to the permalink
-      // Look for links containing the group ID and /posts/ or /permalink/
       const groupId = groupUrl.match(/groups\/([^/]+)/)?.[1] || "";
       const permalinkSelector = `a[href*="/groups/${groupId}/posts/"], a[href*="/groups/${groupId}/permalink/"]`;
       const permalinks = page.locator(permalinkSelector);
@@ -834,7 +879,6 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         }
       }
 
-      // Strategy 2: Look for any timestamp link with "Just now" / "עכשיו" / "1m" / "now"
       if (!postUrl) {
         const timeLinks = page.locator(
           'a[role="link"][href*="/posts/"], a[role="link"][href*="/permalink/"]',
@@ -851,9 +895,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         }
       }
 
-      // Strategy 3: Use the "three dots" menu on the first post to get share link
       if (!postUrl) {
-        // Try to find any link with story_fbid in the page source
         const allLinks = await page.evaluate(() => {
           const links = Array.from(document.querySelectorAll("a[href]"));
           return links
@@ -874,30 +916,26 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
           postUrl = allLinks[0];
         }
       }
-
-      if (postUrl) {
-        // Clean up URL - remove query params that are tracking
-        try {
-          const u = new URL(postUrl);
-          u.search = "";
-          postUrl = u.toString();
-        } catch {
-          /* keep as is */
-        }
-        console.log("[publish] Post URL found:", postUrl);
-      } else {
-        console.log("[publish] Could not find post URL");
-      }
     } catch (e) {
-      console.log("[publish] Could not extract post URL:", e.message);
+      console.log("[publish] Post URL detection error (non-fatal):", e.message);
     }
 
-    // Take a screenshot as proof
+    if (!postUrl) {
+      console.log("[publish] Could not find post URL");
+    }
+
+    // Take a screenshot of the result
     const screenshot = await page.screenshot({ type: "png", fullPage: false });
     console.log(
       "[publish] Post published successfully! Screenshot size:",
       screenshot.length,
     );
+
+    // Save updated storage state
+    if (userId) {
+      const updatedState = await context.storageState();
+      await saveUserStorageState(userId, updatedState);
+    }
 
     return {
       success: true,
