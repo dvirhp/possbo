@@ -1,9 +1,172 @@
+/* ─── Reset & App Shell ─────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 html, body {
   direction: rtl;
   text-align: right;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  background: #f5f7fa;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .App {
   min-height: 100vh;
   direction: rtl;
+}
+
+/* ─── App-like scrollable pages ───────────────────── */
+.dashboard,
+.my-groups-page,
+.create-post-page,
+.group-details-page,
+.post-details-page {
+  min-height: 100vh;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 8px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ─── Hide scrollbar for app feel ─────────────────── */
+.dashboard::-webkit-scrollbar,
+.my-groups-page::-webkit-scrollbar,
+.create-post-page::-webkit-scrollbar,
+.post-details-page::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Bottom Navigation (mobile app feel) ─────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-top: 1px solid #e8ecf0;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  height: 64px;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  z-index: 1000;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-decoration: none;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 16px;
+  border-radius: 12px;
+  transition: color 0.2s, transform 0.15s;
+  min-width: 56px;
+}
+
+.bottom-nav-item:active {
+  transform: scale(0.92);
+}
+
+.bottom-nav-item.active {
+  color: #667eea;
+}
+
+.bottom-nav-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.bottom-nav-label {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ─── Global back button ──────────────────────────── */
+.page-header .back-button {
+  background: none;
+  border: none;
+  color: #667eea;
+  padding: 6px 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: inline-block;
+  transition: opacity 0.2s;
+}
+
+.page-header .back-button:hover {
+  opacity: 0.7;
+}
+
+/* ─── Page header ─────────────────────────────────── */
+.page-header {
+  padding: 16px 20px 8px;
+}
+
+.page-header h2 {
+  font-size: 22px;
+  color: #1a1a2e;
+  margin: 0;
+  font-weight: 700;
+}
+
+/* ─── Loading ─────────────────────────────────────── */
+.loading-text {
+  color: #999;
+  text-align: center;
+  padding: 30px;
+  font-size: 14px;
+}
+
+/* ─── Touch buttons ───────────────────────────────── */
+button, a {
+  touch-action: manipulation;
+}
+
+/* ─── Fade in animation ───────────────────────────── */
+.fade-in {
+  animation: fadeIn 0.25s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Desktop: hide bottom nav, show full-width site ── */
+@media (min-width: 768px) {
+  .bottom-nav {
+    display: none;
+  }
+
+  .dashboard,
+  .my-groups-page,
+  .create-post-page,
+  .group-details-page,
+  .post-details-page {
+    padding-bottom: 0;
+  }
+
+  html, body {
+    overflow: auto;
+  }
 }

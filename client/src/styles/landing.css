@@ -1,0 +1,173 @@
+.landing-page {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.landing-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  background: white;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+}
+
+.nav-logo {
+  font-size: 22px;
+  font-weight: bold;
+  color: #667eea;
+}
+
+.nav-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.nav-btn {
+  padding: 9px 18px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.nav-btn-login {
+  color: #667eea;
+  border: 1.5px solid #667eea;
+  background: transparent;
+}
+
+.nav-btn-login:active {
+  background: #667eea;
+  color: white;
+}
+
+.nav-btn-register {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: 1.5px solid transparent;
+}
+
+.nav-btn-register:active {
+  transform: scale(0.95);
+}
+
+.landing-hero {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 60px);
+  padding: 40px 20px;
+}
+
+.hero-content {
+  max-width: 600px;
+  text-align: center;
+}
+
+.hero-content h1 {
+  font-size: 32px;
+  color: #1a1a2e;
+  margin-bottom: 16px;
+  line-height: 1.3;
+  font-weight: 800;
+}
+
+.hero-subtitle {
+  font-size: 16px;
+  color: #666;
+  margin-bottom: 40px;
+  line-height: 1.7;
+}
+
+.hero-features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 40px;
+  text-align: right;
+}
+
+.feature-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: white;
+  padding: 16px;
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.feature-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.feature-item h3 {
+  font-size: 14px;
+  color: #1a1a2e;
+  margin-bottom: 3px;
+  font-weight: 600;
+}
+
+.feature-item p {
+  font-size: 12px;
+  color: #666;
+  margin: 0;
+}
+
+.hero-cta {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.cta-btn {
+  padding: 14px 28px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.1s;
+}
+
+.cta-btn:active {
+  transform: scale(0.96);
+}
+
+.cta-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.cta-btn-secondary {
+  background: white;
+  color: #667eea;
+  border: 1.5px solid #667eea;
+}
+
+@media (max-width: 768px) {
+  .hero-content h1 {
+    font-size: 26px;
+  }
+
+  .hero-features {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-cta {
+    flex-direction: column;
+    padding: 0 20px;
+  }
+
+  .landing-hero {
+    padding: 30px 16px;
+  }
+}
+
+  .nav-btn {
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+}

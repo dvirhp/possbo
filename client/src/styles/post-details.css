@@ -1,0 +1,122 @@
+.post-details-page {
+  min-height: 100vh;
+  background: #f5f7fa;
+  padding: 0 16px 16px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+@media (min-width: 768px) {
+  .post-details-page {
+    padding: 24px 40px;
+  }
+}
+
+.post-detail-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  margin-bottom: 16px;
+}
+
+.post-detail-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.post-detail-group {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.post-detail-status {
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.post-detail-status.success {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.post-detail-status.failed {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.post-detail-status.pending {
+  background: #fef9c3;
+  color: #ca8a04;
+}
+
+.post-detail-date {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 16px;
+}
+
+.post-detail-content {
+  margin-bottom: 16px;
+}
+
+.post-detail-content h4 {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.post-detail-content p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #333;
+  white-space: pre-wrap;
+  background: #f8f9fa;
+  padding: 14px;
+  border-radius: 10px;
+}
+
+.post-detail-location {
+  font-size: 14px;
+  color: #555;
+  margin-bottom: 12px;
+}
+
+.post-detail-link {
+  display: inline-block;
+  color: #667eea;
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.post-detail-link:hover {
+  text-decoration: underline;
+}
+
+.post-detail-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.republish-btn {
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.republish-btn:active {
+  transform: scale(0.97);
+}

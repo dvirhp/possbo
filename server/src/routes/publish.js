@@ -15,6 +15,9 @@ import {
   MAX_FILE_SIZE,
 } from "../utils/security.js";
 import { asyncHandler } from "../utils/async-handler.js";
+import { createLogger } from "../utils/logger.js";
+
+const log = createLogger("publish");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
@@ -79,12 +82,7 @@ router.post(
         anonymous: isAnonymous,
         location: sanitizedLocation,
       });
-      console.log(
-        "[publish] Post saved with id:",
-        saved.id,
-        "postUrl:",
-        saved.postUrl,
-      );
+      log.info("Post saved", { postId: saved.id, postUrl: saved.postUrl });
 
       res.json({ ...result, savedPost: saved });
     } finally {

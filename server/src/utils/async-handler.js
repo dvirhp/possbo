@@ -1,3 +1,7 @@
+import { createLogger } from "./logger.js";
+
+const log = createLogger("handler");
+
 /**
  * Wraps an async route handler to catch errors automatically.
  * Handles common error patterns (FACEBOOK_SESSION_REQUIRED, validation).
@@ -8,7 +12,7 @@
 export function asyncHandler(fn) {
   return (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch((error) => {
-      console.error(`${req.method} ${req.originalUrl} error:`, error.message);
+      log.error(`${req.method} ${req.originalUrl}`, error);
 
       if (error.message === "FACEBOOK_SESSION_REQUIRED") {
         return res.status(428).json({
