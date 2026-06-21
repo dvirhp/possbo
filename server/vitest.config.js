@@ -11,6 +11,8 @@ export default defineConfig({
       exclude: [
         "src/index.js",
         "src/config/**",
+        "src/jobs/**",
+        "src/routes/scheduler.js",
         "src/utils/facebook-automation.js",
         "src/utils/puppeteer.js",
       ],

@@ -19,39 +19,28 @@ vi.mock('../../services/api.js', () => ({
   },
 }));
 
-const mockScrapeMyGroups = vi.fn();
-const mockGetSavedGroups = vi.fn();
+const mockGetPublicationHistory = vi.fn();
 vi.mock('../../services/groupsService.js', () => ({
   groupsService: {
-    scrapeMyGroups: (...args) => mockScrapeMyGroups(...args),
-    getSavedGroups: (...args) => mockGetSavedGroups(...args),
+    getPublicationHistory: (...args) => mockGetPublicationHistory(...args),
   },
 }));
 
-vi.mock('../../assets/i18n', () => ({
+vi.mock('../../services/http.js', () => ({
   default: {
-    dashboard: {
-      title: 'Dashboard',
-      myGroups: 'My Groups',
-      description: 'Click to load',
-      loadGroups: 'Load Groups',
-      refreshGroups: 'Refresh Groups',
-      loadingGroups: 'Loading...',
-      groupsFound: (n) => `Found ${n} groups`,
-      noGroupsFound: 'No groups found',
-      searchPlaceholder: 'Search...',
-    },
-    list: { details: 'Details', noItems: 'No items', openLink: 'Open' },
-    logout: 'Logout',
-    errors: {
-      generic: 'Error:',
-      fbSessionRequired: 'Facebook session required',
+    get: vi.fn(),
+    post: vi.fn(),
+    interceptors: {
+      request: { use: vi.fn() },
+      response: { use: vi.fn() },
     },
   },
+  setAccessToken: vi.fn(),
+  getAccessToken: vi.fn(),
+  clearAccessToken: vi.fn(),
 }));
 
 vi.mock('../../styles/dashboard.css', () => ({}));
-vi.mock('../../styles/generic-list.css', () => ({}));
 
 describe('Dashboard page', () => {
   beforeEach(() => {
@@ -59,16 +48,15 @@ describe('Dashboard page', () => {
     mockRefresh.mockClear();
     mockGetMe.mockClear();
     mockLogout.mockClear();
-    mockScrapeMyGroups.mockClear();
-    mockGetSavedGroups.mockClear();
+    mockGetPublicationHistory.mockClear();
 
     // Default: authenticated
     mockRefresh.mockResolvedValue({ data: { accessToken: 'tok' } });
     mockGetMe.mockResolvedValue({
-      data: { id: '1', email: 'a@b.com', name: 'Test' },
+      data: { id: '1', email: 'a@b.com', name: 'דביר' },
     });
-    mockGetSavedGroups.mockResolvedValue({
-      data: { success: true, groups: [] },
+    mockGetPublicationHistory.mockResolvedValue({
+      data: { success: true, history: [] },
     });
   });
 
@@ -84,19 +72,12 @@ describe('Dashboard page', () => {
 
   it('should redirect to login when not authenticated', async () => {
     mockRefresh.mockRejectedValue(new Error('No token'));
+    mockGetMe.mockRejectedValue(new Error('No token'));
 
     await renderDashboard();
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/');
-    });
-  });
-
-  it('should render load groups button', async () => {
-    await renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
+      expect(mockNavigate).toHaveBeenCalledWith('/login');
     });
   });
 
@@ -104,7 +85,7 @@ describe('Dashboard page', () => {
     await renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getByText('Logout')).toBeInTheDocument();
+      expect(screen.getByText('התנתק')).toBeInTheDocument();
     });
   });
 
@@ -112,105 +93,63 @@ describe('Dashboard page', () => {
     await renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getByText(/Test/)).toBeInTheDocument();
+      expect(screen.getByText(/דביר/)).toBeInTheDocument();
     });
   });
 
-  it('should load and display groups on refresh click', async () => {
-    mockScrapeMyGroups.mockResolvedValue({
-      data: {
-        success: true,
-        groups: [
-          { id: '1', name: 'Group A', url: 'https://fb.com/groups/a' },
-          { id: '2', name: 'Group B', url: 'https://fb.com/groups/b' },
-        ],
-      },
-    });
-
+  it('should render action cards', async () => {
     await renderDashboard();
-    await waitFor(() => {
-      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText(/Load Groups/));
 
     await waitFor(() => {
-      expect(screen.getByText('Group A')).toBeInTheDocument();
-      expect(screen.getByText('Group B')).toBeInTheDocument();
+      expect(screen.getByText('צור פוסט חדש')).toBeInTheDocument();
+      expect(screen.getByText('הקבוצות שלי')).toBeInTheDocument();
     });
   });
 
-  it('should show error when no groups found', async () => {
-    mockScrapeMyGroups.mockResolvedValue({
-      data: { success: false, groups: null },
-    });
-
+  it('should show empty state when no posts', async () => {
     await renderDashboard();
-    await waitFor(() => {
-      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText(/Load Groups/));
 
     await waitFor(() => {
-      expect(screen.getByText('No groups found')).toBeInTheDocument();
+      expect(screen.getByText('עדיין לא פרסמת פוסטים.')).toBeInTheDocument();
     });
   });
 
-  it('should show FB session error instead of redirecting', async () => {
-    mockScrapeMyGroups.mockRejectedValue({
-      response: { data: { error: 'FACEBOOK_SESSION_REQUIRED' } },
-    });
-
-    await renderDashboard();
-    await waitFor(() => {
-      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText(/Load Groups/));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText('Facebook session required'),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it('should logout and navigate to login', async () => {
+  it('should logout and navigate to landing', async () => {
     mockLogout.mockResolvedValue({ data: { success: true } });
 
     await renderDashboard();
     await waitFor(() => {
-      expect(screen.getByText('Logout')).toBeInTheDocument();
+      expect(screen.getByText('התנתק')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Logout'));
+    fireEvent.click(screen.getByText('התנתק'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/');
     });
   });
 
-  it('should display groups count title after loading', async () => {
-    mockScrapeMyGroups.mockResolvedValue({
+  it('should show recent posts when available', async () => {
+    mockGetPublicationHistory.mockResolvedValue({
       data: {
         success: true,
-        groups: [
-          { id: '1', name: 'G1' },
-          { id: '2', name: 'G2' },
+        history: [
+          {
+            id: '1',
+            group: { name: 'קבוצת טסט' },
+            status: 'SUCCESS',
+            post: { content: 'תוכן הפוסט' },
+            publishedAt: '2026-06-21T10:00:00Z',
+          },
         ],
       },
     });
 
     await renderDashboard();
-    await waitFor(() => {
-      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText(/Load Groups/));
 
     await waitFor(() => {
-      expect(screen.getByText('Found 2 groups')).toBeInTheDocument();
+      expect(screen.getByText('קבוצת טסט')).toBeInTheDocument();
+      expect(screen.getByText('✓ פורסם')).toBeInTheDocument();
     });
   });
 });

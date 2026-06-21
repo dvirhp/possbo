@@ -149,7 +149,7 @@ describe('GroupDetails page', () => {
 
     it('should render back button', async () => {
       await renderGroupDetails();
-      expect(screen.getByText(/Back/)).toBeInTheDocument();
+      expect(screen.getByText(/חזרה/)).toBeInTheDocument();
     });
   });
 
@@ -303,9 +303,9 @@ describe('GroupDetails page', () => {
   describe('navigation', () => {
     it('should navigate to dashboard on back click', async () => {
       await renderGroupDetails();
-      const backBtns = screen.getAllByText(/Back/);
+      const backBtns = screen.getAllByText(/חזרה/);
       fireEvent.click(backBtns[0]);
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+      expect(mockNavigate).toHaveBeenCalledWith(-1);
     });
 
     it('should navigate to dashboard from group not found', async () => {
