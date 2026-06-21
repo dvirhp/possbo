@@ -6,6 +6,7 @@ import axios from "axios";
 import multer from "multer";
 import { PrismaClient } from "@prisma/client";
 import {
+  bootstrapFacebookSession,
   captureGroupScreenshot,
   scrapeMyGroups,
   publishToGroup,
@@ -177,6 +178,7 @@ router.get(
       groupName,
       req.user.facebookAccessToken,
       targetUrl,
+      req.user.id,
     );
 
     await prisma.facebookGroup.upsert({
@@ -206,55 +208,80 @@ router.get(
   }),
 );
 
-// One-time session bootstrap: instructs user to run setup script
-router.post("/session/bootstrap", async (_req, res) => {
-  // __dirname = server/src/routes -> go up to server/
-  const STORAGE_STATE_PATH = path.join(
-    __dirname,
-    "..",
-    "..",
-    ".facebook-storage-state.json",
-  );
-
-  // Check if session already exists
-  if (fs.existsSync(STORAGE_STATE_PATH)) {
-    return res.json({
+// Bootstrap Facebook session for the logged-in user
+router.post(
+  "/session/bootstrap",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    await bootstrapFacebookSession(req.user.id);
+    res.json({
       success: true,
-      message: "Facebook session already initialized",
-      sessionExists: true,
+      message: "Facebook session saved successfully",
     });
-  }
-
-  // Guide user to run the setup script
-  res.status(428).json({
-    success: false,
-    error: "FACEBOOK_SESSION_REQUIRED",
-    message:
-      'Run "npm run bootstrap-session" in the server folder to initialize Facebook session',
-    instruction: "בטרמינל בתיקיית server, הרץ: npm run bootstrap-session",
-  });
-});
+  }),
+);
 
 // Scrape user's groups from Facebook using Playwright
 router.get(
   "/scrape-my-groups",
   asyncHandler(async (req, res) => {
-    const groups = await scrapeMyGroups();
+    const groups = await scrapeMyGroups(req.user?.id);
 
-    // Save scraped groups to DB if user is authenticated
+    // Smart sync: compare old vs new, preserve posts for groups that still exist
     if (req.user) {
+      const userId = req.user.id;
+      const newGroupIds = new Set(
+        groups.filter((g) => g.id && g.name).map((g) => g.id),
+      );
+
+      // Get existing groups from DB
+      const existingGroups = await prisma.facebookGroup.findMany({
+        where: { userId },
+      });
+      const existingGroupIds = new Set(existingGroups.map((g) => g.groupId));
+
+      // Delete groups that no longer exist (and their related data)
+      const groupsToDelete = existingGroups.filter(
+        (g) => !newGroupIds.has(g.groupId),
+      );
+      for (const g of groupsToDelete) {
+        // Find Group record by URL pattern for this facebook group
+        const dbGroup = await prisma.group.findFirst({
+          where: {
+            url: { contains: g.groupId },
+          },
+        });
+        if (dbGroup) {
+          // Delete publication history, post groups, and posts for this group+user
+          const postGroups = await prisma.postGroup.findMany({
+            where: { groupId: dbGroup.id, userId },
+          });
+          for (const pg of postGroups) {
+            await prisma.publicationHistory.deleteMany({
+              where: { postGroupId: pg.id },
+            });
+          }
+          await prisma.postGroup.deleteMany({
+            where: { groupId: dbGroup.id, userId },
+          });
+        }
+        // Delete the FacebookGroup record
+        await prisma.facebookGroup.delete({ where: { id: g.id } });
+      }
+
+      // Upsert groups that exist in the new list
       for (const g of groups) {
         if (g.id && g.name) {
           await prisma.facebookGroup.upsert({
             where: {
-              userId_groupId: { userId: req.user.id, groupId: g.id },
+              userId_groupId: { userId, groupId: g.id },
             },
             update: {
               groupName: g.name,
               groupImage: g.image || null,
             },
             create: {
-              userId: req.user.id,
+              userId,
               groupId: g.id,
               groupName: g.name,
               groupImage: g.image || null,
@@ -300,8 +327,65 @@ router.get(
   asyncHandler(async (req, res) => {
     const groups = await prisma.facebookGroup.findMany({
       where: { userId: req.user.id },
+      orderBy: { createdAt: "desc" },
     });
-    res.json(groups);
+    // Format to match the scrape response shape the client expects
+    const formatted = groups.map((g) => ({
+      id: g.groupId,
+      name: g.groupName,
+      image: g.groupImage,
+      url: `https://www.facebook.com/groups/${g.groupId}`,
+    }));
+    res.json({ success: true, groups: formatted });
+  }),
+);
+
+// Get posts for a specific group
+router.get(
+  "/:groupId/posts",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { groupId } = req.params;
+    const userId = req.user.id;
+
+    // Find the Group record by URL containing groupId
+    const group = await prisma.group.findFirst({
+      where: {
+        url: { contains: groupId },
+      },
+    });
+
+    if (!group) {
+      return res.json({ success: true, posts: [] });
+    }
+
+    // Get posts for this group by this user
+    const postGroups = await prisma.postGroup.findMany({
+      where: { groupId: group.id, userId },
+      include: {
+        post: true,
+        publications: {
+          orderBy: { publishedAt: "desc" },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const posts = postGroups.map((pg) => ({
+      id: pg.post.id,
+      name: pg.post.content.substring(0, 80) + (pg.post.content.length > 80 ? "..." : ""),
+      subtitle: new Date(pg.post.createdAt).toLocaleString("he-IL"),
+      url: pg.publications[0]?.externalPostUrl || null,
+      text: pg.post.content,
+      location: pg.post.location,
+      anonymous: pg.post.isAnonymous,
+      createdAt: pg.post.createdAt,
+      postUrl: pg.publications[0]?.externalPostUrl || null,
+      hasScreenshot: !!pg.publications[0]?.screenshotUrl,
+    }));
+
+    res.json({ success: true, posts });
   }),
 );
 
@@ -317,7 +401,7 @@ router.get(
         .json({ success: false, error: "Only Facebook URLs are allowed" });
     }
     const targetUrl = isUrl ? groupName : null;
-    const screenshot = await captureGroupScreenshot(groupName, null, targetUrl);
+    const screenshot = await captureGroupScreenshot(groupName, null, targetUrl, req.user?.id);
     res.json({
       success: true,
       screenshot,
@@ -351,6 +435,7 @@ router.post(
     const result = await publishToGroup(groupUrl, sanitizedText, imagePath, {
       anonymous: isAnonymous,
       location: sanitizedLocation,
+      userId: req.user.id,
     });
 
     const saved = await savePost({

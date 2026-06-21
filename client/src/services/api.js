@@ -1,4 +1,5 @@
 import axios from "axios";
+import http, { setAccessToken, clearAccessToken } from "./http.js";
 
 const API_BASE_URL = "http://localhost:5001/api";
 
@@ -8,12 +9,43 @@ const api = axios.create({
 });
 
 export const authAPI = {
-  loginWithFacebook: () => {
-    window.location.href = `${API_BASE_URL}/auth/facebook`;
+  register: async (email, password, name, facebookAppId, facebookAppSecret) => {
+    const res = await http.post("/auth/register", {
+      email,
+      password,
+      name,
+      facebookAppId,
+      facebookAppSecret,
+    });
+    if (res.data.accessToken) {
+      setAccessToken(res.data.accessToken);
+    }
+    return res;
   },
-  getMe: () => api.get("/auth/me"),
-  getAutoScreenshot: () => api.get("/auth/screenshot"),
-  logout: () => api.get("/auth/logout"),
+  login: async (email, password) => {
+    const res = await http.post("/auth/login", { email, password });
+    if (res.data.accessToken) {
+      setAccessToken(res.data.accessToken);
+    }
+    return res;
+  },
+  getMe: () => http.get("/auth/me"),
+  refresh: async () => {
+    const res = await axios.post(
+      `${API_BASE_URL}/auth/refresh`,
+      {},
+      { withCredentials: true },
+    );
+    if (res.data.accessToken) {
+      setAccessToken(res.data.accessToken);
+    }
+    return res;
+  },
+  logout: async () => {
+    const res = await http.post("/auth/logout");
+    clearAccessToken();
+    return res;
+  },
 };
 
 export const groupsAPI = {

@@ -5,6 +5,7 @@ import fs from "fs";
 
 // Mock all external dependencies
 vi.mock("../../src/utils/facebook-automation.js", () => ({
+  bootstrapFacebookSession: vi.fn(),
   captureGroupScreenshot: vi.fn(),
   scrapeMyGroups: vi.fn(),
   publishToGroup: vi.fn(),
@@ -19,6 +20,17 @@ vi.mock("@prisma/client", () => ({
     facebookGroup: {
       upsert: vi.fn().mockResolvedValue({}),
       findMany: vi.fn().mockResolvedValue([]),
+      delete: vi.fn().mockResolvedValue({}),
+    },
+    group: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    postGroup: {
+      findMany: vi.fn().mockResolvedValue([]),
+      deleteMany: vi.fn().mockResolvedValue({}),
+    },
+    publicationHistory: {
+      deleteMany: vi.fn().mockResolvedValue({}),
     },
   })),
 }));
@@ -33,7 +45,6 @@ vi.mock("../../src/utils/posts-storage.js", () => ({
 }));
 
 // We need to spy on fs.existsSync at the module level
-import fs from "fs";
 vi.spyOn(fs, "existsSync").mockReturnValue(false);
 vi.spyOn(fs, "unlinkSync").mockImplementation(() => {});
 
@@ -93,23 +104,28 @@ beforeEach(async () => {
 });
 
 describe("POST /api/groups/session/bootstrap", () => {
-  it("should return success when session file exists", async () => {
-    fs.existsSync.mockReturnValue(true);
+  it("should return success when bootstrap completes", async () => {
+    const { bootstrapFacebookSession } =
+      await import("../../src/utils/facebook-automation.js");
+    vi.mocked(bootstrapFacebookSession).mockResolvedValue({ ok: true });
 
     const res = await request(app).post("/api/groups/session/bootstrap");
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.sessionExists).toBe(true);
+    expect(bootstrapFacebookSession).toHaveBeenCalledWith("user-1");
   });
 
-  it("should return 428 when session file does not exist", async () => {
-    fs.existsSync.mockReturnValue(false);
+  it("should return 500 when bootstrap fails", async () => {
+    const { bootstrapFacebookSession } =
+      await import("../../src/utils/facebook-automation.js");
+    vi.mocked(bootstrapFacebookSession).mockRejectedValue(
+      new Error("FACEBOOK_SESSION_NOT_COMPLETED"),
+    );
 
     const res = await request(app).post("/api/groups/session/bootstrap");
 
-    expect(res.status).toBe(428);
-    expect(res.body.error).toBe("FACEBOOK_SESSION_REQUIRED");
+    expect(res.status).toBe(500);
   });
 });
 
@@ -171,6 +187,7 @@ describe("GET /api/groups/facebook-screenshot", () => {
       "Test Group",
       null,
       null,
+      "user-1",
     );
   });
 
@@ -188,6 +205,7 @@ describe("GET /api/groups/facebook-screenshot", () => {
       "https://facebook.com/groups/123",
       null,
       "https://facebook.com/groups/123",
+      "user-1",
     );
   });
 
@@ -316,7 +334,17 @@ describe("GET /api/groups/saved", () => {
   it("should return saved groups from database", async () => {
     const res = await request(app).get("/api/groups/saved");
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.groups)).toBe(true);
+  });
+});
+
+describe("GET /api/groups/:groupId/posts", () => {
+  it("should return empty posts when group not found", async () => {
+    const res = await request(app).get("/api/groups/123/posts");
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.posts).toEqual([]);
   });
 });
 

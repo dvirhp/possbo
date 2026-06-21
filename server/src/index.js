@@ -1,9 +1,9 @@
 import express from "express";
 import cors from "cors";
-import session from "express-session";
-import passport from "passport";
+import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
+import { verifyAccessToken } from "./utils/jwt.js";
 
 // Initialize environment variables
 dotenv.config();
@@ -16,29 +16,27 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
 app.use(express.json());
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge: 1000 * 60 * 60 * 24, // 24 hours
-    },
-  }),
-);
+app.use(cookieParser());
 
-if (!process.env.SESSION_SECRET) {
-  console.warn(
-    "WARNING: SESSION_SECRET is not set. Sessions will not work correctly.",
-  );
-}
-
-// Initialize Passport
-app.use(passport.initialize());
-app.use(passport.session());
+// JWT-based user loader - extracts user from Authorization header
+app.use(async (req, _res, next) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    try {
+      const payload = verifyAccessToken(token);
+      const user = await prisma.user.findUnique({
+        where: { id: payload.userId },
+      });
+      if (user) {
+        req.user = user;
+      }
+    } catch {
+      // Invalid/expired token - continue without user
+    }
+  }
+  next();
+});
 
 // Import routes
 import authRoutes from "./routes/auth.js";

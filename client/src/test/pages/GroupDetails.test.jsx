@@ -25,6 +25,13 @@ vi.mock('../../services/publishService.js', () => ({
   },
 }));
 
+const mockGetGroupPosts = vi.fn();
+vi.mock('../../services/groupsService.js', () => ({
+  groupsService: {
+    getGroupPosts: (...args) => mockGetGroupPosts(...args),
+  },
+}));
+
 vi.mock('../../assets/i18n', () => ({
   default: {
     groupDetails: {
@@ -104,7 +111,9 @@ describe('GroupDetails page', () => {
     mockCapture.mockClear();
     mockPublish.mockClear();
     mockGetHistory.mockClear();
+    mockGetGroupPosts.mockClear();
     mockGetHistory.mockResolvedValue({ data: { success: true, posts: [] } });
+    mockGetGroupPosts.mockResolvedValue({ data: { success: true, posts: [] } });
     localStorage.setItem('fbSessionReady', 'true');
   });
 
@@ -308,14 +317,14 @@ describe('GroupDetails page', () => {
 
   describe('post history', () => {
     it('should load posts on mount', async () => {
-      mockGetHistory.mockResolvedValue({
+      mockGetGroupPosts.mockResolvedValue({
         data: { success: true, posts: [{ id: '1', text: 'Old post' }] },
       });
 
       await renderGroupDetails();
 
       await waitFor(() => {
-        expect(mockGetHistory).toHaveBeenCalledWith('https://facebook.com/groups/123');
+        expect(mockGetGroupPosts).toHaveBeenCalledWith('1');
       });
     });
   });

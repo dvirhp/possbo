@@ -1,36 +1,43 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { groupsService } from '../services/groupsService'
+import { authAPI } from '../services/api'
 import locale from '../assets/i18n'
 import '../styles/login.css'
 
 export default function Login() {
-  const [connecting, setConnecting] = useState(false)
+  const [isRegister, setIsRegister] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [facebookAppId, setFacebookAppId] = useState('')
+  const [facebookAppSecret, setFacebookAppSecret] = useState('')
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [showInstruction, setShowInstruction] = useState(false)
   const navigate = useNavigate()
 
-  const handleConnect = async () => {
-    setConnecting(true)
+  // Check if already logged in (try refresh token)
+  useEffect(() => {
+    authAPI.refresh()
+      .then(() => navigate('/dashboard'))
+      .catch(() => {}) // Not logged in - stay on login page
+  }, [navigate])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
     setError(null)
     try {
-      const res = await groupsService.bootstrapSession()
-      if (res.data.success && res.data.sessionExists) {
-        localStorage.setItem('fbSessionReady', 'true')
-        navigate('/dashboard')
+      if (isRegister) {
+        await authAPI.register(email, password, name, facebookAppId, facebookAppSecret)
       } else {
-        // Server returned that session is needed - show instruction
-        setShowInstruction(true)
+        await authAPI.login(email, password)
       }
+      navigate('/dashboard')
     } catch (err) {
       const msg = err.response?.data?.error || err.message
-      if (msg === 'FACEBOOK_SESSION_REQUIRED') {
-        setShowInstruction(true)
-      } else {
-        setError(`${locale.errors.generic} ${msg}`)
-      }
+      setError(msg)
     } finally {
-      setConnecting(false)
+      setLoading(false)
     }
   }
 
@@ -39,45 +46,87 @@ export default function Login() {
       <div className="login-card">
         <div className="login-header">
           <h1>📌 PostIt</h1>
-          <p>חיפוש וצילום קבוצות פייסבוק</p>
+          <p>{locale.login.subtitle}</p>
         </div>
 
-        <div className="login-content">
-          {!showInstruction ? (
-            <>
-              <p className="login-description">
-                לחץ על הכפתור. אחרי זה, בטרמינל, הרץ את הפקודה שתתקבל.
-              </p>
+        <div className="login-tabs">
+          <button
+            className={`login-tab ${!isRegister ? 'active' : ''}`}
+            onClick={() => { setIsRegister(false); setError(null) }}
+          >
+            {locale.login.loginTab}
+          </button>
+          <button
+            className={`login-tab ${isRegister ? 'active' : ''}`}
+            onClick={() => { setIsRegister(true); setError(null) }}
+          >
+            {locale.login.registerTab}
+          </button>
+        </div>
 
-              <button
-                className="facebook-login-btn"
-                onClick={handleConnect}
-                disabled={connecting}
-              >
-                {connecting ? '⏳ בודק סשן...' : '🔗 בדוק סשן פייסבוק'}
-              </button>
-            </>
-          ) : (
-            <div className="instruction-box">
-              <h3>📋 צעדים:</h3>
-              <ol>
-                <li>בטרמינל בתיקיית server, הרץ:
-                  <pre className="command">npm run bootstrap-session</pre>
-                </li>
-                <li>דפדפן יתפתח - התחבר לפייסבוק</li>
-                <li>אחרי ההתחברות, חוזר לכאן ולחץ "בדוק סשן"</li>
-              </ol>
-              <button
-                className="facebook-login-btn"
-                onClick={handleConnect}
-              >
-                ✅ סיימתי - בדוק סשן
-              </button>
-            </div>
+        <form className="login-content" onSubmit={handleSubmit}>
+          {isRegister && (
+            <input
+              type="text"
+              className="login-input"
+              placeholder={locale.login.namePlaceholder}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           )}
+          <input
+            type="email"
+            className="login-input"
+            placeholder={locale.login.emailPlaceholder}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            className="login-input"
+            placeholder={locale.login.passwordPlaceholder}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={6}
+          />
+          {isRegister && (
+            <>
+              <div className="login-section-label">{locale.login.facebookCredentialsLabel}</div>
+              <input
+                type="text"
+                className="login-input"
+                placeholder={locale.login.facebookAppIdPlaceholder}
+                value={facebookAppId}
+                onChange={(e) => setFacebookAppId(e.target.value)}
+                required
+              />
+              <input
+                type="password"
+                className="login-input"
+                placeholder={locale.login.facebookAppSecretPlaceholder}
+                value={facebookAppSecret}
+                onChange={(e) => setFacebookAppSecret(e.target.value)}
+                required
+              />
+            </>
+          )}
+          <button
+            type="submit"
+            className="facebook-login-btn"
+            disabled={loading}
+          >
+            {loading
+              ? '⏳ ...'
+              : isRegister
+                ? locale.login.registerBtn
+                : locale.login.loginBtn
+            }
+          </button>
 
           {error && <div className="login-error">{error}</div>}
-        </div>
+        </form>
       </div>
     </div>
   )

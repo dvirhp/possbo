@@ -80,4 +80,24 @@ describe("groupsService", () => {
       );
     });
   });
+
+  describe("getSavedGroups", () => {
+    it("should call GET /groups/saved", async () => {
+      mockGet.mockResolvedValue({ data: { success: true, groups: [] } });
+
+      await groupsService.getSavedGroups();
+
+      expect(mockGet).toHaveBeenCalledWith("/groups/saved");
+    });
+  });
+
+  describe("getGroupPosts", () => {
+    it("should call GET /groups/:groupId/posts", async () => {
+      mockGet.mockResolvedValue({ data: { success: true, posts: [] } });
+
+      await groupsService.getGroupPosts("123");
+
+      expect(mockGet).toHaveBeenCalledWith("/groups/123/posts");
+    });
+  });
 });

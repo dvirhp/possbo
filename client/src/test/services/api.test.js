@@ -1,12 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock axios
+// Mock http module
+vi.mock("../../services/http.js", () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    interceptors: {
+      request: { use: vi.fn() },
+      response: { use: vi.fn() },
+    },
+  },
+  setAccessToken: vi.fn(),
+  getAccessToken: vi.fn(),
+  clearAccessToken: vi.fn(),
+}));
+
+// Mock axios for refresh endpoint
 vi.mock("axios", () => ({
   default: {
     create: vi.fn(() => ({
       get: vi.fn(),
       post: vi.fn(),
     })),
+    post: vi.fn(),
   },
 }));
 
@@ -21,24 +37,20 @@ describe("api (client/src/services/api.js)", () => {
   });
 
   describe("authAPI", () => {
-    it("should have loginWithFacebook that redirects window", () => {
-      // Mock window.location
-      const originalHref = window.location.href;
-      delete window.location;
-      window.location = { href: "" };
+    it("should expose register method", () => {
+      expect(typeof authAPI.register).toBe("function");
+    });
 
-      authAPI.loginWithFacebook();
-
-      expect(window.location.href).toContain("/auth/facebook");
-      window.location = { href: originalHref };
+    it("should expose login method", () => {
+      expect(typeof authAPI.login).toBe("function");
     });
 
     it("should expose getMe method", () => {
       expect(typeof authAPI.getMe).toBe("function");
     });
 
-    it("should expose getAutoScreenshot method", () => {
-      expect(typeof authAPI.getAutoScreenshot).toBe("function");
+    it("should expose refresh method", () => {
+      expect(typeof authAPI.refresh).toBe("function");
     });
 
     it("should expose logout method", () => {
@@ -65,14 +77,6 @@ describe("api (client/src/services/api.js)", () => {
 
     it("should expose scrapeMyGroups method", () => {
       expect(typeof groupsAPI.scrapeMyGroups).toBe("function");
-    });
-
-    it("should expose getMyGroups method", () => {
-      expect(typeof groupsAPI.getMyGroups).toBe("function");
-    });
-
-    it("should expose getSavedGroups method", () => {
-      expect(typeof groupsAPI.getSavedGroups).toBe("function");
     });
 
     it("should expose publishToGroup method", () => {

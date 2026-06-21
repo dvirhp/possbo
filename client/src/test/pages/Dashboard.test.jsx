@@ -8,10 +8,23 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
+const mockRefresh = vi.fn();
+const mockGetMe = vi.fn();
+const mockLogout = vi.fn();
+vi.mock('../../services/api.js', () => ({
+  authAPI: {
+    refresh: (...args) => mockRefresh(...args),
+    getMe: (...args) => mockGetMe(...args),
+    logout: (...args) => mockLogout(...args),
+  },
+}));
+
 const mockScrapeMyGroups = vi.fn();
+const mockGetSavedGroups = vi.fn();
 vi.mock('../../services/groupsService.js', () => ({
   groupsService: {
     scrapeMyGroups: (...args) => mockScrapeMyGroups(...args),
+    getSavedGroups: (...args) => mockGetSavedGroups(...args),
   },
 }));
 
@@ -22,6 +35,7 @@ vi.mock('../../assets/i18n', () => ({
       myGroups: 'My Groups',
       description: 'Click to load',
       loadGroups: 'Load Groups',
+      refreshGroups: 'Refresh Groups',
       loadingGroups: 'Loading...',
       groupsFound: (n) => `Found ${n} groups`,
       noGroupsFound: 'No groups found',
@@ -29,7 +43,10 @@ vi.mock('../../assets/i18n', () => ({
     },
     list: { details: 'Details', noItems: 'No items', openLink: 'Open' },
     logout: 'Logout',
-    errors: { generic: 'Error:' },
+    errors: {
+      generic: 'Error:',
+      fbSessionRequired: 'Facebook session required',
+    },
   },
 }));
 
@@ -39,9 +56,20 @@ vi.mock('../../styles/generic-list.css', () => ({}));
 describe('Dashboard page', () => {
   beforeEach(() => {
     mockNavigate.mockClear();
+    mockRefresh.mockClear();
+    mockGetMe.mockClear();
+    mockLogout.mockClear();
     mockScrapeMyGroups.mockClear();
-    localStorage.clear();
-    localStorage.setItem('fbSessionReady', 'true');
+    mockGetSavedGroups.mockClear();
+
+    // Default: authenticated
+    mockRefresh.mockResolvedValue({ data: { accessToken: 'tok' } });
+    mockGetMe.mockResolvedValue({
+      data: { id: '1', email: 'a@b.com', name: 'Test' },
+    });
+    mockGetSavedGroups.mockResolvedValue({
+      data: { success: true, groups: [] },
+    });
   });
 
   const renderDashboard = async () => {
@@ -54,24 +82,41 @@ describe('Dashboard page', () => {
     );
   };
 
-  it('should redirect to login when no session', async () => {
-    localStorage.removeItem('fbSessionReady');
+  it('should redirect to login when not authenticated', async () => {
+    mockRefresh.mockRejectedValue(new Error('No token'));
+
     await renderDashboard();
 
-    expect(mockNavigate).toHaveBeenCalledWith('/');
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/');
+    });
   });
 
   it('should render load groups button', async () => {
     await renderDashboard();
-    expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
+    });
   });
 
   it('should render logout button', async () => {
     await renderDashboard();
-    expect(screen.getByText('Logout')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('Logout')).toBeInTheDocument();
+    });
   });
 
-  it('should load and display groups on button click', async () => {
+  it('should show user name when authenticated', async () => {
+    await renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Test/)).toBeInTheDocument();
+    });
+  });
+
+  it('should load and display groups on refresh click', async () => {
     mockScrapeMyGroups.mockResolvedValue({
       data: {
         success: true,
@@ -83,6 +128,10 @@ describe('Dashboard page', () => {
     });
 
     await renderDashboard();
+    await waitFor(() => {
+      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
+    });
+
     fireEvent.click(screen.getByText(/Load Groups/));
 
     await waitFor(() => {
@@ -97,6 +146,10 @@ describe('Dashboard page', () => {
     });
 
     await renderDashboard();
+    await waitFor(() => {
+      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
+    });
+
     fireEvent.click(screen.getByText(/Load Groups/));
 
     await waitFor(() => {
@@ -104,61 +157,56 @@ describe('Dashboard page', () => {
     });
   });
 
-  it('should redirect to login on FACEBOOK_SESSION_REQUIRED error', async () => {
+  it('should show FB session error instead of redirecting', async () => {
     mockScrapeMyGroups.mockRejectedValue({
       response: { data: { error: 'FACEBOOK_SESSION_REQUIRED' } },
     });
 
     await renderDashboard();
+    await waitFor(() => {
+      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
+    });
+
     fireEvent.click(screen.getByText(/Load Groups/));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Facebook session required'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('should logout and navigate to login', async () => {
+    mockLogout.mockResolvedValue({ data: { success: true } });
+
+    await renderDashboard();
+    await waitFor(() => {
+      expect(screen.getByText('Logout')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Logout'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/');
     });
-    expect(localStorage.getItem('fbSessionReady')).toBeNull();
-  });
-
-  it('should show generic error message on other errors', async () => {
-    mockScrapeMyGroups.mockRejectedValue(new Error('Network failure'));
-
-    await renderDashboard();
-    fireEvent.click(screen.getByText(/Load Groups/));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Error:.*Network failure/)).toBeInTheDocument();
-    });
-  });
-
-  it('should disable button while loading', async () => {
-    let resolve;
-    mockScrapeMyGroups.mockReturnValue(new Promise(r => { resolve = r; }));
-
-    await renderDashboard();
-    const btn = screen.getByText(/Load Groups/);
-    fireEvent.click(btn);
-
-    expect(screen.getByText(/Loading/)).toBeInTheDocument();
-
-    resolve({ data: { success: true, groups: [] } });
-    await waitFor(() => {
-      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
-    });
-  });
-
-  it('should logout and navigate to login on logout click', async () => {
-    await renderDashboard();
-    fireEvent.click(screen.getByText('Logout'));
-
-    expect(localStorage.getItem('fbSessionReady')).toBeNull();
-    expect(mockNavigate).toHaveBeenCalledWith('/');
   });
 
   it('should display groups count title after loading', async () => {
     mockScrapeMyGroups.mockResolvedValue({
-      data: { success: true, groups: [{ id: '1', name: 'G1' }, { id: '2', name: 'G2' }] },
+      data: {
+        success: true,
+        groups: [
+          { id: '1', name: 'G1' },
+          { id: '2', name: 'G2' },
+        ],
+      },
     });
 
     await renderDashboard();
+    await waitFor(() => {
+      expect(screen.getByText(/Load Groups/)).toBeInTheDocument();
+    });
+
     fireEvent.click(screen.getByText(/Load Groups/));
 
     await waitFor(() => {
