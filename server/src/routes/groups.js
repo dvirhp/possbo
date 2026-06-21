@@ -12,6 +12,7 @@ import {
   publishToGroup,
 } from "../utils/facebook-automation.js";
 import { savePost } from "../utils/posts-storage.js";
+import { createLogger } from "../utils/logger.js";
 import {
   isAllowedUrl,
   isValidGroupName,
@@ -117,7 +118,7 @@ router.post("/search", requireAuth, async (req, res) => {
 
     res.json({ success: false, message: "Group not found in your groups" });
   } catch (error) {
-    console.error("Error searching groups:", error);
+    createLogger("groups").error("Error searching groups", error);
     // Graph API can fail for non-approved permissions or account restrictions.
     // Return a controlled response so UI doesn't break on repeated searches.
     res.status(200).json({
@@ -168,9 +169,9 @@ router.get(
         targetUrl = `https://www.facebook.com/groups/${matched.id}`;
       }
     } catch (lookupError) {
-      console.warn(
-        "Group lookup failed, falling back to search URL:",
-        lookupError.message,
+      createLogger("groups").warn(
+        "Group lookup failed, falling back to search URL",
+        { error: lookupError.message },
       );
     }
 
@@ -374,7 +375,9 @@ router.get(
 
     const posts = postGroups.map((pg) => ({
       id: pg.post.id,
-      name: pg.post.content.substring(0, 80) + (pg.post.content.length > 80 ? "..." : ""),
+      name:
+        pg.post.content.substring(0, 80) +
+        (pg.post.content.length > 80 ? "..." : ""),
       subtitle: new Date(pg.post.createdAt).toLocaleString("he-IL"),
       url: pg.publications[0]?.externalPostUrl || null,
       text: pg.post.content,
@@ -401,7 +404,12 @@ router.get(
         .json({ success: false, error: "Only Facebook URLs are allowed" });
     }
     const targetUrl = isUrl ? groupName : null;
-    const screenshot = await captureGroupScreenshot(groupName, null, targetUrl, req.user?.id);
+    const screenshot = await captureGroupScreenshot(
+      groupName,
+      null,
+      targetUrl,
+      req.user?.id,
+    );
     res.json({
       success: true,
       screenshot,
@@ -417,39 +425,39 @@ router.post(
   upload.single("image"),
   asyncHandler(async (req, res) => {
     const { groupUrl, groupName, text, anonymous, location } = req.body;
-  if (!groupUrl || !text) {
-    return res
-      .status(400)
-      .json({ success: false, error: "groupUrl and text are required" });
-  }
-  const sanitizedText = sanitizeText(text);
-  if (!sanitizedText) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Text is invalid or too long" });
-  }
-  const sanitizedLocation = location ? sanitizeText(location, 200) : null;
-  const isAnonymous = anonymous === "true";
-  const imagePath = req.file ? req.file.path : null;
-  try {
-    const result = await publishToGroup(groupUrl, sanitizedText, imagePath, {
-      anonymous: isAnonymous,
-      location: sanitizedLocation,
-      userId: req.user.id,
-    });
+    if (!groupUrl || !text) {
+      return res
+        .status(400)
+        .json({ success: false, error: "groupUrl and text are required" });
+    }
+    const sanitizedText = sanitizeText(text);
+    if (!sanitizedText) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Text is invalid or too long" });
+    }
+    const sanitizedLocation = location ? sanitizeText(location, 200) : null;
+    const isAnonymous = anonymous === "true";
+    const imagePath = req.file ? req.file.path : null;
+    try {
+      const result = await publishToGroup(groupUrl, sanitizedText, imagePath, {
+        anonymous: isAnonymous,
+        location: sanitizedLocation,
+        userId: req.user.id,
+      });
 
-    const saved = await savePost({
-      userId: req.user.id,
-      groupUrl,
-      groupName,
-      text: sanitizedText,
-      postUrl: result.postUrl,
-      screenshot: result.screenshot,
-      anonymous: isAnonymous,
-      location: sanitizedLocation,
-    });
+      const saved = await savePost({
+        userId: req.user.id,
+        groupUrl,
+        groupName,
+        text: sanitizedText,
+        postUrl: result.postUrl,
+        screenshot: result.screenshot,
+        anonymous: isAnonymous,
+        location: sanitizedLocation,
+      });
 
-    res.json({ ...result, savedPost: saved });
+      res.json({ ...result, savedPost: saved });
     } finally {
       if (imagePath && fs.existsSync(imagePath)) {
         fs.unlinkSync(imagePath);

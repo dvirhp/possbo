@@ -9,43 +9,44 @@ datasource db {
 }
 
 model User {
-  id                  String                   @id @default(uuid())
-  email               String?                  @unique
-  username            String?                  @unique
-  passwordHash        String?                  @map("password_hash")
-  name                String?
-  firstName           String?                  @map("first_name")
-  lastName            String?                  @map("last_name")
-  phone               String?
-  profilePicture      String?                  @map("profile_picture_url")
-  profileImage        String?                  @map("profile_image")
-  facebookId          String?                  @unique @map("facebook_id")
-  facebookAccessToken String?                  @map("facebook_access_token")
-  status              UserStatus               @default(ACTIVE)
-  emailVerifiedAt     DateTime?                @map("email_verified_at")
-  lastLoginAt         DateTime?                @map("last_login_at")
-  createdAt           DateTime                 @default(now()) @map("created_at")
-  updatedAt           DateTime                 @updatedAt @map("updated_at")
-  deletedAt           DateTime?                @map("deleted_at")
-  facebookAppId       String?                  @map("facebook_app_id")
-  facebookAppSecret   String?                  @map("facebook_app_secret")
-  refreshToken        String?                  @map("refresh_token")
+  id                   String                   @id @default(uuid())
+  email                String?                  @unique
+  username             String?                  @unique
+  passwordHash         String?                  @map("password_hash")
+  name                 String?
+  firstName            String?                  @map("first_name")
+  lastName             String?                  @map("last_name")
+  phone                String?
+  gender               String?
+  profilePicture       String?                  @map("profile_picture_url")
+  profileImage         String?                  @map("profile_image")
+  facebookId           String?                  @unique @map("facebook_id")
+  facebookAccessToken  String?                  @map("facebook_access_token")
+  status               UserStatus               @default(ACTIVE)
+  emailVerifiedAt      DateTime?                @map("email_verified_at")
+  lastLoginAt          DateTime?                @map("last_login_at")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  deletedAt            DateTime?                @map("deleted_at")
+  facebookAppId        String?                  @map("facebook_app_id")
+  facebookAppSecret    String?                  @map("facebook_app_secret")
+  refreshToken         String?                  @map("refresh_token")
   facebookStorageState String?                  @map("facebook_storage_state")
-  auditLogs           AuditLog[]
-  connectedAccounts   ConnectedAccount[]
-  emailVerifications  EmailVerificationToken[]
-  facebookGroups      FacebookGroup[]
-  groupSyncs          GroupSyncHistory[]
-  notifications       Notification[]
-  passwordResets      PasswordResetToken[]
-  postGroups          PostGroup[]
-  templates           PostTemplate[]
-  posts               Post[]
-  publications        PublicationHistory[]
-  subscriptions       Subscription[]
-  usageLimits         UsageLimit[]
-  userGroups          UserGroup[]
-  sessions            UserSession[]
+  auditLogs            AuditLog[]
+  connectedAccounts    ConnectedAccount[]
+  emailVerifications   EmailVerificationToken[]
+  facebookGroups       FacebookGroup[]
+  groupSyncs           GroupSyncHistory[]
+  notifications        Notification[]
+  passwordResets       PasswordResetToken[]
+  postGroups           PostGroup[]
+  templates            PostTemplate[]
+  posts                Post[]
+  publications         PublicationHistory[]
+  subscriptions        Subscription[]
+  usageLimits          UsageLimit[]
+  userGroups           UserGroup[]
+  sessions             UserSession[]
 
   @@map("users")
 }

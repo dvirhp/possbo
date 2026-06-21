@@ -7,9 +7,11 @@ import {
   generateRefreshToken,
   verifyRefreshToken,
 } from "../utils/jwt.js";
+import { createLogger } from "../utils/logger.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const log = createLogger("auth");
 const SALT_ROUNDS = 12;
 
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -27,8 +29,15 @@ function setRefreshCookie(res, token) {
 // Register with email + password + Facebook App credentials
 router.post("/register", async (req, res) => {
   try {
-    const { email, password, name, facebookAppId, facebookAppSecret } =
-      req.body;
+    const {
+      email,
+      password,
+      name,
+      facebookAppId,
+      facebookAppSecret,
+      gender,
+      phone,
+    } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
@@ -64,6 +73,8 @@ router.post("/register", async (req, res) => {
         email,
         passwordHash,
         name: name || null,
+        gender: gender || null,
+        phone: phone || null,
         facebookAppId: encryptedAppId,
         facebookAppSecret: encryptedAppSecret,
       },
@@ -88,7 +99,7 @@ router.post("/register", async (req, res) => {
       user: { id: user.id, email: user.email, name: user.name },
     });
   } catch (error) {
-    console.error("Register error:", error);
+    log.error("Registration failed", error, { email: req.body?.email });
     res.status(500).json({ error: "Registration failed" });
   }
 });
@@ -131,7 +142,7 @@ router.post("/login", async (req, res) => {
       user: { id: user.id, email: user.email, name: user.name },
     });
   } catch (error) {
-    console.error("Login error:", error);
+    log.error("Login failed", error, { email: req.body?.email });
     res.status(500).json({ error: "Login failed" });
   }
 });
@@ -184,7 +195,7 @@ router.post("/refresh", async (req, res) => {
 
     res.json({ success: true, accessToken: newAccessToken });
   } catch (error) {
-    console.error("Refresh error:", error);
+    log.error("Token refresh failed", error);
     res.status(500).json({ error: "Token refresh failed" });
   }
 });
@@ -221,7 +232,11 @@ router.get("/facebook-credentials", async (req, res) => {
   try {
     const appId = decrypt(req.user.facebookAppId);
     const appSecret = decrypt(req.user.facebookAppSecret);
-    res.json({ success: true, facebookAppId: appId, facebookAppSecret: appSecret });
+    res.json({
+      success: true,
+      facebookAppId: appId,
+      facebookAppSecret: appSecret,
+    });
   } catch {
     res.status(500).json({ error: "Failed to decrypt credentials" });
   }

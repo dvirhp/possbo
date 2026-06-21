@@ -1,0 +1,19 @@
+{
+  "name": "PostIt",
+  "short_name": "PostIt",
+  "description": "פרסום אוטומטי לקבוצות פייסבוק",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f7fa",
+  "theme_color": "#667eea",
+  "dir": "rtl",
+  "lang": "he",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

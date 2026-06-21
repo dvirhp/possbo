@@ -5,6 +5,7 @@ import { publishService } from '../services/publishService'
 import { groupsService } from '../services/groupsService'
 import GenericList from '../components/GenericList'
 import LocationAutocomplete from '../components/LocationAutocomplete'
+import BackButton from '../components/BackButton'
 import locale from '../assets/i18n'
 import '../styles/group-details.css'
 
@@ -142,7 +143,7 @@ export default function GroupDetails() {
   return (
     <div className="group-details-page">
       <div className="group-details-card">
-        <button onClick={() => navigate('/dashboard')} className="back-btn">{locale.groupDetails.backToList} →</button>
+        <BackButton />
 
         <div className="group-details-header">
           {group.image && <img src={group.image} alt="" className="group-details-image" />}
@@ -160,6 +161,12 @@ export default function GroupDetails() {
           </button>
           <button onClick={() => setShowPostForm(true)} className="action-btn publish-action-btn">
             ✏️ {locale.groupDetails.publishPost}
+          </button>
+          <button
+            onClick={() => navigate('/create-post', { state: { group } })}
+            className="action-btn create-post-action-btn"
+          >
+            🚀 פרסם בקבוצה זו (+ קבוצות נוספות)
           </button>
         </div>
 

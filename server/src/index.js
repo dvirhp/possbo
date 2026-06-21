@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { verifyAccessToken } from "./utils/jwt.js";
+import { startScheduler, stopScheduler } from "./jobs/index.js";
+import { createLogger } from "./utils/logger.js";
 
 // Initialize environment variables
 dotenv.config();
@@ -12,6 +14,7 @@ dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
+const log = createLogger("server");
 
 // Middleware
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
@@ -43,12 +46,14 @@ import authRoutes from "./routes/auth.js";
 import groupRoutes from "./routes/groups.js";
 import screenshotRoutes from "./routes/screenshot.js";
 import publishRoutes from "./routes/publish.js";
+import schedulerRoutes from "./routes/scheduler.js";
 
 // Use routes
 app.use("/api/auth", authRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/screenshot", screenshotRoutes);
 app.use("/api/publish", publishRoutes);
+app.use("/api/scheduler", schedulerRoutes);
 
 // Basic route
 app.get("/", (req, res) => {
@@ -57,17 +62,19 @@ app.get("/", (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  log.error(`${req.method} ${req.originalUrl} unhandled error`, err);
   res.status(500).json({ error: "Internal server error" });
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  log.info("Server started", { port: PORT, url: `http://localhost:${PORT}` });
+  startScheduler();
 });
 
 // Graceful shutdown
 process.on("SIGINT", async () => {
+  stopScheduler();
   await prisma.$disconnect();
   process.exit(0);
 });

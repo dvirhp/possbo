@@ -4,7 +4,9 @@ import { fileURLToPath } from "url";
 import { chromium } from "playwright";
 import { PrismaClient } from "@prisma/client";
 import { encrypt, decrypt } from "./encryption.js";
+import { createLogger } from "./logger.js";
 
+const log = createLogger("fb-auto");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LEGACY_STORAGE_STATE_PATH = path.join(
   __dirname,
@@ -38,7 +40,7 @@ async function loadUserStorageState(userId) {
     const decrypted = decrypt(user.facebookStorageState);
     return JSON.parse(decrypted);
   } catch (e) {
-    console.error("[fb-auto] Failed to decrypt storage state for user:", userId, e.message);
+    log.error("Failed to decrypt storage state for user:", userId, e.message);
     return null;
   }
 }
@@ -173,7 +175,7 @@ export async function bootstrapFacebookSession(userId) {
     if (userId) {
       // Save to DB per user (encrypted)
       await saveUserStorageState(userId, storageState);
-      console.log("[fb-auto] Storage state saved to DB for user:", userId);
+      log.info("Storage state saved to DB for user:", userId);
     }
 
     // Also save to legacy file for backward compat
@@ -208,7 +210,7 @@ export async function scrapeMyGroups(userId) {
     const page = await context.newPage();
 
     // Go to user's groups page
-    console.log("Navigating to your groups page...");
+    log.debug("Navigating to your groups page...");
     await page.goto("https://www.facebook.com/groups/joins/", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
@@ -234,7 +236,7 @@ export async function scrapeMyGroups(userId) {
       if (currentHeight === previousHeight) {
         noChangeCount++;
         if (noChangeCount >= 3) {
-          console.log(`Reached bottom after ${i + 1} scrolls`);
+          log.debug(`Reached bottom after ${i + 1} scrolls`);
           break;
         }
       } else {
@@ -244,7 +246,7 @@ export async function scrapeMyGroups(userId) {
     }
 
     // Now extract all groups from the fully loaded page
-    console.log("Extracting group names...");
+    log.debug("Extracting group names...");
     const groups = await page.evaluate(() => {
       const results = [];
       const seen = new Set();
@@ -332,7 +334,7 @@ export async function scrapeMyGroups(userId) {
       return results;
     });
 
-    console.log(`Total groups found: ${groups.length}`);
+    log.info(`Total groups found: ${groups.length}`);
 
     // Save updated storage state back to DB
     const updatedState = await context.storageState();
@@ -378,25 +380,25 @@ export async function captureGroupScreenshot(
     });
     await page.waitForTimeout(1500);
     const currentUrl = page.url();
-    console.log("Facebook home URL:", currentUrl);
+    log.debug("Facebook home URL:", currentUrl);
 
     if (/login|checkpoint/i.test(currentUrl)) {
-      console.log("Not logged in - redirected to login page");
+      log.debug("Not logged in - redirected to login page");
       throw new Error("FACEBOOK_SESSION_REQUIRED");
     }
 
     if (targetUrl) {
-      console.log("Navigating to target URL:", targetUrl);
+      log.debug("Navigating to target URL:", targetUrl);
       await page.goto(targetUrl, {
         waitUntil: "domcontentloaded",
         timeout: 30000,
       });
-      console.log("Arrived at:", page.url());
+      log.debug("Arrived at:", page.url());
       await page.waitForTimeout(3000);
     } else {
       const searchQuery = encodeURIComponent(groupName);
       const groupSearchUrl = `https://www.facebook.com/search/groups/?q=${searchQuery}`;
-      console.log(`Navigating to groups search: ${groupSearchUrl}`);
+      log.debug(`Navigating to groups search: ${groupSearchUrl}`);
       await page.goto(groupSearchUrl, {
         waitUntil: "domcontentloaded",
         timeout: 30000,
@@ -405,13 +407,13 @@ export async function captureGroupScreenshot(
 
       const allLinks = page.locator('a[href*="/groups/"]');
       const totalLinks = await allLinks.count();
-      console.log(`Found ${totalLinks} total links with /groups/ in href`);
+      log.debug(`Found ${totalLinks} total links with /groups/ in href`);
 
       let clicked = false;
       for (let i = 0; i < totalLinks; i++) {
         const href = await allLinks.nth(i).getAttribute("href");
         if (href && /\/groups\/\d+/.test(href)) {
-          console.log(`Clicking group link: ${href}`);
+          log.debug(`Clicking group link: ${href}`);
           await allLinks.nth(i).click();
           clicked = true;
           await page.waitForTimeout(4000);
@@ -420,7 +422,7 @@ export async function captureGroupScreenshot(
       }
 
       if (!clicked) {
-        console.log(
+        log.debug(
           "No numeric group link found, taking screenshot of search results page",
         );
       }
@@ -434,9 +436,9 @@ export async function captureGroupScreenshot(
     await page.evaluate(() => window.scrollBy(0, 200));
     await page.waitForTimeout(1000);
 
-    console.log("Taking screenshot...");
+    log.debug("Taking screenshot...");
     const screenshot = await page.screenshot({ type: "png", fullPage: false });
-    console.log("Screenshot taken, size:", screenshot.length, "bytes");
+    log.debug("Screenshot taken, size:", screenshot.length, "bytes");
 
     // Save updated storage state
     if (userId) {
@@ -476,20 +478,20 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     });
     await page.waitForTimeout(1500);
     const currentUrl = page.url();
-    console.log("[publish] Facebook home URL:", currentUrl);
+    log.debug("Facebook home URL:", currentUrl);
 
     if (/login|checkpoint/i.test(currentUrl)) {
       throw new Error("FACEBOOK_SESSION_REQUIRED");
     }
 
     // Navigate to the group
-    console.log("[publish] Navigating to group:", groupUrl);
+    log.debug("Navigating to group:", groupUrl);
     await page.goto(groupUrl, {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
     await page.waitForTimeout(3000);
-    console.log("[publish] Arrived at:", page.url());
+    log.debug("Arrived at:", page.url());
 
     // Click on the "Write something..." post composer box
     const composerSelectors = [
@@ -504,7 +506,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     for (const selector of composerSelectors) {
       const el = page.locator(selector).first();
       if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
-        console.log("[publish] Found composer with selector:", selector);
+        log.debug("Found composer with selector:", selector);
         await el.click();
         composerClicked = true;
         break;
@@ -517,7 +519,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         .filter({ hasText: /כתב|משהו|Write|what's/i })
         .first();
       if (await fallback.isVisible({ timeout: 2000 }).catch(() => false)) {
-        console.log("[publish] Found composer via fallback");
+        log.debug("Found composer via fallback");
         await fallback.click();
         composerClicked = true;
       }
@@ -531,7 +533,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
 
     // Handle anonymous posting toggle
     if (anonymous) {
-      console.log("[publish] Attempting to enable anonymous posting...");
+      log.debug("Attempting to enable anonymous posting...");
       const anonToggleSelectors = [
         'div[role="dialog"] div[role="switch"][aria-label*="אנונימי"]',
         'div[role="dialog"] div[role="switch"][aria-label*="anonymous"]',
@@ -548,7 +550,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
             .catch(() => null);
           if (checked !== "true") {
             await toggle.click();
-            console.log("[publish] Anonymous toggle clicked");
+            log.debug("Anonymous toggle clicked");
           }
           anonEnabled = true;
           break;
@@ -567,7 +569,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
           const btn = page.locator(selector).first();
           if (await btn.isVisible({ timeout: 3000 }).catch(() => false)) {
             await btn.click();
-            console.log('[publish] Anonymous confirmation "Got it" clicked');
+            log.debug('Anonymous confirmation "Got it" clicked');
             break;
           }
         }
@@ -580,14 +582,14 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       .locator('div[role="dialog"] div[role="textbox"][contenteditable="true"]')
       .first();
     await editor.waitFor({ state: "visible", timeout: 10000 });
-    console.log("[publish] Typing text...");
+    log.debug("Typing text...");
     await editor.click();
     await editor.fill(text);
     await page.waitForTimeout(1000);
 
     // If image provided, upload it
     if (imagePath && fs.existsSync(imagePath)) {
-      console.log("[publish] Uploading image:", imagePath);
+      log.debug("Uploading image:", imagePath);
 
       const photoButtonSelectors = [
         'div[role="dialog"] div[role="button"] span:has-text("תמונה/סרטון")',
@@ -601,7 +603,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
           await btn.click();
           photoClicked = true;
-          console.log("[publish] Clicked photo button");
+          log.debug("Clicked photo button");
           break;
         }
       }
@@ -615,7 +617,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         if (await iconBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
           await iconBtn.click();
           photoClicked = true;
-          console.log("[publish] Clicked photo icon button");
+          log.debug("Clicked photo icon button");
         }
       }
 
@@ -624,7 +626,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         .locator('div[role="dialog"] input[type="file"]')
         .first();
       await fileInput.setInputFiles(imagePath);
-      console.log("[publish] Image file sent to input");
+      log.debug("Image file sent to input");
 
       try {
         await page
@@ -633,19 +635,17 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
           )
           .first()
           .waitFor({ state: "visible", timeout: 15000 });
-        console.log("[publish] Image preview appeared");
+        log.debug("Image preview appeared");
       } catch {
-        console.log(
-          "[publish] Image preview not detected, waiting extra time...",
-        );
+        log.debug("Image preview not detected, waiting extra time...");
       }
       await page.waitForTimeout(3000);
-      console.log("[publish] Image uploaded");
+      log.debug("Image uploaded");
     }
 
     // Handle location if provided
     if (location) {
-      console.log("[publish] Adding location:", location);
+      log.debug("Adding location:", location);
       try {
         const locationBtnSelectors = [
           'div[role="dialog"] [aria-label*="צ\'ק אין"]',
@@ -661,7 +661,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
           if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
             await btn.click();
             locationClicked = true;
-            console.log("[publish] Clicked location button");
+            log.debug("Clicked location button");
             break;
           }
         }
@@ -683,7 +683,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
             const inp = page.locator(selector).first();
             if (await inp.isVisible({ timeout: 2000 }).catch(() => false)) {
               locationInput = inp;
-              console.log("[publish] Found location input:", selector);
+              log.debug("Found location input:", selector);
               break;
             }
           }
@@ -691,7 +691,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
           if (locationInput) {
             await locationInput.click();
             await locationInput.fill(location);
-            console.log("[publish] Typed location:", location);
+            log.debug("Typed location:", location);
 
             await page.waitForTimeout(3000);
 
@@ -715,8 +715,8 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
                 const resultText = (
                   await resultEl.innerText().catch(() => "")
                 ).toLowerCase();
-                console.log(
-                  `[publish]   location result[${ri}]: "${resultText.substring(0, 80)}"`,
+                log.debug(
+                  `  location result[${ri}]: "${resultText.substring(0, 80)}"`,
                 );
 
                 const hasMatch = resultText.includes(locationLower);
@@ -724,8 +724,8 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
                 if (hasMatch) {
                   await resultEl.click();
                   resultClicked = true;
-                  console.log(
-                    "[publish] Location EXACT matched and selected:",
+                  log.debug(
+                    "Location EXACT matched and selected:",
                     resultText.substring(0, 60),
                   );
                   break;
@@ -735,8 +735,8 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
             }
 
             if (!resultClicked) {
-              console.log(
-                "[publish] No matching location found, going back without location",
+              log.debug(
+                "No matching location found, going back without location",
               );
               const backBtnSelectors = [
                 'div[role="dialog"] [aria-label*="Back"]',
@@ -751,7 +751,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
                   await backBtn.isVisible({ timeout: 1500 }).catch(() => false)
                 ) {
                   await backBtn.click();
-                  console.log("[publish] Clicked back from location screen");
+                  log.debug("Clicked back from location screen");
                   break;
                 }
               }
@@ -759,13 +759,13 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
 
             await page.waitForTimeout(2000);
           } else {
-            console.log("[publish] Location input not found");
+            log.debug("Location input not found");
           }
         } else {
-          console.log("[publish] Location button not found, skipping");
+          log.debug("Location button not found, skipping");
         }
       } catch (e) {
-        console.log("[publish] Location error (non-fatal):", e.message);
+        log.debug("Location error (non-fatal):", e.message);
       }
     }
 
@@ -801,7 +801,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       const selector = `div[role="dialog"] div[role="button"][aria-label="${label}" i]`;
       const btn = page.locator(selector).first();
       if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
-        console.log("[publish] Clicking post button (aria-label):", label);
+        log.debug("Clicking post button (aria-label):", label);
         await btn.click();
         posted = true;
         break;
@@ -812,14 +812,13 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     if (!posted) {
       const allButtons = page.locator('div[role="dialog"] div[role="button"]');
       const count = await allButtons.count();
-      console.log("[publish] Scanning", count, "dialog buttons...");
+      log.debug("Scanning", count, "dialog buttons...");
       for (let i = count - 1; i >= 0; i--) {
         const btn = allButtons.nth(i);
         const text = (await btn.innerText().catch(() => "")).trim();
-        if (text)
-          console.log(`[publish]   button[${i}]: "${text.substring(0, 50)}"`);
+        if (text) log.debug(`  button[${i}]: "${text.substring(0, 50)}"`);
         if (postTextRegex.test(text)) {
-          console.log("[publish] Found post button at index", i, ":", text);
+          log.debug("Found post button at index", i, ":", text);
           await btn.click();
           posted = true;
           break;
@@ -831,7 +830,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     if (!posted) {
       const nativeButtons = page.locator('div[role="dialog"] button');
       const nbCount = await nativeButtons.count();
-      console.log("[publish] Checking", nbCount, "native <button> elements...");
+      log.debug("Checking", nbCount, "native <button> elements...");
       for (let i = nbCount - 1; i >= 0; i--) {
         const btn = nativeButtons.nth(i);
         const text = (await btn.innerText().catch(() => "")).trim();
@@ -839,11 +838,11 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
           (await btn.getAttribute("aria-label").catch(() => "")) || ""
         ).trim();
         if (text || label)
-          console.log(
-            `[publish]   <button>[${i}]: text="${text.substring(0, 50)}" label="${label}"`,
+          log.debug(
+            `  <button>[${i}]: text="${text.substring(0, 50)}" label="${label}"`,
           );
         if (postTextRegex.test(text) || postTextRegex.test(label)) {
-          console.log("[publish] Found native post button at index", i);
+          log.debug("Found native post button at index", i);
           await btn.click();
           posted = true;
           break;
@@ -856,7 +855,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     }
 
     // Wait for the post to be submitted
-    console.log("[publish] Waiting for post to be submitted...");
+    log.debug("Waiting for post to be submitted...");
     await page.waitForTimeout(6000);
 
     // Try to find the URL of the newly published post
@@ -869,7 +868,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       const permalinkSelector = `a[href*="/groups/${groupId}/posts/"], a[href*="/groups/${groupId}/permalink/"]`;
       const permalinks = page.locator(permalinkSelector);
       const plCount = await permalinks.count();
-      console.log("[publish] Found", plCount, "permalink links for this group");
+      log.debug("Found", plCount, "permalink links for this group");
       if (plCount > 0) {
         const href = await permalinks.first().getAttribute("href");
         if (href) {
@@ -884,7 +883,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
           'a[role="link"][href*="/posts/"], a[role="link"][href*="/permalink/"]',
         );
         const tlCount = await timeLinks.count();
-        console.log("[publish] Found", tlCount, "time/role links");
+        log.debug("Found", tlCount, "time/role links");
         if (tlCount > 0) {
           const href = await timeLinks.first().getAttribute("href");
           if (href) {
@@ -907,27 +906,23 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
                 h.includes("story_fbid"),
             );
         });
-        console.log(
-          "[publish] Found",
-          allLinks.length,
-          "post-like links via evaluate",
-        );
+        log.debug("Found", allLinks.length, "post-like links via evaluate");
         if (allLinks.length > 0) {
           postUrl = allLinks[0];
         }
       }
     } catch (e) {
-      console.log("[publish] Post URL detection error (non-fatal):", e.message);
+      log.debug("Post URL detection error (non-fatal):", e.message);
     }
 
     if (!postUrl) {
-      console.log("[publish] Could not find post URL");
+      log.debug("Could not find post URL");
     }
 
     // Take a screenshot of the result
     const screenshot = await page.screenshot({ type: "png", fullPage: false });
-    console.log(
-      "[publish] Post published successfully! Screenshot size:",
+    log.debug(
+      "Post published successfully! Screenshot size:",
       screenshot.length,
     );
 
