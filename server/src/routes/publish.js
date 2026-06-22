@@ -49,7 +49,7 @@ const requireAuth = (req, res, next) => {
 router.post(
   "/",
   requireAuth,
-  upload.single("image"),
+  upload.array("images", 10),
   asyncHandler(async (req, res) => {
     const { groupUrl, groupName, text, anonymous, location } = req.body;
     if (!groupUrl || !text) {
@@ -64,13 +64,21 @@ router.post(
         .json({ success: false, error: "Text is invalid or too long" });
     }
     const sanitizedLocation = location ? sanitizeText(location, 200) : null;
-    const imagePath = req.file ? req.file.path : null;
+    const imagePaths = req.files?.map((f) => f.path) || [];
+    // Support legacy single image field
+    if (req.file) imagePaths.push(req.file.path);
     const isAnonymous = anonymous === "true";
     try {
-      const result = await publishToGroup(groupUrl, sanitizedText, imagePath, {
-        anonymous: isAnonymous,
-        location: sanitizedLocation,
-      });
+      const result = await publishToGroup(
+        groupUrl,
+        sanitizedText,
+        imagePaths[0] || null,
+        {
+          anonymous: isAnonymous,
+          location: sanitizedLocation,
+          images: imagePaths,
+        },
+      );
 
       const saved = await savePost({
         userId: req.user.id,
@@ -81,14 +89,17 @@ router.post(
         screenshot: result.screenshot,
         anonymous: isAnonymous,
         location: sanitizedLocation,
+        imagePaths,
       });
       log.info("Post saved", { postId: saved.id, postUrl: saved.postUrl });
 
       res.json({ ...result, savedPost: saved });
-    } finally {
-      if (imagePath && fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
+    } catch (err) {
+      // Only delete images on error - otherwise they're kept for PostMedia records
+      for (const p of imagePaths) {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
       }
+      throw err;
     }
   }),
 );

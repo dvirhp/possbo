@@ -1,3 +1,29 @@
+/* ═══════════════════════════════════════════════════════════
+   PostIt — Global Styles
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── Top Loader Bar ─────────────────────────────── */
+.top-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 99999;
+  overflow: hidden;
+  background: rgba(129, 140, 248, 0.15);
+}
+.top-loader-bar {
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--indigo, #818cf8), transparent);
+  animation: topLoaderSlide 1.2s ease-in-out infinite;
+}
+@keyframes topLoaderSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 /* ─── Reset & App Shell ─────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -9,101 +35,42 @@ html, body {
   direction: rtl;
   text-align: right;
   height: 100%;
-  overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
-  background: #f5f7fa;
+  background: #16181d;
+  color: #a3adb8;
+  line-height: 1.5;
 }
 
 #root {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.App {
   min-height: 100vh;
-  direction: rtl;
 }
 
 /* ─── App-like scrollable pages ───────────────────── */
-.dashboard,
-.my-groups-page,
+.dash,
 .create-post-page,
 .group-details-page,
 .post-details-page {
   min-height: 100vh;
-  padding-bottom: calc(72px + env(safe-area-inset-bottom, 8px));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
 /* ─── Hide scrollbar for app feel ─────────────────── */
-.dashboard::-webkit-scrollbar,
-.my-groups-page::-webkit-scrollbar,
+.dash::-webkit-scrollbar,
 .create-post-page::-webkit-scrollbar,
 .post-details-page::-webkit-scrollbar {
+  width: 0;
   display: none;
-}
-
-/* ─── Bottom Navigation (mobile app feel) ─────────── */
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: white;
-  border-top: 1px solid #e8ecf0;
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  height: 64px;
-  padding-bottom: env(safe-area-inset-bottom, 0);
-  z-index: 1000;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
-}
-
-.bottom-nav-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  text-decoration: none;
-  color: #aaa;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 6px 16px;
-  border-radius: 12px;
-  transition: color 0.2s, transform 0.15s;
-  min-width: 56px;
-}
-
-.bottom-nav-item:active {
-  transform: scale(0.92);
-}
-
-.bottom-nav-item.active {
-  color: #667eea;
-}
-
-.bottom-nav-icon {
-  font-size: 22px;
-  line-height: 1;
-}
-
-.bottom-nav-label {
-  font-size: 10px;
-  font-weight: 600;
 }
 
 /* ─── Global back button ──────────────────────────── */
 .page-header .back-button {
   background: none;
   border: none;
-  color: #667eea;
+  color: #58a6ff;
   padding: 6px 0;
   cursor: pointer;
   font-size: 14px;
@@ -124,14 +91,14 @@ html, body {
 
 .page-header h2 {
   font-size: 22px;
-  color: #1a1a2e;
+  color: #f0f4f8;
   margin: 0;
   font-weight: 700;
 }
 
 /* ─── Loading ─────────────────────────────────────── */
 .loading-text {
-  color: #999;
+  color: #7d8894;
   text-align: center;
   padding: 30px;
   font-size: 14px;
@@ -152,21 +119,11 @@ button, a {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ─── Desktop: hide bottom nav, show full-width site ── */
+/* ─── Desktop adjustments ─────────────────────────── */
 @media (min-width: 768px) {
-  .bottom-nav {
-    display: none;
-  }
-
-  .dashboard,
-  .my-groups-page,
   .create-post-page,
   .group-details-page,
   .post-details-page {
     padding-bottom: 0;
-  }
-
-  html, body {
-    overflow: auto;
   }
 }

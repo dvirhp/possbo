@@ -7,9 +7,13 @@ export const groupsService = {
   bootstrapSession: () => api.post("/groups/session/bootstrap"),
   getPublicationHistory: () => api.get("/scheduler/history"),
   getJobs: () => api.get("/scheduler/jobs"),
+  getCampaigns: () => api.get("/scheduler/campaigns"),
+  createCampaign: (data) => api.post("/scheduler/campaigns", data),
+  togglePause: (postId) => api.patch(`/scheduler/campaigns/${postId}/pause`),
   schedulePost: (data) => api.post("/scheduler/schedule", data),
   cancelJob: (jobId) => api.delete(`/scheduler/jobs/${jobId}`),
   getNotifications: () => api.get("/scheduler/notifications"),
   markNotificationsRead: () => api.patch("/scheduler/notifications/read"),
   getSessionStatus: () => api.get("/scheduler/session-status"),
+  getStats: (params) => api.get("/scheduler/stats", { params }),
 };

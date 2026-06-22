@@ -11,6 +11,7 @@ export async function savePost({
   screenshot,
   anonymous,
   location,
+  imagePaths,
 }) {
   // Find or create a Group record for the groupUrl
   let group = await prisma.group.findFirst({
@@ -33,8 +34,26 @@ export async function savePost({
       status: "ACTIVE",
       isAnonymous: anonymous || false,
       location: location || null,
+      imageUrl: imagePaths?.[0]
+        ? `/uploads/${imagePaths[0].split(/[\\/]/).pop()}`
+        : null,
     },
   });
+
+  // Save media records for multiple images
+  if (imagePaths?.length > 0) {
+    for (let i = 0; i < imagePaths.length; i++) {
+      const filename = imagePaths[i].split(/[\\/]/).pop();
+      await prisma.postMedia.create({
+        data: {
+          postId: post.id,
+          mediaType: "IMAGE",
+          url: `/uploads/${filename}`,
+          orderIndex: i,
+        },
+      });
+    }
+  }
 
   // Link post to group via PostGroup
   const postGroup = await prisma.postGroup.create({
@@ -54,8 +73,8 @@ export async function savePost({
       postGroupId: postGroup.id,
       publishedAt: new Date(),
       externalPostUrl: postUrl || null,
-      screenshotUrl: screenshot ? "stored" : null,
-      status: postUrl ? "SUCCESS" : "FAILED",
+      screenshotUrl: screenshot || null,
+      status: "SUCCESS",
     },
   });
 
@@ -67,6 +86,7 @@ export async function savePost({
     postUrl: postUrl || null,
     createdAt: post.createdAt.toISOString(),
     hasScreenshot: !!screenshot,
+    imageCount: imagePaths?.length || 0,
   };
 }
 
