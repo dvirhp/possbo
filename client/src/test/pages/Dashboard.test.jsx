@@ -19,10 +19,16 @@ vi.mock('../../services/api.js', () => ({
   },
 }));
 
+const mockGetJobs = vi.fn();
+const mockGetSavedGroups = vi.fn();
 const mockGetPublicationHistory = vi.fn();
+const mockGetStats = vi.fn();
 vi.mock('../../services/groupsService.js', () => ({
   groupsService: {
+    getJobs: (...args) => mockGetJobs(...args),
+    getSavedGroups: (...args) => mockGetSavedGroups(...args),
     getPublicationHistory: (...args) => mockGetPublicationHistory(...args),
+    getStats: (...args) => mockGetStats(...args),
   },
 }));
 
@@ -48,15 +54,21 @@ describe('Dashboard page', () => {
     mockRefresh.mockClear();
     mockGetMe.mockClear();
     mockLogout.mockClear();
+    mockGetJobs.mockClear();
+    mockGetSavedGroups.mockClear();
     mockGetPublicationHistory.mockClear();
+    mockGetStats.mockClear();
 
     // Default: authenticated
     mockRefresh.mockResolvedValue({ data: { accessToken: 'tok' } });
     mockGetMe.mockResolvedValue({
       data: { id: '1', email: 'a@b.com', name: 'דביר' },
     });
-    mockGetPublicationHistory.mockResolvedValue({
-      data: { success: true, history: [] },
+    mockGetJobs.mockResolvedValue({ data: { success: true, jobs: [] } });
+    mockGetSavedGroups.mockResolvedValue({ data: { success: true, groups: [] } });
+    mockGetPublicationHistory.mockResolvedValue({ data: { success: true, history: [] } });
+    mockGetStats.mockResolvedValue({
+      data: { success: true, stats: { scheduledCount: 0, groupsCount: 0, publishedCount: 0, groupStats: [] } },
     });
   });
 
@@ -81,36 +93,97 @@ describe('Dashboard page', () => {
     });
   });
 
-  it('should render logout button', async () => {
-    await renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getByText('התנתק')).toBeInTheDocument();
-    });
-  });
-
-  it('should show user name when authenticated', async () => {
+  it('should render welcome message and logout', async () => {
     await renderDashboard();
 
     await waitFor(() => {
       expect(screen.getByText(/דביר/)).toBeInTheDocument();
+      expect(screen.getByTitle('התנתק')).toBeInTheDocument();
     });
   });
 
-  it('should render action cards', async () => {
+  it('should render create campaign button', async () => {
     await renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getByText('צור פוסט חדש')).toBeInTheDocument();
-      expect(screen.getByText('הקבוצות שלי')).toBeInTheDocument();
+      expect(screen.getByText(/קמפיין חדש/)).toBeInTheDocument();
     });
   });
 
-  it('should show empty state when no posts', async () => {
+  it('should render all 5 tabs', async () => {
     await renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getByText('עדיין לא פרסמת פוסטים.')).toBeInTheDocument();
+      expect(screen.getAllByText('קמפיינים').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('קבוצות').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('פרסומים').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('סטטיסטיקה').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('הגדרות').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('should show empty campaigns state', async () => {
+    await renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText('אין קמפיינים מתוזמנים')).toBeInTheDocument();
+    });
+  });
+
+  it('should switch to groups tab and show empty state', async () => {
+    await renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('קבוצות').length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText('קבוצות')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('אין קבוצות שמורות')).toBeInTheDocument();
+    });
+  });
+
+  it('should show groups when available', async () => {
+    mockGetSavedGroups.mockResolvedValue({
+      data: { success: true, groups: [{ id: '1', name: 'קבוצת טסט', image: null }] },
+    });
+
+    await renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('קבוצות').length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText('קבוצות')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('קבוצת טסט')).toBeInTheDocument();
+    });
+  });
+
+  it('should show posts when switching to posts tab', async () => {
+    mockGetPublicationHistory.mockResolvedValue({
+      data: {
+        success: true,
+        history: [{
+          id: '1',
+          group: { name: 'קבוצת פרסום' },
+          status: 'SUCCESS',
+          post: { id: 'p1', content: 'תוכן הפוסט' },
+          publishedAt: '2026-06-21T10:00:00Z',
+        }],
+      },
+    });
+
+    await renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('פרסומים').length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText('פרסומים')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('קבוצת פרסום')).toBeInTheDocument();
+      expect(screen.getByText('✓ פורסם')).toBeInTheDocument();
     });
   });
 
@@ -119,37 +192,13 @@ describe('Dashboard page', () => {
 
     await renderDashboard();
     await waitFor(() => {
-      expect(screen.getByText('התנתק')).toBeInTheDocument();
+      expect(screen.getByTitle('התנתק')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('התנתק'));
+    fireEvent.click(screen.getByTitle('התנתק'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/');
-    });
-  });
-
-  it('should show recent posts when available', async () => {
-    mockGetPublicationHistory.mockResolvedValue({
-      data: {
-        success: true,
-        history: [
-          {
-            id: '1',
-            group: { name: 'קבוצת טסט' },
-            status: 'SUCCESS',
-            post: { content: 'תוכן הפוסט' },
-            publishedAt: '2026-06-21T10:00:00Z',
-          },
-        ],
-      },
-    });
-
-    await renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getByText('קבוצת טסט')).toBeInTheDocument();
-      expect(screen.getByText('✓ פורסם')).toBeInTheDocument();
     });
   });
 });

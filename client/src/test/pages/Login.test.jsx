@@ -53,18 +53,24 @@ describe('Login page', () => {
 
   it('should render email and password fields', async () => {
     await renderLogin();
-    expect(screen.getByPlaceholderText('אימייל')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('סיסמה')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('אימייל')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('סיסמה')).toBeInTheDocument();
+    });
   });
 
   it('should render submit button', async () => {
     await renderLogin();
-    expect(screen.getByText('🔑 התחבר')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('🔑 התחבר')).toBeInTheDocument();
+    });
   });
 
   it('should render link to register page', async () => {
     await renderLogin();
-    expect(screen.getByText('הירשם')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('הירשם')).toBeInTheDocument();
+    });
   });
 
   it('should login successfully', async () => {
@@ -73,6 +79,9 @@ describe('Login page', () => {
     });
 
     await renderLogin();
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('אימייל')).toBeInTheDocument();
+    });
     fireEvent.change(screen.getByPlaceholderText('אימייל'), { target: { value: 'a@b.com' } });
     fireEvent.change(screen.getByPlaceholderText('סיסמה'), { target: { value: 'password123' } });
     fireEvent.submit(document.querySelector('form'));
@@ -89,6 +98,9 @@ describe('Login page', () => {
     });
 
     await renderLogin();
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('אימייל')).toBeInTheDocument();
+    });
     fireEvent.change(screen.getByPlaceholderText('אימייל'), { target: { value: 'a@b.com' } });
     fireEvent.change(screen.getByPlaceholderText('סיסמה'), { target: { value: 'wrong' } });
     fireEvent.submit(document.querySelector('form'));
@@ -104,7 +116,7 @@ describe('Login page', () => {
     await renderLogin();
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard', { replace: true });
     });
   });
 });

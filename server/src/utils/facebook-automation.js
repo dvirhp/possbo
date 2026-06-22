@@ -275,6 +275,30 @@ export async function scrapeMyGroups(userId) {
         seen.add(groupSlug);
 
         let name = "";
+        let image = null;
+
+        // Try to find group image - look for img near this link
+        const container = link.closest('[role="listitem"]') || link.parentElement?.parentElement?.parentElement;
+        if (container) {
+          const img = container.querySelector('image[*|href]') || container.querySelector('img[src*="scontent"]') || container.querySelector('img[src*="fbcdn"]');
+          if (img) {
+            image = img.getAttribute('xlink:href') || img.getAttribute('src') || null;
+          }
+          // Also check SVG image elements
+          if (!image) {
+            const svgImg = container.querySelector('image');
+            if (svgImg) {
+              image = svgImg.getAttribute('xlink:href') || svgImg.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || null;
+            }
+          }
+        }
+        // Fallback: check for img inside or adjacent to the link
+        if (!image) {
+          const nearbyImg = link.querySelector('img') || link.parentElement?.querySelector('img');
+          if (nearbyImg && nearbyImg.src && (nearbyImg.src.includes('scontent') || nearbyImg.src.includes('fbcdn'))) {
+            image = nearbyImg.src;
+          }
+        }
 
         // 1. aria-label on the link itself
         name = link.getAttribute("aria-label") || "";
@@ -327,6 +351,7 @@ export async function scrapeMyGroups(userId) {
         results.push({
           id: groupSlug,
           name,
+          image: image || null,
           url: `https://www.facebook.com/groups/${groupSlug}/`,
         });
       }

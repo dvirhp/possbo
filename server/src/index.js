@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import { PrismaClient } from "@prisma/client";
 import { verifyAccessToken } from "./utils/jwt.js";
 import { startScheduler, stopScheduler } from "./jobs/index.js";
@@ -9,6 +11,8 @@ import { createLogger } from "./utils/logger.js";
 
 // Initialize environment variables
 dotenv.config();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Initialize Express and Prisma
 const app = express();
@@ -20,6 +24,9 @@ const log = createLogger("server");
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+
+// Serve uploaded files
+app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 
 // JWT-based user loader - extracts user from Authorization header
 app.use(async (req, _res, next) => {

@@ -4,7 +4,7 @@ export const publishService = {
   publish: (
     groupUrl,
     text,
-    imageFile,
+    images,
     groupName,
     anonymous = false,
     location = "",
@@ -21,8 +21,13 @@ export const publishService = {
     if (location) {
       formData.append("location", location);
     }
-    if (imageFile) {
-      formData.append("image", imageFile);
+    // Support array of images or single file
+    if (Array.isArray(images)) {
+      for (const img of images) {
+        formData.append("images", img);
+      }
+    } else if (images) {
+      formData.append("images", images);
     }
     return api.post("/publish", formData, {
       headers: { "Content-Type": "multipart/form-data" },

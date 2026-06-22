@@ -17,7 +17,6 @@ model User {
   firstName            String?                  @map("first_name")
   lastName             String?                  @map("last_name")
   phone                String?
-  gender               String?
   profilePicture       String?                  @map("profile_picture_url")
   profileImage         String?                  @map("profile_image")
   facebookId           String?                  @unique @map("facebook_id")
@@ -32,6 +31,7 @@ model User {
   facebookAppSecret    String?                  @map("facebook_app_secret")
   refreshToken         String?                  @map("refresh_token")
   facebookStorageState String?                  @map("facebook_storage_state")
+  gender               String?
   auditLogs            AuditLog[]
   connectedAccounts    ConnectedAccount[]
   emailVerifications   EmailVerificationToken[]
@@ -167,21 +167,27 @@ model UserGroup {
 }
 
 model Post {
-  id           String               @id @default(uuid())
-  userId       String               @map("user_id")
-  title        String?
-  content      String
-  status       PostStatus           @default(DRAFT)
-  isAnonymous  Boolean              @default(false) @map("is_anonymous")
-  location     String?
-  createdAt    DateTime             @default(now()) @map("created_at")
-  updatedAt    DateTime             @updatedAt @map("updated_at")
-  postGroups   PostGroup[]
-  media        PostMedia[]
-  templates    PostTemplate[]
-  versions     PostVersion[]
-  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  publications PublicationHistory[]
+  id              String               @id @default(uuid())
+  userId          String               @map("user_id")
+  title           String?
+  content         String
+  status          PostStatus           @default(DRAFT)
+  isAnonymous     Boolean              @default(false) @map("is_anonymous")
+  location        String?
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  campaignType   CampaignType         @default(ONE_TIME) @map("campaign_type")
+  recurringDays  Int[]                @default([]) @map("recurring_days")
+  scheduledDates DateTime[]           @default([]) @map("scheduled_dates")
+  recurringTime  String?              @map("recurring_time")
+  isPaused       Boolean              @default(false) @map("is_paused")
+  imageUrl       String?              @map("image_url")
+  postGroups      PostGroup[]
+  media           PostMedia[]
+  templates       PostTemplate[]
+  versions        PostVersion[]
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  publications    PublicationHistory[]
 
   @@index([userId])
   @@index([status])
@@ -486,4 +492,10 @@ enum JobStatus {
 enum PublicationStatus {
   SUCCESS
   FAILED
+}
+
+enum CampaignType {
+  ONE_TIME
+  RECURRING
+  SCHEDULED
 }

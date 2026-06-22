@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authAPI } from '../services/api'
-import BackButton from '../components/BackButton'
 import '../styles/auth.css'
 
 export default function Login() {
@@ -9,12 +8,13 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
     authAPI.refresh()
-      .then(() => navigate('/dashboard'))
-      .catch(() => {})
+      .then(() => navigate('/dashboard', { replace: true }))
+      .catch(() => setCheckingAuth(false))
   }, [navigate])
 
   const handleSubmit = async (e) => {
@@ -38,9 +38,13 @@ export default function Login() {
 
   return (
     <div className="auth-container">
+      {checkingAuth ? (
+        <div className="auth-loading">
+          <div className="auth-loading-mark">P</div>
+        </div>
+      ) : (
       <div className="auth-card">
         <div className="auth-header">
-          <BackButton />
           <Link to="/" className="auth-logo">📌 PostIt</Link>
           <h2>התחברות</h2>
           <p>התחבר לחשבון שלך</p>
@@ -76,6 +80,7 @@ export default function Login() {
           <Link to="/register">הירשם</Link>
         </div>
       </div>
+      )}
     </div>
   )
 }
