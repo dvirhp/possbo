@@ -42,13 +42,13 @@ export function DataProvider({ children }) {
         fetchAll(false)
         return true
       }
-    } catch {}
+    } catch { /* ignore */ }
     setAuthChecked(true)
     return false
   }, [])
 
   const logout = useCallback(async () => {
-    try { await authAPI.logout() } catch {}
+    try { await authAPI.logout() } catch { /* ignore */ }
     setUser(null)
     setCampaigns([])
     setGroups([])

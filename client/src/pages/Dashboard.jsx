@@ -72,7 +72,7 @@ export default function Dashboard() {
       if (dateTo) params.to = dateTo
       const res = await groupsService.getStats(params)
       if (res.data.stats) setStats(res.data.stats)
-    } catch {}
+    } catch { /* ignore */ }
   }
 
   useEffect(() => {

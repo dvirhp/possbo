@@ -22,36 +22,12 @@ vi.mock("../../src/utils/posts-storage.js", () => ({
   getPostsByGroup: vi.fn(async () => []),
 }));
 
-// Mock multer - parse multipart fields manually for supertest
+// Mock multer - just pass through, let express parse body
 vi.mock("multer", () => {
+  const passthrough = (req, res, next) => next();
   const multer = () => ({
-    single: (fieldName) => (req, res, next) => {
-      const contentType = req.headers["content-type"] || "";
-      if (contentType.includes("multipart/form-data")) {
-        const boundary = contentType.split("boundary=")[1];
-        let body = "";
-        req.on("data", (chunk) => {
-          body += chunk.toString();
-        });
-        req.on("end", () => {
-          req.body = req.body || {};
-          const parts = body
-            .split("--" + boundary)
-            .filter((p) => p.trim() && p.trim() !== "--");
-          for (const part of parts) {
-            const match = part.match(
-              /name="([^"]+)"\r?\n\r?\n([\s\S]*?)(\r?\n)?$/,
-            );
-            if (match) {
-              req.body[match[1]] = match[2].trim();
-            }
-          }
-          next();
-        });
-      } else {
-        next();
-      }
-    },
+    single: () => passthrough,
+    array: () => passthrough,
   });
   multer.diskStorage = () => ({});
   return { default: multer };
@@ -78,7 +54,7 @@ describe("POST /api/publish", () => {
   it("should return 400 when groupUrl is missing", async () => {
     const res = await request(app)
       .post("/api/publish")
-      .field("text", "Hello world");
+      .send({ text: "Hello world" });
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -88,7 +64,7 @@ describe("POST /api/publish", () => {
   it("should return 400 when text is missing", async () => {
     const res = await request(app)
       .post("/api/publish")
-      .field("groupUrl", "https://facebook.com/groups/123");
+      .send({ groupUrl: "https://facebook.com/groups/123" });
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -111,8 +87,7 @@ describe("POST /api/publish", () => {
 
     const res = await request(app)
       .post("/api/publish")
-      .field("groupUrl", "https://facebook.com/groups/123")
-      .field("text", "Hello");
+      .send({ groupUrl: "https://facebook.com/groups/123", text: "Hello" });
 
     expect(res.status).toBe(428);
     expect(res.body.error).toBe("FACEBOOK_SESSION_REQUIRED");
@@ -125,8 +100,7 @@ describe("POST /api/publish", () => {
 
     const res = await request(app)
       .post("/api/publish")
-      .field("groupUrl", "https://facebook.com/groups/123")
-      .field("text", "Hello");
+      .send({ groupUrl: "https://facebook.com/groups/123", text: "Hello" });
 
     expect(res.status).toBe(500);
     expect(res.body.error).toBe("TIMEOUT");
@@ -144,16 +118,18 @@ describe("POST /api/publish", () => {
 
     const res = await request(app)
       .post("/api/publish")
-      .field("groupUrl", "https://facebook.com/groups/123")
-      .field("text", "Test post")
-      .field("groupName", "My Group");
+      .send({
+        groupUrl: "https://facebook.com/groups/123",
+        text: "Test post",
+        groupName: "My Group",
+      });
 
     expect(res.status).toBe(200);
     expect(publishToGroup).toHaveBeenCalledWith(
       "https://facebook.com/groups/123",
       "Test post",
       null,
-      { anonymous: false, location: null },
+      { anonymous: false, location: null, images: [] },
     );
     expect(savePost).toHaveBeenCalled();
   });
@@ -169,17 +145,19 @@ describe("POST /api/publish", () => {
 
     const res = await request(app)
       .post("/api/publish")
-      .field("groupUrl", "https://facebook.com/groups/123")
-      .field("text", "Anon post")
-      .field("anonymous", "true")
-      .field("location", "Tel Aviv");
+      .send({
+        groupUrl: "https://facebook.com/groups/123",
+        text: "Anon post",
+        anonymous: "true",
+        location: "Tel Aviv",
+      });
 
     expect(res.status).toBe(200);
     expect(publishToGroup).toHaveBeenCalledWith(
       "https://facebook.com/groups/123",
       "Anon post",
       null,
-      { anonymous: true, location: "Tel Aviv" },
+      { anonymous: true, location: "Tel Aviv", images: [] },
     );
   });
 
@@ -194,8 +172,7 @@ describe("POST /api/publish", () => {
 
     const res = await request(app)
       .post("/api/publish")
-      .field("groupUrl", "https://facebook.com/groups/123")
-      .field("text", "Post");
+      .send({ groupUrl: "https://facebook.com/groups/123", text: "Post" });
 
     expect(res.body.savedPost).toBeDefined();
     expect(res.body.savedPost.id).toBe("mock-id-123");
