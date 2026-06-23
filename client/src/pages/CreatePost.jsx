@@ -38,6 +38,7 @@ export default function CreatePost() {
 
   // Publishing
   const [publishing, setPublishing] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
   const [results, setResults] = useState(null)
   const [error, setError] = useState(null)
 
@@ -243,6 +244,33 @@ export default function CreatePost() {
               </div>
             ))}
           </div>
+
+          {/* Session error — offer reconnect + retry */}
+          {results.some(r => !r.success && /SESSION_REQUIRED|COMPOSER_NOT_FOUND|SESSION_EXPIRED/i.test(r.error || '')) && (
+            <div className="session-error-box">
+              <p>החיבור לפייסבוק פג תוקף. חבר מחדש ונסה שוב:</p>
+              <button
+                className="cp-btn-reconnect"
+                disabled={reconnecting}
+                onClick={async () => {
+                  setReconnecting(true)
+                  try {
+                    await groupsService.bootstrapSession()
+                    // Retry publish with same data
+                    setResults(null)
+                    setPublishing(true)
+                    await handlePublish()
+                  } catch {
+                    setReconnecting(false)
+                    alert('החיבור לא הושלם — נסה שוב')
+                  }
+                }}
+              >
+                {reconnecting ? '⏳ מתחבר...' : '🔗 חבר מחדש ופרסם'}
+              </button>
+            </div>
+          )}
+
           <div className="results-actions">
             <button onClick={() => { setResults(null); setPostText(''); setSelectedGroups([]); setPostImages([]); setPostImagePreviews([]) }} className="cp-btn-secondary">
               צור קמפיין נוסף

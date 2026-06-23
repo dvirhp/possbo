@@ -78,7 +78,7 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch {
         clearAccessToken();
-        window.location.href = "/";
+        // Don't redirect here - let React components handle auth state
         return Promise.reject(error);
       } finally {
         isRefreshing = false;

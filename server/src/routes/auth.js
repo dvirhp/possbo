@@ -33,8 +33,6 @@ router.post("/register", async (req, res) => {
       email,
       password,
       name,
-      facebookAppId,
-      facebookAppSecret,
       gender,
       phone,
     } = req.body;
@@ -49,12 +47,6 @@ router.post("/register", async (req, res) => {
         .json({ error: "Password must be at least 6 characters" });
     }
 
-    if (!facebookAppId || !facebookAppSecret) {
-      return res.status(400).json({
-        error: "Facebook App ID and App Secret are required",
-      });
-    }
-
     // Check if user already exists
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -64,10 +56,6 @@ router.post("/register", async (req, res) => {
     // Hash password (bcrypt includes salt automatically)
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // Encrypt Facebook credentials (AES-256-GCM with unique salt per value)
-    const encryptedAppId = encrypt(facebookAppId);
-    const encryptedAppSecret = encrypt(facebookAppSecret);
-
     const user = await prisma.user.create({
       data: {
         email,
@@ -75,8 +63,6 @@ router.post("/register", async (req, res) => {
         name: name || null,
         gender: gender || null,
         phone: phone || null,
-        facebookAppId: encryptedAppId,
-        facebookAppSecret: encryptedAppSecret,
       },
     });
 
@@ -211,9 +197,7 @@ router.get("/me", async (req, res) => {
     email: req.user.email,
     name: req.user.name,
     profileImage: req.user.profileImage,
-    hasFacebookCredentials: !!(
-      req.user.facebookAppId && req.user.facebookAppSecret
-    ),
+    fbSessionValid: req.user.fbSessionValid || false,
   });
 });
 

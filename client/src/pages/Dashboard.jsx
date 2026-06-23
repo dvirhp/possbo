@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
+import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
 import '../styles/dashboard.css'
 
@@ -36,7 +37,7 @@ export default function Dashboard() {
   const location = useLocation()
   const {
     user, authChecked, logout, ensureFresh, forceRefresh,
-    campaigns, groups, jobs, posts, stats,
+    campaigns, groups, jobs, posts, stats, dataReady,
     setStats, updateGroups, refreshing,
   } = useAppData()
 
@@ -47,11 +48,29 @@ export default function Dashboard() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all')
+  const [groupFilter, setGroupFilter] = useState('all')
+  const [groupFilterOpen, setGroupFilterOpen] = useState(false)
+  const [groupFilterSearch, setGroupFilterSearch] = useState('')
   const [sortBy, setSortBy] = useState('date')
 
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [refreshingGroups, setRefreshingGroups] = useState(false)
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false)
+  const [bootstrapping, setBootstrapping] = useState(false)
+  const groupFilterRef = useRef(null)
+
+  // Close group filter dropdown on outside click
+  useEffect(() => {
+    if (!groupFilterOpen) return
+    const handler = (e) => {
+      if (groupFilterRef.current && !groupFilterRef.current.contains(e.target)) {
+        setGroupFilterOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [groupFilterOpen])
 
   // Redirect if not authed
   useEffect(() => {
@@ -86,8 +105,24 @@ export default function Dashboard() {
     navigate('/')
   }
 
+  const [sessionRequired, setSessionRequired] = useState(false)
+
+  const handleBootstrap = async () => {
+    setBootstrapping(true)
+    try {
+      await groupsService.bootstrapSession()
+      window.location.reload()
+    } catch (err) {
+      setBootstrapping(false)
+      if (err.response?.data?.error === 'FACEBOOK_SESSION_NOT_COMPLETED') {
+        alert('החיבור לא הושלם — יש להתחבר לפייסבוק בדפדפן שנפתח')
+      }
+    }
+  }
+
   const handleRefreshGroups = async () => {
     setRefreshingGroups(true)
+    setSessionRequired(false)
     try {
       const res = await groupsService.scrapeMyGroups()
       if (res.data.success && res.data.groups) {
@@ -98,8 +133,10 @@ export default function Dashboard() {
           url: g.url || `https://www.facebook.com/groups/${g.id}`,
         })))
       }
-    } catch {
-      // silent
+    } catch (err) {
+      if (err.response?.status === 428) {
+        setSessionRequired(true)
+      }
     } finally {
       setRefreshingGroups(false)
     }
@@ -109,8 +146,21 @@ export default function Dashboard() {
   useEffect(() => {
     setSearch('')
     setStatusFilter('all')
+    setGroupFilter('all')
+    setGroupFilterOpen(false)
+    setGroupFilterSearch('')
     setSortBy('date')
+    setFilterSheetOpen(false)
   }, [activeTab])
+
+  const hasActiveFilters = statusFilter !== 'all' || groupFilter !== 'all' || sortBy !== 'date'
+
+  const resetFilters = () => {
+    setStatusFilter('all')
+    setGroupFilter('all')
+    setSortBy('date')
+    setFilterSheetOpen(false)
+  }
 
   const filteredJobs = useMemo(() => {
     let list = jobs
@@ -176,11 +226,20 @@ export default function Dashboard() {
     if (statusFilter !== 'all') {
       list = list.filter(p => p.status === statusFilter)
     }
+    if (groupFilter !== 'all') {
+      list = list.filter(p => p.group?.name === groupFilter)
+    }
     if (sortBy === 'date') {
       list = [...list].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
     }
     return list
-  }, [posts, search, statusFilter, sortBy])
+  }, [posts, search, statusFilter, groupFilter, sortBy])
+
+  // Unique group names from posts for the group filter
+  const postGroupNames = useMemo(() => {
+    const names = [...new Set(posts.map(p => p.group?.name).filter(Boolean))]
+    return names.sort((a, b) => a.localeCompare(b))
+  }, [posts])
 
   const tabCounts = {
     campaigns: campaigns.length,
@@ -281,14 +340,23 @@ export default function Dashboard() {
 
         {/* Content */}
         <div className="dash-body">
-          {!authChecked ? (
+          {(!authChecked || !dataReady) ? (
             <div className="dash-loader">
               <div className="loader-pulse"><div/><div/><div/></div>
             </div>
           ) : (
             <>
-              {/* KPIs */}
-              {activeTab === 'campaigns' && (
+              {/* Facebook session banner */}
+              {user && !user.fbSessionValid && (
+                <div className="session-banner">
+                  <span>⚠️ חשבון הפייסבוק לא מחובר — פוסטים מתוזמנים לא יפורסמו</span>
+                  <button className="session-banner-btn" disabled={bootstrapping} onClick={handleBootstrap}>
+                    {bootstrapping ? '⏳ ממתין לחיבור...' : '🔗 חבר עכשיו'}
+                  </button>
+                </div>
+              )}
+              {/* KPIs — always visible except stats/settings */}
+              {activeTab !== 'settings' && activeTab !== 'stats' && (
                 <section className="kpi-row">
                   <div className="kpi-card kpi-clickable" onClick={() => setActiveTab('campaigns')}>
                     <div className="kpi-card-icon kpi-indigo">
@@ -344,8 +412,20 @@ export default function Dashboard() {
                     )}
                   </div>
 
+                  {/* Mobile filter button */}
+                  <button
+                    className={`filter-sheet-trigger ${hasActiveFilters ? 'active' : ''}`}
+                    onClick={() => setFilterSheetOpen(true)}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                    </svg>
+                    סינון
+                    {hasActiveFilters && <span className="filter-badge-dot" />}
+                  </button>
+
+                  {/* Desktop filter controls (hidden on mobile) */}
                   <div className="filter-bar-controls">
-                    {/* Status filter for campaigns */}
                     {activeTab === 'campaigns' && (
                       <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
                         <option value="all">כל הסטטוסים</option>
@@ -358,7 +438,6 @@ export default function Dashboard() {
                       </select>
                     )}
 
-                    {/* Status filter for posts */}
                     {activeTab === 'posts' && (
                       <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
                         <option value="all">כל הסטטוסים</option>
@@ -368,7 +447,50 @@ export default function Dashboard() {
                       </select>
                     )}
 
-                    {/* Sort */}
+                    {activeTab === 'posts' && postGroupNames.length > 0 && (
+                      <div className="group-filter-wrap" ref={groupFilterRef}>
+                        <button
+                          className={`filter-select group-filter-btn ${groupFilter !== 'all' ? 'active' : ''}`}
+                          onClick={() => setGroupFilterOpen(!groupFilterOpen)}
+                        >
+                          {groupFilter === 'all' ? '👥 כל הקבוצות' : `👥 ${groupFilter}`}
+                        </button>
+                        {groupFilterOpen && (
+                          <div className="group-filter-dropdown">
+                            <div className="group-filter-search">
+                              <input
+                                type="text"
+                                placeholder="חפש קבוצה..."
+                                value={groupFilterSearch}
+                                onChange={e => setGroupFilterSearch(e.target.value)}
+                                autoFocus
+                              />
+                            </div>
+                            <div className="group-filter-list">
+                              <button
+                                className={`group-filter-item ${groupFilter === 'all' ? 'active' : ''}`}
+                                onClick={() => { setGroupFilter('all'); setGroupFilterOpen(false); setGroupFilterSearch('') }}
+                              >
+                                כל הקבוצות
+                              </button>
+                              {postGroupNames
+                                .filter(name => !groupFilterSearch || name.toLowerCase().includes(groupFilterSearch.toLowerCase()))
+                                .map(name => (
+                                  <button
+                                    key={name}
+                                    className={`group-filter-item ${groupFilter === name ? 'active' : ''}`}
+                                    onClick={() => { setGroupFilter(name); setGroupFilterOpen(false); setGroupFilterSearch('') }}
+                                  >
+                                    {name}
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="filter-select">
                       <option value="date">מיון לפי תאריך</option>
                       <option value="name">מיון לפי שם</option>
@@ -378,10 +500,117 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* ─── MOBILE FILTER SHEET ─── */}
+              {filterSheetOpen && (
+                <>
+                  <div className="filter-sheet-overlay" onClick={() => setFilterSheetOpen(false)} />
+                  <div className="filter-sheet">
+                    <div className="filter-sheet-handle" />
+                    <h3 className="filter-sheet-title">סינון ומיון</h3>
+
+                    {/* Status filter */}
+                    {(activeTab === 'campaigns' || activeTab === 'posts') && (
+                      <div className="filter-sheet-section">
+                        <label className="filter-sheet-label">סטטוס</label>
+                        <div className="filter-sheet-chips">
+                          {activeTab === 'campaigns' && [
+                            { value: 'all', label: 'הכל' },
+                            { value: 'scheduled', label: 'מתוזמן' },
+                            { value: 'recurring', label: 'חוזר' },
+                            { value: 'paused', label: 'מושהה' },
+                            { value: 'active', label: 'פעיל' },
+                            { value: 'one-time', label: 'חד-פעמי' },
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              className={`filter-chip ${statusFilter === opt.value ? 'active' : ''}`}
+                              onClick={() => setStatusFilter(opt.value)}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                          {activeTab === 'posts' && [
+                            { value: 'all', label: 'הכל' },
+                            { value: 'SUCCESS', label: 'פורסם' },
+                            { value: 'FAILED', label: 'נכשל' },
+                            { value: 'PENDING', label: 'ממתין' },
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              className={`filter-chip ${statusFilter === opt.value ? 'active' : ''}`}
+                              onClick={() => setStatusFilter(opt.value)}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Group filter for posts */}
+                    {activeTab === 'posts' && postGroupNames.length > 0 && (
+                      <div className="filter-sheet-section">
+                        <label className="filter-sheet-label">קבוצה</label>
+                        <div className="filter-sheet-group-search">
+                          <input
+                            type="text"
+                            placeholder="חפש קבוצה..."
+                            value={groupFilterSearch}
+                            onChange={e => setGroupFilterSearch(e.target.value)}
+                          />
+                        </div>
+                        <div className="filter-sheet-chips filter-sheet-groups">
+                          <button
+                            className={`filter-chip ${groupFilter === 'all' ? 'active' : ''}`}
+                            onClick={() => { setGroupFilter('all'); setGroupFilterSearch('') }}
+                          >
+                            כל הקבוצות
+                          </button>
+                          {postGroupNames
+                            .filter(name => !groupFilterSearch || name.toLowerCase().includes(groupFilterSearch.toLowerCase()))
+                            .map(name => (
+                              <button
+                                key={name}
+                                className={`filter-chip ${groupFilter === name ? 'active' : ''}`}
+                                onClick={() => { setGroupFilter(name); setGroupFilterSearch('') }}
+                              >
+                                {name}
+                              </button>
+                            ))
+                          }
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sort */}
+                    <div className="filter-sheet-section">
+                      <label className="filter-sheet-label">מיון</label>
+                      <div className="filter-sheet-chips">
+                        <button className={`filter-chip ${sortBy === 'date' ? 'active' : ''}`} onClick={() => setSortBy('date')}>תאריך</button>
+                        <button className={`filter-chip ${sortBy === 'name' ? 'active' : ''}`} onClick={() => setSortBy('name')}>שם</button>
+                        {activeTab === 'groups' && (
+                          <button className={`filter-chip ${sortBy === 'members' ? 'active' : ''}`} onClick={() => setSortBy('members')}>חברים</button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="filter-sheet-actions">
+                      <button className="filter-sheet-reset" onClick={resetFilters}>
+                        אפס סינון
+                      </button>
+                      <button className="filter-sheet-apply" onClick={() => setFilterSheetOpen(false)}>
+                        החל
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
               {/* Panel */}
               <div className="dash-panel">
                 {activeTab === 'campaigns' && <CampaignsPanel campaigns={filteredCampaigns} navigate={navigate} />}
-                {activeTab === 'groups' && <GroupsPanel groups={filteredGroups} navigate={navigate} onRefresh={handleRefreshGroups} refreshing={refreshingGroups} />}
+                {activeTab === 'groups' && <GroupsPanel groups={filteredGroups} navigate={navigate} onRefresh={handleRefreshGroups} refreshing={refreshingGroups} sessionRequired={sessionRequired} />}
                 {activeTab === 'posts' && <PostsPanel posts={filteredPosts} navigate={navigate} />}
                 {activeTab === 'stats' && (
                   <StatsPanel stats={stats} dateFrom={dateFrom} dateTo={dateTo}
@@ -479,12 +708,6 @@ function CampaignsPanel({ campaigns, navigate }) {
             </h4>
 
             <div className="campaign-card-meta">
-              <span className="campaign-date">
-                {new Date(campaign.createdAt).toLocaleDateString('he-IL', {
-                  day: 'numeric', month: 'short', year: 'numeric'
-                })}
-              </span>
-
               <span
                 className="campaign-groups-count"
                 onMouseEnter={() => setTooltipId(campaign.id)}
@@ -498,6 +721,12 @@ function CampaignsPanel({ campaigns, navigate }) {
                     ))}
                   </div>
                 )}
+              </span>
+
+              <span className="campaign-date">
+                {new Date(campaign.createdAt).toLocaleDateString('he-IL', {
+                  day: 'numeric', month: 'short', year: 'numeric'
+                })}
               </span>
             </div>
 
@@ -519,7 +748,19 @@ function CampaignsPanel({ campaigns, navigate }) {
   )
 }
 
-function GroupsPanel({ groups, navigate, onRefresh, refreshing }) {
+function GroupsPanel({ groups, navigate, onRefresh, refreshing, sessionRequired }) {
+  if (sessionRequired) return (
+    <div className="empty-state">
+      <div className="empty-icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+        </svg>
+      </div>
+      <h3>נדרש חיבור לפייסבוק</h3>
+      <p>חבר את חשבון הפייסבוק שלך מהבאנר למעלה כדי לסנכרן קבוצות</p>
+    </div>
+  )
+
   if (!groups.length) return (
     <div className="empty-state">
       <div className="empty-icon-wrap">
@@ -582,37 +823,28 @@ function PostsPanel({ posts, navigate }) {
   )
 
   return (
-    <div className="data-table">
-      <div className="table-head">
-        <div className="th col-screenshot">צילום</div>
-        <div className="th col-name">תוכן</div>
-        <div className="th col-group">קבוצה</div>
-        <div className="th col-status">סטטוס</div>
-        <div className="th col-date">תאריך</div>
-      </div>
+    <div className="posts-list">
       {posts.map(item => (
-        <div key={item.id} className="table-row" onClick={() => navigate(`/post/${item.post?.id || item.id}`)}>
-          <div className="td col-screenshot">
-            {item.hasScreenshot && item.screenshotUrl && item.screenshotUrl !== 'stored'
-              ? <img src={`data:image/png;base64,${item.screenshotUrl}`} alt="" className="post-screenshot-thumb" />
-              : <div className="post-screenshot-placeholder">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                  </svg>
-                </div>
-            }
+        <div key={item.id} className="post-card" onClick={() => navigate(`/post/${item.post?.id || item.id}`)}>
+          <div className="post-card-top">
+            <div className="post-card-thumb">
+              {item.hasScreenshot && item.screenshotUrl && item.screenshotUrl !== 'stored'
+                ? <img src={`data:image/png;base64,${item.screenshotUrl}`} alt="" />
+                : <div className="post-card-thumb-placeholder">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </div>
+              }
+            </div>
+            <div className="post-card-content">
+              <p className="post-card-text">{item.post?.content?.slice(0, 80) || '—'}</p>
+            </div>
           </div>
-          <div className="td col-name">
-            <span className="td-primary">{item.post?.content?.slice(0, 60) || '—'}</span>
-          </div>
-          <div className="td col-group">
-            <span className="group-chip">{item.group?.name || '—'}</span>
-          </div>
-          <div className="td col-status">
-            <span className="badge badge-success">✓ פורסם</span>
-          </div>
-          <div className="td col-date">
-            <span className="td-date">{item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('he-IL') : '—'}</span>
+          <div className="post-card-meta">
+            <span className="post-card-group">👥 {item.group?.name || '—'}</span>
+            <span className="post-card-status badge-success">✓ פורסם</span>
+            <span className="post-card-date">{item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('he-IL') : '—'}</span>
           </div>
         </div>
       ))}
@@ -688,6 +920,7 @@ function StatsPanel({ stats, dateFrom, dateTo, setDateFrom, setDateTo, onFilter 
 }
 
 function SettingsPanel({ user }) {
+  const { theme, setTheme } = useTheme()
   return (
     <div className="settings-card">
       <div className="settings-header">
@@ -707,6 +940,29 @@ function SettingsPanel({ user }) {
           <span className={`settings-val ${user?.hasFacebookCredentials ? 'val-ok' : 'val-err'}`}>
             {user?.hasFacebookCredentials ? '✓ מחובר' : '✗ לא מחובר'}
           </span>
+        </div>
+      </div>
+
+      <div className="settings-header" style={{ marginTop: 24 }}>
+        <h3>מראה</h3>
+      </div>
+      <div className="settings-body">
+        <div className="settings-row">
+          <span className="settings-key">ערכת נושא</span>
+          <div className="theme-toggle">
+            <button
+              className={`theme-toggle-btn ${theme === 'dark' ? 'active' : ''}`}
+              onClick={() => setTheme('dark')}
+            >
+              🌙 כהה
+            </button>
+            <button
+              className={`theme-toggle-btn ${theme === 'light' ? 'active' : ''}`}
+              onClick={() => setTheme('light')}
+            >
+              ☀️ בהיר
+            </button>
+          </div>
         </div>
       </div>
     </div>

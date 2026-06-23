@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authAPI } from '../services/api'
+import { useAppData } from '../context/DataProvider'
 import '../styles/auth.css'
 
 export default function Register() {
@@ -9,18 +10,21 @@ export default function Register() {
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
   const [phone, setPhone] = useState('')
-  const [facebookAppId, setFacebookAppId] = useState('')
-  const [facebookAppSecret, setFacebookAppSecret] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
   const navigate = useNavigate()
+  const { checkAuth, setUser, user, authChecked } = useAppData()
 
+  // Wait for DataProvider's initial auth check
   useEffect(() => {
-    authAPI.refresh()
-      .then(() => navigate('/dashboard', { replace: true }))
-      .catch(() => setCheckingAuth(false))
-  }, [navigate])
+    if (!authChecked) return
+    if (user) {
+      navigate('/dashboard', { replace: true })
+    } else {
+      setCheckingAuth(false)
+    }
+  }, [authChecked, user, navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -32,15 +36,17 @@ export default function Register() {
       setError('סיסמה חייבת להכיל לפחות 6 תווים')
       return
     }
-    if (!facebookAppId || !facebookAppSecret) {
-      setError('יש להזין Facebook App ID ו-App Secret')
-      return
-    }
     setLoading(true)
     setError(null)
     try {
-      await authAPI.register(email, password, name, facebookAppId, facebookAppSecret, gender, phone)
-      navigate('/dashboard')
+      const res = await authAPI.register(email, password, name, gender, phone)
+      if (res.data?.user) {
+        setUser(res.data.user)
+        setTimeout(() => navigate('/dashboard'), 0)
+      } else {
+        await checkAuth()
+        navigate('/dashboard')
+      }
     } catch (err) {
       const msg = err.response?.data?.error || err.message
       setError(msg)
@@ -57,6 +63,7 @@ export default function Register() {
         </div>
       ) : (
       <div className="auth-card">
+        <Link to="/" className="auth-back-btn">←</Link>
         <div className="auth-header">
           <Link to="/" className="auth-logo">📌 PostIt</Link>
           <h2>הרשמה</h2>
@@ -106,27 +113,6 @@ export default function Register() {
               <option value="female">נקבה</option>
             </select>
           </div>
-
-          <div className="auth-section-divider">
-            <span>פרטי פייסבוק</span>
-          </div>
-
-          <input
-            type="text"
-            className="auth-input"
-            placeholder="Facebook App ID *"
-            value={facebookAppId}
-            onChange={(e) => setFacebookAppId(e.target.value)}
-            required
-          />
-          <input
-            type="password"
-            className="auth-input"
-            placeholder="Facebook App Secret *"
-            value={facebookAppSecret}
-            onChange={(e) => setFacebookAppSecret(e.target.value)}
-            required
-          />
 
           {error && <div className="auth-error">{error}</div>}
 

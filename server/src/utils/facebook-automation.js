@@ -59,19 +59,13 @@ async function saveUserStorageState(userId, storageState) {
 }
 
 /**
- * Get storage state - either from DB (per user) or legacy file.
+ * Get storage state - from DB (per user) only.
  * Returns the storage state object or throws FACEBOOK_SESSION_REQUIRED.
  */
 async function getStorageState(userId) {
   if (userId) {
     const state = await loadUserStorageState(userId);
     if (state) return state;
-  }
-
-  // Fallback to legacy file
-  if (fs.existsSync(LEGACY_STORAGE_STATE_PATH)) {
-    const content = fs.readFileSync(LEGACY_STORAGE_STATE_PATH, "utf-8");
-    return JSON.parse(content);
   }
 
   throw new Error("FACEBOOK_SESSION_REQUIRED");
@@ -125,16 +119,12 @@ export async function bootstrapFacebookSession(userId) {
       timeout: 30000,
     });
 
-    const maxWaitMs = 180000;
+    const maxWaitMs = 300000; // 5 minutes for checkpoint/2FA
     const startedAt = Date.now();
     let loggedIn = false;
 
     while (Date.now() - startedAt < maxWaitMs) {
-      try {
-        await page.waitForTimeout(2000);
-      } catch {
-        break;
-      }
+      await page.waitForTimeout(3000);
 
       try {
         if (await hasFacebookLoginCookies(context)) {
@@ -144,25 +134,23 @@ export async function bootstrapFacebookSession(userId) {
 
         const currentPages = context.pages();
         for (const currentPage of currentPages) {
-          const url = currentPage.url();
-          if (/facebook\.com/i.test(url) && !/login|checkpoint/i.test(url)) {
-            const bodyText = (
-              (await currentPage.textContent("body")) || ""
-            ).trim();
-            if (!isLikelyLoggedOut(bodyText)) {
-              loggedIn = true;
-              break;
+          try {
+            const url = currentPage.url();
+            if (/facebook\.com/i.test(url) && !/login|checkpoint/i.test(url)) {
+              if (await hasFacebookLoginCookies(context)) {
+                loggedIn = true;
+                break;
+              }
             }
+          } catch {
+            // Page may have been closed/navigated — skip
           }
         }
       } catch {
-        break;
+        // Context still alive, just retry
       }
 
-      if (loggedIn) {
-        loggedIn = true;
-        break;
-      }
+      if (loggedIn) break;
     }
 
     if (!loggedIn) {
@@ -175,6 +163,11 @@ export async function bootstrapFacebookSession(userId) {
     if (userId) {
       // Save to DB per user (encrypted)
       await saveUserStorageState(userId, storageState);
+      // Mark session as valid
+      await prisma.user.update({
+        where: { id: userId },
+        data: { fbSessionValid: true },
+      });
       log.info("Storage state saved to DB for user:", userId);
     }
 
@@ -197,7 +190,7 @@ export async function scrapeMyGroups(userId) {
   const storageState = await getStorageState(userId);
 
   const browser = await chromium.launch({
-    headless: false,
+    headless: true,
     args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
   });
 
@@ -484,7 +477,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
   const storageState = await getStorageState(userId);
 
   const browser = await chromium.launch({
-    headless: false,
+    headless: true,
     args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
   });
 

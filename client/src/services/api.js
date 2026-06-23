@@ -9,21 +9,11 @@ const api = axios.create({
 });
 
 export const authAPI = {
-  register: async (
-    email,
-    password,
-    name,
-    facebookAppId,
-    facebookAppSecret,
-    gender,
-    phone,
-  ) => {
+  register: async (email, password, name, gender, phone) => {
     const res = await http.post("/auth/register", {
       email,
       password,
       name,
-      facebookAppId,
-      facebookAppSecret,
       gender,
       phone,
     });

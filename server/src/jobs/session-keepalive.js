@@ -92,7 +92,7 @@ export async function runSessionKeepAlive() {
         const encryptedState = encrypt(JSON.stringify(result.newState));
         await prisma.user.update({
           where: { id: user.id },
-          data: { facebookStorageState: encryptedState },
+          data: { facebookStorageState: encryptedState, fbSessionValid: true },
         });
         refreshed++;
         log.info("Session refreshed successfully", { userId: user.id });
@@ -114,7 +114,7 @@ export async function runSessionKeepAlive() {
         // Mark user's storage state as null so system knows it's expired
         await prisma.user.update({
           where: { id: user.id },
-          data: { facebookStorageState: null },
+          data: { facebookStorageState: null, fbSessionValid: false },
         });
       }
 

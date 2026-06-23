@@ -77,6 +77,7 @@ router.post(
           anonymous: isAnonymous,
           location: sanitizedLocation,
           images: imagePaths,
+          userId: req.user.id,
         },
       );
 
