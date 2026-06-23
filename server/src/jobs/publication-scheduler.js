@@ -138,7 +138,27 @@ export async function processPublicationJobs() {
       const newAttempts = job.attempts + 1;
       const isSessionError =
         errorMsg === "SESSION_EXPIRED" ||
-        errorMsg === "FACEBOOK_SESSION_REQUIRED";
+        errorMsg === "FACEBOOK_SESSION_REQUIRED" ||
+        errorMsg === "POST_COMPOSER_NOT_FOUND";
+
+      if (isSessionError) {
+        // Mark user's session as invalid
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { fbSessionValid: false, facebookStorageState: null },
+        });
+
+        // Cancel all other pending jobs for this user — no point retrying without a session
+        await prisma.publicationJob.updateMany({
+          where: {
+            status: "PENDING",
+            postGroup: { userId: user.id },
+            id: { not: job.id },
+          },
+          data: { status: "CANCELLED", lastError: "Session expired — reconnect Facebook" },
+        });
+        log.warn("Cancelled all pending jobs for user due to session error", { userId: user.id });
+      }
 
       if (newAttempts >= job.maxAttempts || isSessionError) {
         // Max retries reached or session expired — mark as failed

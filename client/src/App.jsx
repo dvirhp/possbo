@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { DataProvider } from './context/DataProvider'
+import { ThemeProvider } from './context/ThemeProvider'
 import TopLoader from './components/TopLoader'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
@@ -13,6 +14,7 @@ import './App.css'
 
 function App() {
   return (
+    <ThemeProvider>
     <DataProvider>
       <Router>
         <TopLoader />
@@ -29,6 +31,7 @@ function App() {
         </Routes>
       </Router>
     </DataProvider>
+    </ThemeProvider>
   )
 }
 

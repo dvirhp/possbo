@@ -21,8 +21,10 @@ export function DataProvider({ children }) {
 
   // Background refresh state
   const [refreshing, setRefreshing] = useState(false)
+  const [dataReady, setDataReady] = useState(false)
   const lastFetchRef = useRef({})
   const fetchInProgressRef = useRef(false)
+  const userRef = useRef(null)
 
   // Check auth on mount
   useEffect(() => {
@@ -31,15 +33,11 @@ export function DataProvider({ children }) {
 
   const checkAuth = useCallback(async () => {
     try {
-      const [, meRes] = await Promise.all([
-        authAPI.refresh(),
-        authAPI.getMe().catch(() => null),
-      ])
+      await authAPI.refresh()
+      const meRes = await authAPI.getMe()
       if (meRes?.data) {
         setUser(meRes.data)
         setAuthChecked(true)
-        // Load data after auth
-        fetchAll(false)
         return true
       }
     } catch { /* ignore */ }
@@ -58,13 +56,16 @@ export function DataProvider({ children }) {
     lastFetchRef.current = {}
   }, [])
 
+  // Keep userRef in sync
+  useEffect(() => { userRef.current = user }, [user])
+
   // Fetch all data - silent=true means background refresh (no loading state)
   const fetchAll = useCallback(async (silent = true) => {
     if (fetchInProgressRef.current) return
+    if (!userRef.current) return // Don't fetch if not authenticated
     fetchInProgressRef.current = true
 
-    if (!silent) setRefreshing(true)
-    else setRefreshing(true) // always show subtle indicator
+    setRefreshing(true)
 
     try {
       const [jobsRes, groupsRes, historyRes, statsRes, campaignsRes] = await Promise.all([
@@ -84,15 +85,29 @@ export function DataProvider({ children }) {
       // silent
     } finally {
       setRefreshing(false)
+      setDataReady(true)
       fetchInProgressRef.current = false
     }
   }, [])
 
+  // Auto-fetch data when user becomes set
+  useEffect(() => {
+    if (user && !lastFetchRef.current.all) {
+      userRef.current = user // Ensure ref is up to date before fetchAll
+      fetchAll(true)
+    }
+  }, [user, fetchAll])
+
   // Refresh if data is stale (called on page navigation)
   const ensureFresh = useCallback(() => {
+    if (!userRef.current) return
     const last = lastFetchRef.current.all || 0
     if (Date.now() - last > CACHE_TTL) {
       fetchAll(true)
+      // Also refresh user info (fbSessionValid might have changed)
+      authAPI.getMe().then(res => {
+        if (res?.data) setUser(res.data)
+      }).catch(() => {})
     }
   }, [fetchAll])
 
@@ -120,6 +135,7 @@ export function DataProvider({ children }) {
     stats,
     // Actions
     refreshing,
+    dataReady,
     ensureFresh,
     forceRefresh,
     fetchAll,

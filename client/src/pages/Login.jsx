@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authAPI } from '../services/api'
+import { useAppData } from '../context/DataProvider'
 import '../styles/auth.css'
 
 export default function Login() {
@@ -10,12 +11,17 @@ export default function Login() {
   const [error, setError] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
   const navigate = useNavigate()
+  const { checkAuth, setUser, user, authChecked } = useAppData()
 
+  // Wait for DataProvider's initial auth check
   useEffect(() => {
-    authAPI.refresh()
-      .then(() => navigate('/dashboard', { replace: true }))
-      .catch(() => setCheckingAuth(false))
-  }, [navigate])
+    if (!authChecked) return
+    if (user) {
+      navigate('/dashboard', { replace: true })
+    } else {
+      setCheckingAuth(false)
+    }
+  }, [authChecked, user, navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -26,8 +32,15 @@ export default function Login() {
     setLoading(true)
     setError(null)
     try {
-      await authAPI.login(email, password)
-      navigate('/dashboard')
+      const res = await authAPI.login(email, password)
+      if (res.data?.user) {
+        setUser(res.data.user)
+        // Wait for state to propagate before navigating
+        setTimeout(() => navigate('/dashboard'), 0)
+      } else {
+        await checkAuth()
+        navigate('/dashboard')
+      }
     } catch (err) {
       const msg = err.response?.data?.error || err.message
       setError(msg)
@@ -44,6 +57,7 @@ export default function Login() {
         </div>
       ) : (
       <div className="auth-card">
+        <Link to="/" className="auth-back-btn">←</Link>
         <div className="auth-header">
           <Link to="/" className="auth-logo">📌 PostIt</Link>
           <h2>התחברות</h2>

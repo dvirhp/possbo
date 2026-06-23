@@ -644,6 +644,33 @@
   text-decoration: none;
 }
 
+.session-error-box {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 16px 0;
+  text-align: center;
+}
+.session-error-box p {
+  color: #fbbf24;
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+}
+.cp-btn-reconnect {
+  background: #fbbf24;
+  color: #1c1f26;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.cp-btn-reconnect:hover { opacity: 0.85; }
+.cp-btn-reconnect:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .results-actions {
   display: flex;
   gap: 12px;
