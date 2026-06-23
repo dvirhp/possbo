@@ -8,27 +8,37 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-const mockRefresh = vi.fn();
-const mockGetMe = vi.fn();
 const mockLogout = vi.fn();
-vi.mock('../../services/api.js', () => ({
-  authAPI: {
-    refresh: (...args) => mockRefresh(...args),
-    getMe: (...args) => mockGetMe(...args),
-    logout: (...args) => mockLogout(...args),
-  },
+const mockEnsureFresh = vi.fn();
+const mockForceRefresh = vi.fn();
+const mockUpdateGroups = vi.fn();
+
+const mockAppData = {
+  user: { id: '1', email: 'a@b.com', name: 'דביר' },
+  authChecked: true,
+  logout: mockLogout,
+  ensureFresh: mockEnsureFresh,
+  forceRefresh: mockForceRefresh,
+  campaigns: [],
+  groups: [],
+  jobs: [],
+  posts: [],
+  stats: { scheduledCount: 0, groupsCount: 0, publishedCount: 0, groupStats: [] },
+  setStats: vi.fn(),
+  updateGroups: mockUpdateGroups,
+  refreshing: false,
+};
+
+vi.mock('../../context/DataProvider', () => ({
+  useAppData: () => mockAppData,
 }));
 
-const mockGetJobs = vi.fn();
-const mockGetSavedGroups = vi.fn();
-const mockGetPublicationHistory = vi.fn();
-const mockGetStats = vi.fn();
 vi.mock('../../services/groupsService.js', () => ({
   groupsService: {
-    getJobs: (...args) => mockGetJobs(...args),
-    getSavedGroups: (...args) => mockGetSavedGroups(...args),
-    getPublicationHistory: (...args) => mockGetPublicationHistory(...args),
-    getStats: (...args) => mockGetStats(...args),
+    getJobs: vi.fn().mockResolvedValue({ data: { success: true, jobs: [] } }),
+    getSavedGroups: vi.fn().mockResolvedValue({ data: { success: true, groups: [] } }),
+    getPublicationHistory: vi.fn().mockResolvedValue({ data: { success: true, history: [] } }),
+    getStats: vi.fn().mockResolvedValue({ data: { success: true, stats: {} } }),
   },
 }));
 
@@ -48,33 +58,25 @@ vi.mock('../../services/http.js', () => ({
 
 vi.mock('../../styles/dashboard.css', () => ({}));
 
+import Dashboard from '../../pages/Dashboard.jsx';
+
 describe('Dashboard page', () => {
   beforeEach(() => {
     mockNavigate.mockClear();
-    mockRefresh.mockClear();
-    mockGetMe.mockClear();
     mockLogout.mockClear();
-    mockGetJobs.mockClear();
-    mockGetSavedGroups.mockClear();
-    mockGetPublicationHistory.mockClear();
-    mockGetStats.mockClear();
-
-    // Default: authenticated
-    mockRefresh.mockResolvedValue({ data: { accessToken: 'tok' } });
-    mockGetMe.mockResolvedValue({
-      data: { id: '1', email: 'a@b.com', name: 'דביר' },
-    });
-    mockGetJobs.mockResolvedValue({ data: { success: true, jobs: [] } });
-    mockGetSavedGroups.mockResolvedValue({ data: { success: true, groups: [] } });
-    mockGetPublicationHistory.mockResolvedValue({ data: { success: true, history: [] } });
-    mockGetStats.mockResolvedValue({
-      data: { success: true, stats: { scheduledCount: 0, groupsCount: 0, publishedCount: 0, groupStats: [] } },
-    });
+    mockEnsureFresh.mockClear();
+    mockForceRefresh.mockClear();
+    // Reset to authenticated state
+    mockAppData.user = { id: '1', email: 'a@b.com', name: 'דביר' };
+    mockAppData.authChecked = true;
+    mockAppData.campaigns = [];
+    mockAppData.groups = [];
+    mockAppData.jobs = [];
+    mockAppData.posts = [];
+    mockAppData.stats = { scheduledCount: 0, groupsCount: 0, publishedCount: 0, groupStats: [] };
   });
 
-  const renderDashboard = async () => {
-    vi.resetModules();
-    const Dashboard = (await import('../../pages/Dashboard.jsx')).default;
+  const renderDashboard = () => {
     render(
       <MemoryRouter>
         <Dashboard />
@@ -83,10 +85,10 @@ describe('Dashboard page', () => {
   };
 
   it('should redirect to login when not authenticated', async () => {
-    mockRefresh.mockRejectedValue(new Error('No token'));
-    mockGetMe.mockRejectedValue(new Error('No token'));
+    mockAppData.user = null;
+    mockAppData.authChecked = true;
 
-    await renderDashboard();
+    renderDashboard();
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/login');
@@ -94,7 +96,7 @@ describe('Dashboard page', () => {
   });
 
   it('should render welcome message and logout', async () => {
-    await renderDashboard();
+    renderDashboard();
 
     await waitFor(() => {
       expect(screen.getByText(/דביר/)).toBeInTheDocument();
@@ -103,15 +105,15 @@ describe('Dashboard page', () => {
   });
 
   it('should render create campaign button', async () => {
-    await renderDashboard();
+    renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getByText(/קמפיין חדש/)).toBeInTheDocument();
+      expect(screen.getAllByText(/קמפיין חדש/).length).toBeGreaterThanOrEqual(1);
     });
   });
 
   it('should render all 5 tabs', async () => {
-    await renderDashboard();
+    renderDashboard();
 
     await waitFor(() => {
       expect(screen.getAllByText('קמפיינים').length).toBeGreaterThanOrEqual(1);
@@ -123,15 +125,15 @@ describe('Dashboard page', () => {
   });
 
   it('should show empty campaigns state', async () => {
-    await renderDashboard();
+    renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getByText('אין קמפיינים מתוזמנים')).toBeInTheDocument();
+      expect(screen.getByText('אין קמפיינים')).toBeInTheDocument();
     });
   });
 
   it('should switch to groups tab and show empty state', async () => {
-    await renderDashboard();
+    renderDashboard();
 
     await waitFor(() => {
       expect(screen.getAllByText('קבוצות').length).toBeGreaterThanOrEqual(1);
@@ -144,11 +146,9 @@ describe('Dashboard page', () => {
   });
 
   it('should show groups when available', async () => {
-    mockGetSavedGroups.mockResolvedValue({
-      data: { success: true, groups: [{ id: '1', name: 'קבוצת טסט', image: null }] },
-    });
+    mockAppData.groups = [{ id: '1', name: 'קבוצת טסט', image: null }];
 
-    await renderDashboard();
+    renderDashboard();
 
     await waitFor(() => {
       expect(screen.getAllByText('קבוצות').length).toBeGreaterThanOrEqual(1);
@@ -161,20 +161,15 @@ describe('Dashboard page', () => {
   });
 
   it('should show posts when switching to posts tab', async () => {
-    mockGetPublicationHistory.mockResolvedValue({
-      data: {
-        success: true,
-        history: [{
-          id: '1',
-          group: { name: 'קבוצת פרסום' },
-          status: 'SUCCESS',
-          post: { id: 'p1', content: 'תוכן הפוסט' },
-          publishedAt: '2026-06-21T10:00:00Z',
-        }],
-      },
-    });
+    mockAppData.posts = [{
+      id: '1',
+      group: { name: 'קבוצת פרסום' },
+      status: 'SUCCESS',
+      post: { id: 'p1', content: 'תוכן הפוסט' },
+      publishedAt: '2026-06-21T10:00:00Z',
+    }];
 
-    await renderDashboard();
+    renderDashboard();
 
     await waitFor(() => {
       expect(screen.getAllByText('פרסומים').length).toBeGreaterThanOrEqual(1);
@@ -188,9 +183,9 @@ describe('Dashboard page', () => {
   });
 
   it('should logout and navigate to landing', async () => {
-    mockLogout.mockResolvedValue({ data: { success: true } });
+    mockLogout.mockResolvedValue();
 
-    await renderDashboard();
+    renderDashboard();
     await waitFor(() => {
       expect(screen.getByTitle('התנתק')).toBeInTheDocument();
     });

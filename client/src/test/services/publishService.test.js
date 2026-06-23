@@ -109,14 +109,14 @@ describe("publishService", () => {
       await publishService.publish("url", "text", file, "name");
 
       const formData = mockPost.mock.calls[0][1];
-      expect(formData.get("image")).toBeInstanceOf(File);
+      expect(formData.get("images")).toBeInstanceOf(File);
     });
 
     it("should not include image when null", async () => {
       await publishService.publish("url", "text", null, "name");
 
       const formData = mockPost.mock.calls[0][1];
-      expect(formData.get("image")).toBeNull();
+      expect(formData.get("images")).toBeNull();
     });
   });
 
