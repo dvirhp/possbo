@@ -6,6 +6,8 @@ const DataContext = createContext(null)
 
 // Cache TTL - data older than this will trigger a background refresh
 const CACHE_TTL = 60_000 // 60 seconds
+// Background polling interval (how often to check for stale data)
+const POLL_INTERVAL = 45_000 // 45 seconds
 
 export function DataProvider({ children }) {
   // Auth state
@@ -25,6 +27,7 @@ export function DataProvider({ children }) {
   const lastFetchRef = useRef({})
   const fetchInProgressRef = useRef(false)
   const userRef = useRef(null)
+  const pollTimerRef = useRef(null)
 
   // Check auth on mount
   useEffect(() => {
@@ -97,6 +100,59 @@ export function DataProvider({ children }) {
       fetchAll(true)
     }
   }, [user, fetchAll])
+
+  // ── Background polling: keep data fresh automatically ──
+  useEffect(() => {
+    if (!user) return
+
+    // Poll for stale data every POLL_INTERVAL
+    pollTimerRef.current = setInterval(() => {
+      if (!userRef.current) return
+      if (document.hidden) return // Don't poll when tab is hidden
+      const last = lastFetchRef.current.all || 0
+      if (Date.now() - last > CACHE_TTL) {
+        fetchAll(true)
+      }
+    }, POLL_INTERVAL)
+
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current)
+    }
+  }, [user, fetchAll])
+
+  // ── Visibility-based refresh: refresh when user comes back to tab ──
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) return
+      if (!userRef.current) return
+      const last = lastFetchRef.current.all || 0
+      // If data is stale when tab becomes visible, refresh
+      if (Date.now() - last > CACHE_TTL) {
+        fetchAll(true)
+        // Also refresh user info (fbSessionValid might have changed)
+        authAPI.getMe().then(res => {
+          if (res?.data) setUser(res.data)
+        }).catch(() => {})
+      }
+    }
+
+    // Also refresh when network comes back online
+    const handleOnline = () => {
+      if (!userRef.current) return
+      fetchAll(true)
+      authAPI.getMe().then(res => {
+        if (res?.data) setUser(res.data)
+      }).catch(() => {})
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [fetchAll])
 
   // Refresh if data is stale (called on page navigation)
   const ensureFresh = useCallback(() => {

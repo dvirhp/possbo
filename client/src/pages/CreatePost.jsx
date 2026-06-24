@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { groupsService } from '../services/groupsService'
@@ -146,7 +146,7 @@ export default function CreatePost() {
           recurringDays,
           recurringTime,
           campaignType: scheduleMode === 'recurring' ? 'RECURRING' : 'SCHEDULED',
-        })
+        }, postImages)
         if (res.data.success) {
           setResults([{
             group: `${selectedGroups.length} קבוצות`,
@@ -204,6 +204,21 @@ export default function CreatePost() {
   const filteredGroups = groups.filter(g =>
     g.name.toLowerCase().includes(groupSearch.toLowerCase())
   )
+
+  const [groupsOpen, setGroupsOpen] = useState(false)
+  const groupsPanelRef = useRef(null)
+
+  // Close groups panel on outside click
+  useEffect(() => {
+    if (!groupsOpen) return
+    const handler = (e) => {
+      if (groupsPanelRef.current && !groupsPanelRef.current.contains(e.target)) {
+        setGroupsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [groupsOpen])
 
   return (
     <div className="create-post-page">
@@ -347,57 +362,23 @@ export default function CreatePost() {
                 <h3>תזמון</h3>
               </div>
               <div className="cp-schedule">
-                <label className={`schedule-option ${scheduleMode === 'now' ? 'active' : ''}`}>
-                  <input
-                    type="radio"
-                    name="schedule"
-                    value="now"
-                    checked={scheduleMode === 'now'}
-                    onChange={() => setScheduleMode('now')}
-                  />
-                  <div className="schedule-option-content">
-                    <span className="schedule-option-icon">⚡</span>
-                    <div>
-                      <span className="schedule-option-title">פרסם עכשיו</span>
-                      <span className="schedule-option-desc">הפוסט יפורסם מיד</span>
-                    </div>
-                  </div>
-                </label>
-                <label className={`schedule-option ${scheduleMode === 'scheduled' ? 'active' : ''}`}>
-                  <input
-                    type="radio"
-                    name="schedule"
-                    value="scheduled"
-                    checked={scheduleMode === 'scheduled'}
-                    onChange={() => setScheduleMode('scheduled')}
-                  />
-                  <div className="schedule-option-content">
-                    <span className="schedule-option-icon">📅</span>
-                    <div>
-                      <span className="schedule-option-title">תזמן לעתיד</span>
-                      <span className="schedule-option-desc">בחר תאריך ושעה לפרסום חד-פעמי</span>
-                    </div>
-                  </div>
-                </label>
-                <label className={`schedule-option ${scheduleMode === 'recurring' ? 'active' : ''}`}>
-                  <input
-                    type="radio"
-                    name="schedule"
-                    value="recurring"
-                    checked={scheduleMode === 'recurring'}
-                    onChange={() => setScheduleMode('recurring')}
-                  />
-                  <div className="schedule-option-content">
-                    <span className="schedule-option-icon">🔄</span>
-                    <div>
-                      <span className="schedule-option-title">פרסום חוזר</span>
-                      <span className="schedule-option-desc">בחר ימים ושעה לפרסום אוטומטי</span>
-                    </div>
-                  </div>
-                </label>
+                <div className="schedule-tabs">
+                  <button type="button" className={`schedule-tab ${scheduleMode === 'now' ? 'active' : ''}`} onClick={() => setScheduleMode('now')}>
+                    <span className="schedule-tab-icon">⚡</span>
+                    <span>פרסם עכשיו</span>
+                  </button>
+                  <button type="button" className={`schedule-tab ${scheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => setScheduleMode('scheduled')}>
+                    <span className="schedule-tab-icon">📅</span>
+                    <span>תזמן לעתיד</span>
+                  </button>
+                  <button type="button" className={`schedule-tab ${scheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => setScheduleMode('recurring')}>
+                    <span className="schedule-tab-icon">🔄</span>
+                    <span>חוזר</span>
+                  </button>
+                </div>
 
                 {scheduleMode === 'scheduled' && (
-                  <div className="schedule-datetime">
+                  <div className="schedule-fields">
                     <div className="schedule-field">
                       <label>תאריך</label>
                       <input
@@ -419,9 +400,9 @@ export default function CreatePost() {
                 )}
 
                 {scheduleMode === 'recurring' && (
-                  <div className="schedule-recurring">
-                    <div className="recurring-days-picker">
-                      <label>ימים לפרסום:</label>
+                  <div className="schedule-fields">
+                    <div className="schedule-field schedule-field-full">
+                      <label>ימים לפרסום</label>
                       <div className="days-grid">
                         {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map((day, i) => (
                           <button
@@ -455,65 +436,94 @@ export default function CreatePost() {
 
           {/* RIGHT: Group selector + Publish */}
           <div className="cp-sidebar">
-            <div className="cp-card">
-              <div className="cp-card-header">
-                <h3>קבוצות לפרסום</h3>
-                {selectedGroups.length > 0 && (
-                  <span className="cp-badge">{selectedGroups.length} נבחרו</span>
-                )}
-              </div>
+            <div className="cp-card cp-groups-card" ref={groupsPanelRef}>
+              <button
+                type="button"
+                className="cp-groups-toggle"
+                onClick={() => setGroupsOpen(!groupsOpen)}
+              >
+                <div className="cp-groups-toggle-info">
+                  <span className="cp-groups-toggle-icon">👥</span>
+                  <span className="cp-groups-toggle-label">קבוצות לפרסום</span>
+                  {selectedGroups.length > 0 && (
+                    <span className="cp-badge">{selectedGroups.length} נבחרו</span>
+                  )}
+                </div>
+                <svg className={`cp-groups-chevron ${groupsOpen ? 'open' : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
 
-              {preSelectedGroup && (
-                <div className="cp-pre-selected">
-                  📌 הקבוצה "{preSelectedGroup.name}" נבחרה אוטומטית
+              {/* Selected groups chips */}
+              {!groupsOpen && selectedGroups.length > 0 && (
+                <div className="cp-selected-chips">
+                  {selectedGroups.slice(0, 3).map(g => (
+                    <span key={g.id} className="cp-selected-chip">
+                      {g.name}
+                      <button type="button" onClick={(e) => { e.stopPropagation(); toggleGroup(g) }}>✕</button>
+                    </span>
+                  ))}
+                  {selectedGroups.length > 3 && (
+                    <span className="cp-selected-chip cp-chip-more">+{selectedGroups.length - 3}</span>
+                  )}
                 </div>
               )}
 
-              {loadingGroups ? (
-                <div className="cp-loading">טוען קבוצות...</div>
-              ) : groups.length === 0 ? (
-                <div className="cp-no-groups">
-                  <p>אין קבוצות שמורות</p>
-                  <Link to="/dashboard" state={{ tab: 'groups' }}>סנכרן קבוצות מפייסבוק</Link>
-                </div>
-              ) : (
-                <>
-                  <div className="cp-group-search">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <input
-                      type="text"
-                      placeholder="חפש קבוצה..."
-                      value={groupSearch}
-                      onChange={(e) => setGroupSearch(e.target.value)}
-                    />
-                  </div>
+              {groupsOpen && (
+                <div className="cp-groups-panel">
+                  {preSelectedGroup && (
+                    <div className="cp-pre-selected">
+                      📌 הקבוצה "{preSelectedGroup.name}" נבחרה אוטומטית
+                    </div>
+                  )}
 
-                  <div className="cp-group-actions">
-                    <button onClick={selectAllGroups}>בחר הכל</button>
-                    <button onClick={deselectAll}>נקה בחירה</button>
-                  </div>
-
-                  <div className="cp-groups-list">
-                    {filteredGroups.map((group) => (
-                      <label
-                        key={group.id}
-                        className={`cp-group-item ${selectedGroups.find(g => g.id === group.id) ? 'selected' : ''}`}
-                      >
+                  {loadingGroups ? (
+                    <div className="cp-loading">טוען קבוצות...</div>
+                  ) : groups.length === 0 ? (
+                    <div className="cp-no-groups">
+                      <p>אין קבוצות שמורות</p>
+                      <Link to="/dashboard" state={{ tab: 'groups' }}>סנכרן קבוצות מפייסבוק</Link>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="cp-group-search">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
                         <input
-                          type="checkbox"
-                          checked={!!selectedGroups.find(g => g.id === group.id)}
-                          onChange={() => toggleGroup(group)}
+                          type="text"
+                          placeholder="חפש קבוצה..."
+                          value={groupSearch}
+                          onChange={(e) => setGroupSearch(e.target.value)}
                         />
-                        <span className="cp-group-name">{group.name}</span>
-                        {group.memberCount && (
-                          <span className="cp-group-members">{group.memberCount.toLocaleString()}</span>
-                        )}
-                      </label>
-                    ))}
-                  </div>
-                </>
+                      </div>
+
+                      <div className="cp-group-actions">
+                        <button onClick={selectAllGroups}>בחר הכל</button>
+                        <button onClick={deselectAll}>נקה בחירה</button>
+                      </div>
+
+                      <div className="cp-groups-list">
+                        {filteredGroups.map((group) => (
+                          <label
+                            key={group.id}
+                            className={`cp-group-item ${selectedGroups.find(g => g.id === group.id) ? 'selected' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!selectedGroups.find(g => g.id === group.id)}
+                              onChange={() => toggleGroup(group)}
+                            />
+                            <span className="cp-group-name">{group.name}</span>
+                            {group.memberCount && (
+                              <span className="cp-group-members">{group.memberCount.toLocaleString()}</span>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
 
