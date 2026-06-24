@@ -26,61 +26,116 @@ vi.mock("axios", () => ({
   },
 }));
 
-describe("api (client/src/services/api.js)", () => {
-  let authAPI, groupsAPI;
+import { authAPI } from "../../services/api.js";
+import http, { setAccessToken, clearAccessToken } from "../../services/http.js";
+import axios from "axios";
 
-  beforeEach(async () => {
-    vi.resetModules();
-    const module = await import("../../services/api.js");
-    authAPI = module.authAPI;
-    groupsAPI = module.groupsAPI;
+describe("authAPI", () => {
+  beforeEach(() => {
+    vi.mocked(http.get).mockClear();
+    vi.mocked(http.post).mockClear();
+    vi.mocked(setAccessToken).mockClear();
+    vi.mocked(clearAccessToken).mockClear();
+    vi.mocked(axios.post).mockClear();
   });
 
-  describe("authAPI", () => {
-    it("should expose register method", () => {
-      expect(typeof authAPI.register).toBe("function");
+  describe("register", () => {
+    it("should POST /auth/register with user data", async () => {
+      vi.mocked(http.post).mockResolvedValue({
+        data: { accessToken: "tok", user: { id: "1" } },
+      });
+
+      await authAPI.register("a@b.com", "pass123", "Name", "male", "050");
+
+      expect(http.post).toHaveBeenCalledWith("/auth/register", {
+        email: "a@b.com",
+        password: "pass123",
+        name: "Name",
+        gender: "male",
+        phone: "050",
+      });
     });
 
-    it("should expose login method", () => {
-      expect(typeof authAPI.login).toBe("function");
+    it("should set access token from response", async () => {
+      vi.mocked(http.post).mockResolvedValue({
+        data: { accessToken: "my-token" },
+      });
+
+      await authAPI.register("a@b.com", "pass");
+
+      expect(setAccessToken).toHaveBeenCalledWith("my-token");
     });
 
-    it("should expose getMe method", () => {
-      expect(typeof authAPI.getMe).toBe("function");
-    });
+    it("should not set access token when missing", async () => {
+      vi.mocked(http.post).mockResolvedValue({ data: {} });
 
-    it("should expose refresh method", () => {
-      expect(typeof authAPI.refresh).toBe("function");
-    });
+      await authAPI.register("a@b.com", "pass");
 
-    it("should expose logout method", () => {
-      expect(typeof authAPI.logout).toBe("function");
+      expect(setAccessToken).not.toHaveBeenCalled();
     });
   });
 
-  describe("groupsAPI", () => {
-    it("should expose searchGroup method", () => {
-      expect(typeof groupsAPI.searchGroup).toBe("function");
+  describe("login", () => {
+    it("should POST /auth/login with email and password", async () => {
+      vi.mocked(http.post).mockResolvedValue({ data: { accessToken: "tok" } });
+
+      await authAPI.login("a@b.com", "pass123");
+
+      expect(http.post).toHaveBeenCalledWith("/auth/login", {
+        email: "a@b.com",
+        password: "pass123",
+      });
     });
 
-    it("should expose getFacebookScreenshot method", () => {
-      expect(typeof groupsAPI.getFacebookScreenshot).toBe("function");
-    });
+    it("should set access token from response", async () => {
+      vi.mocked(http.post).mockResolvedValue({
+        data: { accessToken: "login-tok" },
+      });
 
-    it("should expose refreshScreenshot method", () => {
-      expect(typeof groupsAPI.refreshScreenshot).toBe("function");
-    });
+      await authAPI.login("a@b.com", "pass");
 
-    it("should expose bootstrapSession method", () => {
-      expect(typeof groupsAPI.bootstrapSession).toBe("function");
+      expect(setAccessToken).toHaveBeenCalledWith("login-tok");
     });
+  });
 
-    it("should expose scrapeMyGroups method", () => {
-      expect(typeof groupsAPI.scrapeMyGroups).toBe("function");
+  describe("getMe", () => {
+    it("should GET /auth/me", async () => {
+      vi.mocked(http.get).mockResolvedValue({
+        data: { id: "1", email: "a@b.com" },
+      });
+
+      const result = await authAPI.getMe();
+
+      expect(http.get).toHaveBeenCalledWith("/auth/me");
+      expect(result.data.id).toBe("1");
     });
+  });
 
-    it("should expose publishToGroup method", () => {
-      expect(typeof groupsAPI.publishToGroup).toBe("function");
+  describe("refresh", () => {
+    it("should POST to /api/auth/refresh with credentials", async () => {
+      vi.mocked(axios.post).mockResolvedValue({
+        data: { accessToken: "new-tok" },
+      });
+
+      await authAPI.refresh();
+
+      expect(axios.post).toHaveBeenCalledWith(
+        expect.stringContaining("/auth/refresh"),
+        {},
+        { withCredentials: true },
+      );
+      expect(setAccessToken).toHaveBeenCalledWith("new-tok");
+    });
+  });
+
+  describe("logout", () => {
+    it("should POST /auth/logout and clear token", async () => {
+      vi.mocked(http.post).mockResolvedValue({ data: { success: true } });
+
+      await authAPI.logout();
+
+      expect(http.post).toHaveBeenCalledWith("/auth/logout");
+      expect(clearAccessToken).toHaveBeenCalled();
     });
   });
 });

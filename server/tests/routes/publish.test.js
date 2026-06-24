@@ -37,6 +37,18 @@ let app;
 
 beforeEach(async () => {
   vi.resetModules();
+  const { publishToGroup } =
+    await import("../../src/utils/facebook-automation.js");
+  const { savePost } = await import("../../src/utils/posts-storage.js");
+  vi.mocked(publishToGroup).mockReset();
+  vi.mocked(savePost)
+    .mockReset()
+    .mockImplementation(async (data) => ({
+      id: "mock-id-123",
+      ...data,
+      createdAt: "2024-01-01T00:00:00.000Z",
+      hasScreenshot: !!data.screenshot,
+    }));
   const publishModule = await import("../../src/routes/publish.js");
 
   app = express();
@@ -116,20 +128,18 @@ describe("POST /api/publish", () => {
       screenshot: null,
     });
 
-    const res = await request(app)
-      .post("/api/publish")
-      .send({
-        groupUrl: "https://facebook.com/groups/123",
-        text: "Test post",
-        groupName: "My Group",
-      });
+    const res = await request(app).post("/api/publish").send({
+      groupUrl: "https://facebook.com/groups/123",
+      text: "Test post",
+      groupName: "My Group",
+    });
 
     expect(res.status).toBe(200);
     expect(publishToGroup).toHaveBeenCalledWith(
       "https://facebook.com/groups/123",
       "Test post",
       null,
-      { anonymous: false, location: null, images: [] },
+      { anonymous: false, location: null, images: [], userId: "test-user-id" },
     );
     expect(savePost).toHaveBeenCalled();
   });
@@ -143,21 +153,24 @@ describe("POST /api/publish", () => {
       screenshot: null,
     });
 
-    const res = await request(app)
-      .post("/api/publish")
-      .send({
-        groupUrl: "https://facebook.com/groups/123",
-        text: "Anon post",
-        anonymous: "true",
-        location: "Tel Aviv",
-      });
+    const res = await request(app).post("/api/publish").send({
+      groupUrl: "https://facebook.com/groups/123",
+      text: "Anon post",
+      anonymous: "true",
+      location: "Tel Aviv",
+    });
 
     expect(res.status).toBe(200);
     expect(publishToGroup).toHaveBeenCalledWith(
       "https://facebook.com/groups/123",
       "Anon post",
       null,
-      { anonymous: true, location: "Tel Aviv", images: [] },
+      {
+        anonymous: true,
+        location: "Tel Aviv",
+        images: [],
+        userId: "test-user-id",
+      },
     );
   });
 

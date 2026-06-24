@@ -115,7 +115,7 @@ export default function Dashboard() {
     } catch (err) {
       setBootstrapping(false)
       if (err.response?.data?.error === 'FACEBOOK_SESSION_NOT_COMPLETED') {
-        alert('החיבור לא הושלם — יש להתחבר לפייסבוק בדפדפן שנפתח')
+        window.alert('החיבור לא הושלם — יש להתחבר לפייסבוק בדפדפן שנפתח')
       }
     }
   }
