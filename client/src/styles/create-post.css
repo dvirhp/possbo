@@ -2,6 +2,12 @@
    CreatePost — Dark theme matching Dashboard
    ══════════════════════════════════════════════════════════════ */
 
+.create-post-page *,
+.create-post-page *::before,
+.create-post-page *::after {
+  box-sizing: border-box;
+}
+
 .create-post-page {
   min-height: 100vh;
   background: var(--bg-deep, #16181d);
@@ -9,7 +15,8 @@
   color: var(--text-secondary, #a3adb8);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
 }
 
 /* ─── Top Bar ─── */
@@ -66,6 +73,12 @@
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  box-sizing: border-box;
+}
+
+.cp-editor,
+.cp-sidebar {
+  min-width: 0;
 }
 
 /* ─── Cards ─── */
@@ -110,8 +123,9 @@
   font-size: 15px;
   line-height: 1.7;
   color: var(--text-primary, #e8ecf0);
-  resize: vertical;
+  resize: none;
   min-height: 140px;
+  max-height: 300px;
   direction: rtl;
   outline: none;
   font-family: inherit;
@@ -222,70 +236,68 @@
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 }
 
-.schedule-option {
+/* Horizontal tabs for schedule mode */
+.schedule-tabs {
   display: flex;
-  align-items: center;
-  padding: 14px 16px;
+  gap: 0;
   background: var(--bg-elevated, #2a2f3a);
-  border: 1px solid var(--border, rgba(255,255,255,0.06));
   border-radius: 10px;
-  cursor: pointer;
-  transition: 0.2s;
+  padding: 4px;
 }
 
-.schedule-option:hover {
-  border-color: var(--border-hover, rgba(255,255,255,0.1));
-}
-
-.schedule-option.active {
-  border-color: var(--indigo, #818cf8);
-  background: var(--indigo-soft, rgba(129,140,248,0.12));
-}
-
-.schedule-option input[type="radio"] {
-  display: none;
-}
-
-.schedule-option-content {
+.schedule-tab {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.schedule-option-icon {
-  font-size: 20px;
-}
-
-.schedule-option-title {
-  display: block;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--text-primary, #e8ecf0);
-}
-
-.schedule-option-desc {
-  display: block;
-  font-size: 12px;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
   color: var(--text-muted, #6b7684);
-  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
 }
 
-.schedule-datetime {
+.schedule-tab:hover {
+  color: var(--text-secondary, #a3adb8);
+}
+
+.schedule-tab.active {
+  background: var(--bg-card, #23272f);
+  color: var(--indigo, #818cf8);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+
+.schedule-tab-icon {
+  font-size: 15px;
+}
+
+/* Fields that appear below tabs */
+.schedule-fields {
   display: flex;
   gap: 12px;
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border, rgba(255,255,255,0.06));
+  flex-wrap: wrap;
 }
 
 .schedule-field {
   flex: 1;
+  min-width: 120px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.schedule-field-full {
+  flex-basis: 100%;
 }
 
 .schedule-field label {
@@ -298,7 +310,7 @@
 
 .schedule-field input {
   padding: 10px 12px;
-  background: var(--bg-card, #23272f);
+  background: var(--bg-elevated, #2a2f3a);
   border: 1px solid var(--border, rgba(255,255,255,0.06));
   border-radius: 8px;
   color: var(--text-primary, #e8ecf0);
@@ -317,26 +329,6 @@
 .schedule-field input[type="date"] {
   min-height: 42px;
   cursor: pointer;
-}
-
-/* ─── Recurring Schedule ─── */
-.schedule-recurring {
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border, rgba(255,255,255,0.06));
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.recurring-days-picker label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-dim, #4a5260);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  margin-bottom: 8px;
-  display: block;
 }
 
 .days-grid {
@@ -373,6 +365,112 @@
 /* ─── Group Selector (Sidebar) ─── */
 .cp-sidebar .cp-card {
   margin-bottom: 14px;
+}
+
+/* ─── Collapsible Groups Toggle ─── */
+.cp-groups-card {
+  position: relative;
+}
+
+.cp-groups-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: 0.2s;
+}
+
+.cp-groups-toggle:hover {
+  background: var(--bg-hover, #313743);
+}
+
+.cp-groups-toggle-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cp-groups-toggle-icon {
+  font-size: 18px;
+}
+
+.cp-groups-toggle-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary, #e8ecf0);
+}
+
+.cp-groups-chevron {
+  color: var(--text-muted, #6b7684);
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+
+.cp-groups-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* ─── Selected Chips (when collapsed) ─── */
+.cp-selected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 20px 14px;
+}
+
+.cp-selected-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--indigo-soft, rgba(129,140,248,0.12));
+  color: var(--indigo, #818cf8);
+  border-radius: 99px;
+  font-size: 11.5px;
+  font-weight: 600;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-selected-chip button {
+  background: none;
+  border: none;
+  color: var(--indigo, #818cf8);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  margin-right: 2px;
+  opacity: 0.7;
+  font-family: inherit;
+}
+
+.cp-selected-chip button:hover {
+  opacity: 1;
+}
+
+.cp-chip-more {
+  background: var(--bg-elevated, #2a2f3a);
+  color: var(--text-muted, #6b7684);
+}
+
+/* ─── Groups Panel (expanded) ─── */
+.cp-groups-panel {
+  border-top: 1px solid var(--border, rgba(255,255,255,0.06));
+  animation: slideDown 0.2s ease;
+  width: 100%;
+  overflow: hidden;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 600px; }
 }
 
 .cp-pre-selected {
@@ -412,6 +510,7 @@
   position: relative;
   padding: 12px 20px;
   border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+  box-sizing: border-box;
 }
 
 .cp-group-search svg {
@@ -433,6 +532,7 @@
   font-size: 13px;
   font-family: inherit;
   transition: 0.2s;
+  box-sizing: border-box;
 }
 
 .cp-group-search input::placeholder {
@@ -499,6 +599,7 @@
   border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
   cursor: pointer;
   transition: 0.15s;
+  min-width: 0;
 }
 
 .cp-group-item:last-child {
@@ -716,6 +817,11 @@
     padding: 16px 14px 60px;
   }
 
+  .cp-sidebar {
+    width: 100%;
+    min-width: 0;
+  }
+
   .cp-topbar {
     padding: 12px 14px;
   }
@@ -742,11 +848,19 @@
 
   .cp-layout {
     padding: 12px 8px 60px;
+    overflow-x: hidden;
   }
 
   .cp-card {
     border-radius: 10px;
     margin-bottom: 12px;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .cp-groups-panel {
+    max-height: 350px;
+    overflow-y: auto;
   }
 
   .cp-card-header {
@@ -782,30 +896,33 @@
     padding: 12px 14px;
   }
 
-  .schedule-option {
-    padding: 10px 12px;
+  .schedule-tabs {
+    padding: 3px;
   }
 
-  .schedule-option-icon {
-    font-size: 16px;
-  }
-
-  .schedule-option-title {
-    font-size: 12.5px;
-  }
-
-  .schedule-option-desc {
+  .schedule-tab {
+    padding: 8px 4px;
     font-size: 11px;
+    gap: 3px;
   }
 
-  .schedule-datetime {
-    flex-direction: column;
+  .schedule-tab-icon {
+    font-size: 12px;
+  }
+
+  .schedule-fields {
     gap: 8px;
+  }
+
+  .schedule-field {
+    min-width: 0;
   }
 
   .schedule-field input {
     padding: 8px 10px;
     font-size: 12px;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .days-grid {
@@ -816,6 +933,30 @@
     width: 34px;
     height: 34px;
     font-size: 12px;
+  }
+
+  /* Groups collapsible */
+  .cp-groups-toggle {
+    padding: 12px 14px;
+  }
+
+  .cp-groups-toggle-label {
+    font-size: 13px;
+  }
+
+  .cp-selected-chips {
+    padding: 0 14px 12px;
+    gap: 5px;
+  }
+
+  .cp-selected-chip {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    max-width: 110px;
+  }
+
+  .cp-group-search svg {
+    right: 26px;
   }
 
   /* Groups list */
@@ -839,6 +980,8 @@
   .cp-group-search input {
     padding: 8px 32px 8px 10px;
     font-size: 12px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .cp-group-actions {

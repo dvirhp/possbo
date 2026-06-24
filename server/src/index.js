@@ -74,10 +74,14 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   log.info("Server started", { port: PORT, url: `http://localhost:${PORT}` });
   startScheduler();
 });
+
+// Allow long-running requests (FB bootstrap takes up to 5 min)
+server.keepAliveTimeout = 360_000; // 6 minutes
+server.headersTimeout = 365_000; // must be > keepAliveTimeout
 
 // Graceful shutdown
 process.on("SIGINT", async () => {

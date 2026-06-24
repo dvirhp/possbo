@@ -29,13 +29,7 @@ function setRefreshCookie(res, token) {
 // Register with email + password + Facebook App credentials
 router.post("/register", async (req, res) => {
   try {
-    const {
-      email,
-      password,
-      name,
-      gender,
-      phone,
-    } = req.body;
+    const { email, password, name, gender, phone } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });

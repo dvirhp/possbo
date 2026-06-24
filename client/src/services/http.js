@@ -5,6 +5,7 @@ const API_BASE_URL = "http://localhost:5001/api";
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // needed for refresh token cookie
+  timeout: 30000, // 30s default timeout for regular requests
 });
 
 // Token management
@@ -30,7 +31,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor - auto-refresh on 401
+// Response interceptor - auto-refresh on 401 + network error retry
 let isRefreshing = false;
 let refreshSubscribers = [];
 
@@ -39,12 +40,42 @@ function onRefreshed(newToken) {
   refreshSubscribers = [];
 }
 
+function onRefreshFailed(err) {
+  refreshSubscribers.forEach((cb) => cb(null, err));
+  refreshSubscribers = [];
+}
+
+// Retry logic for network errors (connection drops, timeouts)
+function isNetworkError(error) {
+  return (
+    !error.response &&
+    (error.code === "ECONNABORTED" ||
+      error.code === "ERR_NETWORK" ||
+      error.message?.includes("Network Error") ||
+      error.message?.includes("timeout"))
+  );
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // If 401 and not already retrying and not the refresh endpoint itself
+    // ── Network error retry (up to 2 retries with backoff) ──
+    if (isNetworkError(error) && !originalRequest._networkRetry) {
+      const retryCount = originalRequest._retryCount || 0;
+      if (retryCount < 2) {
+        originalRequest._retryCount = retryCount + 1;
+        // Exponential backoff: 1s, 3s
+        const delay = (retryCount + 1) * 1000 + Math.random() * 1000;
+        await new Promise((r) => setTimeout(r, delay));
+        return api(originalRequest);
+      }
+      // Mark as network-retried so we don't retry forever
+      originalRequest._networkRetry = true;
+    }
+
+    // ── 401 → token refresh ──
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
@@ -54,8 +85,9 @@ api.interceptors.response.use(
     ) {
       if (isRefreshing) {
         // Queue this request until refresh completes
-        return new Promise((resolve) => {
-          refreshSubscribers.push((newToken) => {
+        return new Promise((resolve, reject) => {
+          refreshSubscribers.push((newToken, err) => {
+            if (err) return reject(err);
             originalRequest.headers.Authorization = `Bearer ${newToken}`;
             resolve(api(originalRequest));
           });
@@ -69,16 +101,16 @@ api.interceptors.response.use(
         const res = await axios.post(
           `${API_BASE_URL}/auth/refresh`,
           {},
-          { withCredentials: true },
+          { withCredentials: true, timeout: 10000 },
         );
         const newToken = res.data.accessToken;
         setAccessToken(newToken);
         onRefreshed(newToken);
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);
-      } catch {
+      } catch (refreshError) {
         clearAccessToken();
-        // Don't redirect here - let React components handle auth state
+        onRefreshFailed(refreshError);
         return Promise.reject(error);
       } finally {
         isRefreshing = false;

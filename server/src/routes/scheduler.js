@@ -1,6 +1,26 @@
 import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
+import multer from "multer";
 import { PrismaClient } from "@prisma/client";
 import { asyncHandler } from "../utils/async-handler.js";
+import { imageFileFilter, MAX_FILE_SIZE } from "../utils/security.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const uploadsDir = path.join(__dirname, "..", "..", "uploads");
+
+const storage = multer.diskStorage({
+  destination: uploadsDir,
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".png";
+    cb(null, Date.now() + "-" + Math.round(Math.random() * 1e6) + ext);
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: imageFileFilter,
+});
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -161,7 +181,14 @@ router.get(
     const history = await prisma.publicationHistory.findMany({
       where: { userId: req.user.id },
       include: {
-        post: { select: { id: true, title: true, content: true } },
+        post: {
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            media: { orderBy: { orderIndex: "asc" }, select: { url: true } },
+          },
+        },
         group: { select: { id: true, name: true } },
       },
       orderBy: { publishedAt: "desc" },
@@ -171,6 +198,12 @@ router.get(
     // Override any legacy FAILED statuses and include screenshot info
     const cleaned = history.map((h) => ({
       ...h,
+      post: h.post
+        ? {
+            ...h.post,
+            images: h.post.media?.map((m) => m.url) || [],
+          }
+        : h.post,
       status: "SUCCESS",
       hasScreenshot: !!h.screenshotUrl && h.screenshotUrl !== "stored",
     }));
@@ -263,9 +296,10 @@ router.get(
 router.post(
   "/campaigns",
   requireAuth,
+  upload.array("images", 10),
   asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const {
+    let {
       text,
       groupIds,
       anonymous,
@@ -278,10 +312,15 @@ router.post(
       campaignType,
     } = req.body;
 
+    // Parse stringified arrays from FormData
+    if (typeof groupIds === "string") groupIds = JSON.parse(groupIds);
+    if (typeof recurringDays === "string")
+      recurringDays = JSON.parse(recurringDays);
+    if (anonymous === "true") anonymous = true;
+    if (anonymous === "false") anonymous = false;
+
     if (!text || !groupIds?.length) {
-      return res
-        .status(400)
-        .json({ error: "text and groupIds are required" });
+      return res.status(400).json({ error: "text and groupIds are required" });
     }
 
     // Determine scheduled datetime
@@ -289,9 +328,7 @@ router.post(
     if (scheduleMode === "scheduled" && scheduleDate && scheduleTime) {
       scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00`);
       if (scheduledAt <= new Date()) {
-        return res
-          .status(400)
-          .json({ error: "תאריך התזמון חייב להיות בעתיד" });
+        return res.status(400).json({ error: "תאריך התזמון חייב להיות בעתיד" });
       }
     } else if (scheduleMode === "recurring" && recurringTime) {
       // For recurring, compute next occurrence
@@ -302,8 +339,7 @@ router.post(
 
       // Find next day that's in the future
       let nextDay = sortedDays.find((d) => d > today) ?? sortedDays[0];
-      let daysUntil =
-        nextDay > today ? nextDay - today : 7 - today + nextDay;
+      let daysUntil = nextDay > today ? nextDay - today : 7 - today + nextDay;
       if (nextDay === today) {
         const todayTime = new Date();
         todayTime.setHours(hours, minutes, 0, 0);
@@ -331,8 +367,25 @@ router.post(
         campaignType: campaignType || "ONE_TIME",
         recurringDays: recurringDays || [],
         recurringTime: recurringTime || null,
+        imageUrl: req.files?.length
+          ? `/uploads/${req.files[0].filename}`
+          : null,
       },
     });
+
+    // Save uploaded images as PostMedia
+    if (req.files?.length) {
+      for (let i = 0; i < req.files.length; i++) {
+        await prisma.postMedia.create({
+          data: {
+            postId: post.id,
+            mediaType: "IMAGE",
+            url: `/uploads/${req.files[i].filename}`,
+            orderIndex: i,
+          },
+        });
+      }
+    }
 
     // Create PostGroup + Schedule + Job for each group
     const results = [];
@@ -360,8 +413,7 @@ router.post(
 
       // Create schedule
       if (scheduledAt) {
-        const frequencyType =
-          campaignType === "RECURRING" ? "WEEKLY" : "ONCE";
+        const frequencyType = campaignType === "RECURRING" ? "WEEKLY" : "ONCE";
         await prisma.postGroupSchedule.create({
           data: {
             postGroupId: postGroup.id,
@@ -443,13 +495,22 @@ router.get(
         content: post.content,
         imageUrl: post.imageUrl || post.media?.[0]?.url || null,
         imageCount: post.media?.length || (post.imageUrl ? 1 : 0),
+        images:
+          post.media?.map((m) => m.url) ||
+          (post.imageUrl ? [post.imageUrl] : []),
         campaignType: post.campaignType,
         status: displayStatus,
         isPaused: post.isPaused,
+        isAnonymous: post.isAnonymous,
+        location: post.location,
         recurringDays: post.recurringDays,
         recurringTime: post.recurringTime,
         groupCount: post.postGroups.length,
         groupNames,
+        groups: post.postGroups.map((pg) => ({
+          id: pg.group?.id,
+          name: pg.group?.name,
+        })),
         createdAt: post.createdAt,
         updatedAt: post.updatedAt,
       };
@@ -495,6 +556,310 @@ router.patch(
     });
   }),
 );
+// ─── Update campaign ─────────────────────────────────────
+
+router.put(
+  "/campaigns/:postId",
+  requireAuth,
+  upload.array("images", 10),
+  asyncHandler(async (req, res) => {
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    const post = await prisma.post.findFirst({
+      where: { id: postId, userId },
+      include: { postGroups: true },
+    });
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    const {
+      text,
+      title,
+      location,
+      campaignType,
+      recurringTime,
+      scheduleMode,
+      scheduleDate,
+      scheduleTime,
+    } = req.body;
+    let { anonymous, groupIds, recurringDays } = req.body;
+
+    // Parse stringified arrays from FormData
+    if (typeof groupIds === "string") groupIds = JSON.parse(groupIds);
+    if (typeof recurringDays === "string")
+      recurringDays = JSON.parse(recurringDays);
+    if (anonymous === "true") anonymous = true;
+    if (anonymous === "false") anonymous = false;
+
+    // Update post fields
+    const updateData = {};
+    if (text !== undefined) updateData.content = text;
+    if (title !== undefined) updateData.title = title;
+    if (anonymous !== undefined) updateData.isAnonymous = anonymous;
+    if (location !== undefined) updateData.location = location || null;
+    if (campaignType !== undefined) updateData.campaignType = campaignType;
+    if (recurringDays !== undefined) updateData.recurringDays = recurringDays;
+    if (recurringTime !== undefined)
+      updateData.recurringTime = recurringTime || null;
+
+    await prisma.post.update({ where: { id: postId }, data: updateData });
+
+    // If new images uploaded, replace existing media
+    if (req.files?.length) {
+      await prisma.postMedia.deleteMany({ where: { postId } });
+      await prisma.post.update({
+        where: { id: postId },
+        data: { imageUrl: `/uploads/${req.files[0].filename}` },
+      });
+      for (let i = 0; i < req.files.length; i++) {
+        await prisma.postMedia.create({
+          data: {
+            postId,
+            mediaType: "IMAGE",
+            url: `/uploads/${req.files[i].filename}`,
+            orderIndex: i,
+          },
+        });
+      }
+    }
+
+    // If groupIds provided, sync post groups
+    if (groupIds?.length) {
+      const existingGroupIds = post.postGroups.map((pg) => pg.groupId);
+      const toAdd = groupIds.filter((gid) => !existingGroupIds.includes(gid));
+      const toRemove = existingGroupIds.filter(
+        (gid) => !groupIds.includes(gid),
+      );
+
+      // Remove old groups (cascade deletes schedules + jobs)
+      if (toRemove.length) {
+        await prisma.postGroup.deleteMany({
+          where: { postId, groupId: { in: toRemove } },
+        });
+      }
+
+      // Add new groups
+      for (const groupId of toAdd) {
+        await prisma.postGroup.create({
+          data: { postId, groupId, userId },
+        });
+      }
+
+      // Re-schedule if schedule info provided
+      if (scheduleMode && scheduleMode !== "now") {
+        let scheduledAt = null;
+        if (scheduleMode === "scheduled" && scheduleDate && scheduleTime) {
+          scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00`);
+        } else if (scheduleMode === "recurring" && recurringTime) {
+          const now = new Date();
+          const [hours, minutes] = recurringTime.split(":").map(Number);
+          const today = now.getDay();
+          const sortedDays = [...(recurringDays || [])].sort((a, b) => a - b);
+          let nextDay = sortedDays.find((d) => d > today) ?? sortedDays[0];
+          let daysUntil =
+            nextDay > today ? nextDay - today : 7 - today + nextDay;
+          if (nextDay === today) {
+            const todayTime = new Date();
+            todayTime.setHours(hours, minutes, 0, 0);
+            if (todayTime > now) {
+              daysUntil = 0;
+            } else {
+              nextDay = sortedDays.find((d) => d > today) ?? sortedDays[0];
+              daysUntil =
+                nextDay > today ? nextDay - today : 7 - today + nextDay;
+              if (daysUntil === 0) daysUntil = 7;
+            }
+          }
+          scheduledAt = new Date(now);
+          scheduledAt.setDate(scheduledAt.getDate() + daysUntil);
+          scheduledAt.setHours(hours, minutes, 0, 0);
+        }
+
+        if (scheduledAt) {
+          // Cancel old pending jobs
+          await prisma.publicationJob.updateMany({
+            where: {
+              postGroup: { postId, userId },
+              status: "PENDING",
+            },
+            data: { status: "CANCELLED", completedAt: new Date() },
+          });
+
+          // Create new jobs for all current groups
+          const currentPostGroups = await prisma.postGroup.findMany({
+            where: { postId },
+          });
+          for (const pg of currentPostGroups) {
+            await prisma.publicationJob.create({
+              data: { postGroupId: pg.id, scheduledAt },
+            });
+            await prisma.postGroupSchedule.create({
+              data: {
+                postGroupId: pg.id,
+                frequencyType: campaignType === "RECURRING" ? "WEEKLY" : "ONCE",
+                startAt: scheduledAt,
+                nextRunAt: scheduledAt,
+                isActive: true,
+              },
+            });
+          }
+
+          await prisma.post.update({
+            where: { id: postId },
+            data: { status: "ACTIVE", isPaused: false },
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, message: "הקמפיין עודכן בהצלחה" });
+  }),
+);
+
+// ─── Delete campaign ─────────────────────────────────────
+
+router.delete(
+  "/campaigns/:postId",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { postId } = req.params;
+
+    const post = await prisma.post.findFirst({
+      where: { id: postId, userId: req.user.id },
+    });
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    // Cascade delete handles postGroups, schedules, jobs
+    await prisma.post.delete({ where: { id: postId } });
+
+    res.json({ success: true, message: "הקמפיין נמחק" });
+  }),
+);
+
+// ─── Duplicate campaign ──────────────────────────────────
+
+router.post(
+  "/campaigns/:postId/duplicate",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    const original = await prisma.post.findFirst({
+      where: { id: postId, userId },
+      include: {
+        postGroups: { select: { groupId: true } },
+        media: { orderBy: { orderIndex: "asc" } },
+      },
+    });
+    if (!original) return res.status(404).json({ error: "Post not found" });
+
+    const newPost = await prisma.post.create({
+      data: {
+        userId,
+        title: original.title ? `${original.title} (עותק)` : null,
+        content: original.content,
+        status: "DRAFT",
+        isAnonymous: original.isAnonymous,
+        location: original.location,
+        campaignType: original.campaignType,
+        recurringDays: original.recurringDays,
+        recurringTime: original.recurringTime,
+        imageUrl: original.imageUrl,
+      },
+    });
+
+    // Duplicate media
+    for (const m of original.media) {
+      await prisma.postMedia.create({
+        data: {
+          postId: newPost.id,
+          url: m.url,
+          mediaType: m.mediaType,
+          orderIndex: m.orderIndex,
+        },
+      });
+    }
+
+    // Duplicate post groups (without schedules/jobs — user needs to reschedule)
+    for (const pg of original.postGroups) {
+      await prisma.postGroup.create({
+        data: { postId: newPost.id, groupId: pg.groupId, userId },
+      });
+    }
+
+    res.json({
+      success: true,
+      postId: newPost.id,
+      message: "הקמפיין שוכפל — יש לתזמן אותו מחדש",
+    });
+  }),
+);
+
+// ─── Delete publication history entry ────────────────────
+
+router.delete(
+  "/history/:id",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const entry = await prisma.publicationHistory.findFirst({
+      where: { id, userId: req.user.id },
+    });
+    if (!entry) return res.status(404).json({ error: "Entry not found" });
+
+    await prisma.publicationHistory.delete({ where: { id } });
+
+    res.json({ success: true, message: "הרשומה נמחקה" });
+  }),
+);
+
+// ─── Get campaign details for editing ────────────────────
+
+router.get(
+  "/campaigns/:postId",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { postId } = req.params;
+
+    const post = await prisma.post.findFirst({
+      where: { id: postId, userId: req.user.id },
+      include: {
+        media: { orderBy: { orderIndex: "asc" } },
+        postGroups: {
+          include: {
+            group: { select: { id: true, name: true } },
+            schedules: { where: { isActive: true }, take: 1 },
+          },
+        },
+      },
+    });
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    res.json({
+      success: true,
+      campaign: {
+        id: post.id,
+        title: post.title,
+        content: post.content,
+        isAnonymous: post.isAnonymous,
+        location: post.location,
+        campaignType: post.campaignType,
+        recurringDays: post.recurringDays,
+        recurringTime: post.recurringTime,
+        isPaused: post.isPaused,
+        imageUrl: post.imageUrl,
+        media: post.media,
+        groups: post.postGroups.map((pg) => ({
+          id: pg.group.id,
+          name: pg.group.name,
+        })),
+      },
+    });
+  }),
+);
+
 // ─── Dashboard stats ─────────────────────────────────────
 
 router.get(
@@ -554,9 +919,7 @@ router.get(
         scheduledCount,
         groupsCount,
         publishedCount,
-        groupStats: Object.values(groupStats).sort(
-          (a, b) => b.count - a.count,
-        ),
+        groupStats: Object.values(groupStats).sort((a, b) => b.count - a.count),
       },
     });
   }),

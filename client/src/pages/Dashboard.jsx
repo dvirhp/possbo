@@ -45,6 +45,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [viewMode, setViewMode] = useState('grid') // 'grid' | 'list'
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all')
@@ -325,10 +326,10 @@ export default function Dashboard() {
           </div>
           <div className="topbar-left">
             <Link to="/scheduled" className="topbar-cta-secondary">
-              📅 יומן תזמונים
+              📅 <span className="topbar-cta-label">יומן תזמונים</span>
             </Link>
             <Link to="/create-post" className="topbar-cta">
-              <span>+</span> קמפיין חדש
+              <span>+</span> <span className="topbar-cta-label">קמפיין חדש</span>
             </Link>
             <button onClick={handleLogout} className="topbar-logout" title="התנתק">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -347,7 +348,7 @@ export default function Dashboard() {
           ) : (
             <>
               {/* Facebook session banner */}
-              {user && !user.fbSessionValid && (
+              {user && !user.fbSessionValid && !refreshing && (
                 <div className="session-banner">
                   <span>⚠️ חשבון הפייסבוק לא מחובר — פוסטים מתוזמנים לא יפורסמו</span>
                   <button className="session-banner-btn" disabled={bootstrapping} onClick={handleBootstrap}>
@@ -358,7 +359,7 @@ export default function Dashboard() {
               {/* KPIs — always visible except stats/settings */}
               {activeTab !== 'settings' && activeTab !== 'stats' && (
                 <section className="kpi-row">
-                  <div className="kpi-card kpi-clickable" onClick={() => setActiveTab('campaigns')}>
+                  <div className={`kpi-card kpi-clickable ${activeTab === 'campaigns' ? 'kpi-active' : ''}`} onClick={() => setActiveTab('campaigns')}>
                     <div className="kpi-card-icon kpi-indigo">
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -369,7 +370,7 @@ export default function Dashboard() {
                       <span className="kpi-card-label">קמפיינים מתוזמנים</span>
                     </div>
                   </div>
-                  <div className="kpi-card kpi-clickable" onClick={() => setActiveTab('posts')}>
+                  <div className={`kpi-card kpi-clickable ${activeTab === 'posts' ? 'kpi-active' : ''}`} onClick={() => setActiveTab('posts')}>
                     <div className="kpi-card-icon kpi-emerald">
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
@@ -380,7 +381,7 @@ export default function Dashboard() {
                       <span className="kpi-card-label">פוסטים שפורסמו</span>
                     </div>
                   </div>
-                  <div className="kpi-card kpi-clickable" onClick={() => setActiveTab('groups')}>
+                  <div className={`kpi-card kpi-clickable ${activeTab === 'groups' ? 'kpi-active' : ''}`} onClick={() => setActiveTab('groups')}>
                     <div className="kpi-card-icon kpi-violet">
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/>
@@ -497,6 +498,18 @@ export default function Dashboard() {
                       {activeTab === 'groups' && <option value="members">מיון לפי חברים</option>}
                     </select>
                   </div>
+
+                  {/* View toggle */}
+                  {(activeTab === 'campaigns' || activeTab === 'posts') && (
+                    <div className="view-toggle-bar">
+                      <button className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')} title="תצוגת ריבועים">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                      </button>
+                      <button className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} title="תצוגת שורות">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -609,9 +622,9 @@ export default function Dashboard() {
 
               {/* Panel */}
               <div className="dash-panel">
-                {activeTab === 'campaigns' && <CampaignsPanel campaigns={filteredCampaigns} navigate={navigate} />}
+                {activeTab === 'campaigns' && <CampaignsPanel campaigns={filteredCampaigns} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} />}
                 {activeTab === 'groups' && <GroupsPanel groups={filteredGroups} navigate={navigate} onRefresh={handleRefreshGroups} refreshing={refreshingGroups} sessionRequired={sessionRequired} />}
-                {activeTab === 'posts' && <PostsPanel posts={filteredPosts} navigate={navigate} />}
+                {activeTab === 'posts' && <PostsPanel posts={filteredPosts} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} />}
                 {activeTab === 'stats' && (
                   <StatsPanel stats={stats} dateFrom={dateFrom} dateTo={dateTo}
                     setDateFrom={setDateFrom} setDateTo={setDateTo} onFilter={loadStats} />
@@ -643,8 +656,24 @@ export default function Dashboard() {
 
 // ─── PANELS ─────────────────────────────────────────────
 
-function CampaignsPanel({ campaigns, navigate }) {
+function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
   const [tooltipId, setTooltipId] = useState(null)
+  const [menuId, setMenuId] = useState(null)
+  const [editCampaign, setEditCampaign] = useState(null)
+  const [detailCampaign, setDetailCampaign] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [localCampaigns, setLocalCampaigns] = useState(campaigns)
+  const menuRef = useRef(null)
+
+  useEffect(() => { setLocalCampaigns(campaigns) }, [campaigns])
+
+  // Close tooltip on outside click (mobile)
+  useEffect(() => {
+    if (!tooltipId) return
+    const close = () => setTooltipId(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [tooltipId])
 
   const STATUS_LABELS = {
     scheduled: 'מתוזמן',
@@ -666,7 +695,89 @@ function CampaignsPanel({ campaigns, navigate }) {
 
   const DAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
 
-  if (!campaigns.length) return (
+  useEffect(() => {
+    if (!menuId) return
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuId(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuId])
+
+  const handlePause = async (campaign) => {
+    setMenuId(null)
+    const wasPaused = campaign.isPaused
+    setLocalCampaigns(prev => prev.map(c => c.id === campaign.id
+      ? { ...c, isPaused: !wasPaused, status: wasPaused ? (c.campaignType === 'RECURRING' ? 'recurring' : 'scheduled') : 'paused' }
+      : c
+    ))
+    try {
+      await groupsService.togglePause(campaign.id)
+      onUpdate()
+    } catch {
+      setLocalCampaigns(prev => prev.map(c => c.id === campaign.id
+        ? { ...c, isPaused: wasPaused, status: campaign.status }
+        : c
+      ))
+    }
+  }
+
+  const handleDelete = async (campaign) => {
+    setMenuId(null)
+    if (!window.confirm('למחוק את הקמפיין? פעולה זו לא ניתנת לביטול.')) return
+    setLocalCampaigns(prev => prev.filter(c => c.id !== campaign.id))
+    try {
+      await groupsService.deleteCampaign(campaign.id)
+      onUpdate()
+    } catch {
+      setLocalCampaigns(prev => [...prev, campaign])
+    }
+  }
+
+  const handleDuplicate = async (campaign) => {
+    setMenuId(null)
+    const tempId = 'temp-' + Date.now()
+    const duplicate = { ...campaign, id: tempId, title: (campaign.title || '') + ' (עותק)', status: 'draft', isPaused: true }
+    setLocalCampaigns(prev => [duplicate, ...prev])
+    try {
+      await groupsService.duplicateCampaign(campaign.id)
+      onUpdate()
+    } catch {
+      setLocalCampaigns(prev => prev.filter(c => c.id !== tempId))
+    }
+  }
+
+  const handleEdit = async (campaign) => {
+    setMenuId(null)
+    try {
+      const res = await groupsService.getCampaign(campaign.id)
+      setEditCampaign(res.data.campaign)
+    } catch { /* ignore */ }
+  }
+
+  const handleRestart = (campaign) => {
+    setMenuId(null)
+    handleEdit(campaign)
+  }
+
+  const handleEditSave = async (idOrData, dataOrImages, maybeImages) => {
+    // Support both: handleEditSave(data, images) and handleEditSave(id, data, images)
+    let id, data, images
+    if (typeof idOrData === 'string') {
+      id = idOrData; data = dataOrImages; images = maybeImages
+    } else {
+      id = editCampaign?.id; data = idOrData; images = dataOrImages
+    }
+    setLoading(true)
+    try {
+      await groupsService.updateCampaign(id, data, images)
+      setEditCampaign(null)
+      onUpdate()
+    } catch { /* ignore */ }
+    setLoading(false)
+  }
+
+  if (!localCampaigns.length) return (
     <div className="empty-state">
       <div className="empty-icon-wrap">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -680,16 +791,26 @@ function CampaignsPanel({ campaigns, navigate }) {
   )
 
   return (
-    <div className="campaigns-grid">
-      {campaigns.map(campaign => (
-        <div key={campaign.id} className="campaign-card" onClick={() => navigate(`/post/${campaign.id}`)}>
-          <div className="campaign-card-visual">
-            {campaign.imageUrl
+    <>
+    <div className={`campaigns-grid ${viewMode === 'list' ? 'campaigns-list-view' : ''}`}>
+      {localCampaigns.map(campaign => {
+        const allImages = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
+        const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url
+        const cardImages = allImages.slice(0, 3)
+        const extraImgs = allImages.length - 3
+        return (
+        <div key={campaign.id} className="campaign-card">
+          <div className={`campaign-card-visual card-imgs-${Math.min(allImages.length, 3)}`} onClick={() => setDetailCampaign(campaign)}>
+            {cardImages.length > 0
               ? <>
-                  <img src={campaign.imageUrl} alt="" className="campaign-thumb" />
-                  {campaign.imageCount > 1 && (
-                    <span className="campaign-image-count">+{campaign.imageCount - 1}</span>
-                  )}
+                  {cardImages.map((img, i) => (
+                    <div key={i} className={`card-img-cell ${i === 0 ? 'card-img-main' : 'card-img-side'}`}>
+                      <img src={resolveImg(img)} alt="" />
+                      {i === 2 && extraImgs > 0 && (
+                        <div className="card-img-plus">+{extraImgs}</div>
+                      )}
+                    </div>
+                  ))}
                 </>
               : <div className="campaign-thumb-placeholder">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -703,13 +824,47 @@ function CampaignsPanel({ campaigns, navigate }) {
           </div>
 
           <div className="campaign-card-body">
-            <h4 className="campaign-card-title">
-              {campaign.title || campaign.content?.slice(0, 40) || 'קמפיין'}
-            </h4>
+            <div className="campaign-card-header">
+              <h4 className="campaign-card-title" onClick={() => setDetailCampaign(campaign)}>                {campaign.title || campaign.content?.slice(0, 40) || 'קמפיין'}
+              </h4>
+              <div className="actions-menu-wrap" ref={menuId === campaign.id ? menuRef : undefined}>
+                <button className="actions-dots-btn" onClick={(e) => { e.stopPropagation(); setMenuId(menuId === campaign.id ? null : campaign.id) }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                </button>
+                {menuId === campaign.id && (
+                  <div className="actions-dropdown">
+                    <button onClick={() => handleEdit(campaign)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      ערוך
+                    </button>
+                    {campaign.isPaused || campaign.status === 'draft' || campaign.status === 'one-time' ? (
+                      <button onClick={() => handleRestart(campaign)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        הפעל מחדש
+                      </button>
+                    ) : (
+                      <button onClick={() => handlePause(campaign)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                        השהה
+                      </button>
+                    )}
+                    <button onClick={() => handleDuplicate(campaign)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                      שכפל
+                    </button>
+                    <button className="actions-danger" onClick={() => handleDelete(campaign)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                      מחק
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
 
             <div className="campaign-card-meta">
               <span
                 className="campaign-groups-count"
+                onClick={(e) => { e.stopPropagation(); setTooltipId(tooltipId === campaign.id ? null : campaign.id) }}
                 onMouseEnter={() => setTooltipId(campaign.id)}
                 onMouseLeave={() => setTooltipId(null)}
               >
@@ -743,8 +898,32 @@ function CampaignsPanel({ campaigns, navigate }) {
             )}
           </div>
         </div>
-      ))}
+      )})}
     </div>
+
+    {editCampaign && (
+      <EditCampaignModal
+        campaign={editCampaign}
+        groups={groups}
+        loading={loading}
+        onSave={handleEditSave}
+        onClose={() => setEditCampaign(null)}
+      />
+    )}
+
+    {detailCampaign && (
+      <CampaignDetailModal
+        campaign={detailCampaign}
+        onClose={() => setDetailCampaign(null)}
+        groups={groups}
+        loading={loading}
+        onSave={(data, imgs) => { handleEditSave(detailCampaign.id, data, imgs); setDetailCampaign(null) }}
+        onPause={() => { setDetailCampaign(null); handlePause(detailCampaign) }}
+        onDuplicate={() => { setDetailCampaign(null); handleDuplicate(detailCampaign) }}
+        onDelete={() => { setDetailCampaign(null); handleDelete(detailCampaign) }}
+      />
+    )}
+    </>
   )
 }
 
@@ -808,8 +987,55 @@ function GroupsPanel({ groups, navigate, onRefresh, refreshing, sessionRequired 
   )
 }
 
-function PostsPanel({ posts, navigate }) {
-  if (!posts.length) return (
+function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
+  const [menuId, setMenuId] = useState(null)
+  const [reschedulePost, setReschedulePost] = useState(null)
+  const [detailPost, setDetailPost] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [localPosts, setLocalPosts] = useState(posts)
+  const menuRef = useRef(null)
+
+  useEffect(() => { setLocalPosts(posts) }, [posts])
+
+  useEffect(() => {
+    if (!menuId) return
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuId(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuId])
+
+  const handleDelete = async (item) => {
+    setMenuId(null)
+    if (!window.confirm('למחוק את רשומת הפרסום?')) return
+    setLocalPosts(prev => prev.filter(p => p.id !== item.id))
+    try {
+      await groupsService.deleteHistory(item.id)
+      onUpdate()
+    } catch {
+      setLocalPosts(prev => [...prev, item])
+    }
+  }
+
+  const handleRestart = (item) => {
+    setMenuId(null)
+    setReschedulePost(item)
+  }
+
+  const handleReschedule = async (data) => {
+    setLoading(true)
+    try {
+      await groupsService.schedulePost({
+        postId: reschedulePost.post?.id || reschedulePost.id,
+        ...data,
+      })
+      setReschedulePost(null)
+      onUpdate()
+    } catch { /* ignore */ }
+    setLoading(false)
+  }
+  if (!localPosts.length) return (
     <div className="empty-state">
       <div className="empty-icon-wrap">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -822,33 +1048,95 @@ function PostsPanel({ posts, navigate }) {
     </div>
   )
 
+  const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url
+
   return (
-    <div className="posts-list">
-      {posts.map(item => (
-        <div key={item.id} className="post-card" onClick={() => navigate(`/post/${item.post?.id || item.id}`)}>
-          <div className="post-card-top">
-            <div className="post-card-thumb">
-              {item.hasScreenshot && item.screenshotUrl && item.screenshotUrl !== 'stored'
-                ? <img src={`data:image/png;base64,${item.screenshotUrl}`} alt="" />
-                : <div className="post-card-thumb-placeholder">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                    </svg>
-                  </div>
-              }
-            </div>
-            <div className="post-card-content">
-              <p className="post-card-text">{item.post?.content?.slice(0, 80) || '—'}</p>
-            </div>
+    <>
+    <div className={`campaigns-grid ${viewMode === 'list' ? 'campaigns-list-view' : ''}`}>
+      {localPosts.map(item => {
+        const allImages = item.post?.images || item.images || []
+        const cardImages = allImages.slice(0, 3)
+        const extraImgs = allImages.length - 3
+        return (
+        <div key={item.id} className="campaign-card">
+          <div className={`campaign-card-visual card-imgs-${Math.min(allImages.length, 3)}`} onClick={() => setDetailPost(item)}>
+            {cardImages.length > 0
+              ? <>
+                  {cardImages.map((img, i) => (
+                    <div key={i} className={`card-img-cell ${i === 0 ? 'card-img-main' : 'card-img-side'}`}>
+                      <img src={resolveImg(img)} alt="" />
+                      {i === 2 && extraImgs > 0 && (
+                        <div className="card-img-plus">+{extraImgs}</div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              : <div className="campaign-thumb-placeholder">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                </div>
+            }
+            <span className="campaign-badge badge-success">✓ פורסם</span>
           </div>
-          <div className="post-card-meta">
-            <span className="post-card-group">👥 {item.group?.name || '—'}</span>
-            <span className="post-card-status badge-success">✓ פורסם</span>
-            <span className="post-card-date">{item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('he-IL') : '—'}</span>
+
+          <div className="campaign-card-body">
+            <div className="campaign-card-header">
+              <h4 className="campaign-card-title" onClick={() => setDetailPost(item)}>
+                {item.post?.content?.slice(0, 40) || '—'}
+              </h4>
+              <div className="actions-menu-wrap" ref={menuId === item.id ? menuRef : undefined}>
+                <button className="actions-dots-btn" onClick={(e) => { e.stopPropagation(); setMenuId(menuId === item.id ? null : item.id) }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                </button>
+                {menuId === item.id && (
+                  <div className="actions-dropdown">
+                    <button onClick={() => handleRestart(item)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                      הפעל מחדש
+                    </button>
+                    <button className="actions-danger" onClick={() => handleDelete(item)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                      מחק
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="campaign-card-meta">
+              <span className="campaign-groups-count">👥 {item.group?.name || '—'}</span>
+              <span className="campaign-date">
+                {item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('he-IL', {
+                  day: 'numeric', month: 'short', year: 'numeric'
+                }) : '—'}
+              </span>
+            </div>
           </div>
         </div>
-      ))}
+        )
+      })}
     </div>
+
+    {reschedulePost && (
+      <RescheduleModal
+        post={reschedulePost}
+        groups={groups}
+        loading={loading}
+        onSchedule={handleReschedule}
+        onClose={() => setReschedulePost(null)}
+      />
+    )}
+
+    {detailPost && (
+      <PostDetailModal
+        item={detailPost}
+        onClose={() => setDetailPost(null)}
+        onRestart={() => { setDetailPost(null); handleRestart(detailPost) }}
+        onDelete={() => { setDetailPost(null); handleDelete(detailPost) }}
+      />
+    )}
+    </>
   )
 }
 
@@ -962,6 +1250,686 @@ function SettingsPanel({ user }) {
             >
               ☀️ בהיר
             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── EDIT CAMPAIGN MODAL ────────────────────────────────
+
+function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
+  const [text, setText] = useState(campaign.content || '')
+  const [title, setTitle] = useState(campaign.title || '')
+  const [anonymous, setAnonymous] = useState(campaign.isAnonymous || false)
+  const [location, setLocation] = useState(campaign.location || '')
+  const [selectedGroups, setSelectedGroups] = useState(campaign.groups?.map(g => g.id) || [])
+  const [campaignType, setCampaignType] = useState(campaign.campaignType || 'ONE_TIME')
+  const [recurringDays, setRecurringDays] = useState(campaign.recurringDays || [])
+  const [recurringTime, setRecurringTime] = useState(campaign.recurringTime || '')
+  const [scheduleDate, setScheduleDate] = useState('')
+  const [scheduleTime, setScheduleTime] = useState('')
+  const [groupSearch, setGroupSearch] = useState('')
+  const [newImages, setNewImages] = useState([])
+  const existingEditImgs = (campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : []))
+    .map(url => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url)
+  const [imagePreviews, setImagePreviews] = useState(existingEditImgs)
+
+  const handleImageSelect = (e) => {
+    const files = Array.from(e.target.files)
+    const combined = [...newImages, ...files].slice(0, 10)
+    setNewImages(combined)
+    setImagePreviews(combined.map(f => URL.createObjectURL(f)))
+  }
+  const removeImage = (idx) => {
+    setNewImages(prev => prev.filter((_, i) => i !== idx))
+    setImagePreviews(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const filteredGroups = groups.filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
+
+  const DAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
+
+  const toggleGroup = (id) => {
+    setSelectedGroups(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id])
+  }
+
+  const toggleDay = (day) => {
+    setRecurringDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort())
+  }
+
+  const scheduleMode = campaignType === 'RECURRING' ? 'recurring'
+    : (scheduleDate && scheduleTime) ? 'scheduled' : null
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    onSave({
+      text,
+      title: title || null,
+      anonymous,
+      location,
+      groupIds: selectedGroups,
+      campaignType,
+      recurringDays,
+      recurringTime,
+      scheduleMode,
+      scheduleDate,
+      scheduleTime,
+    }, newImages)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content edit-campaign-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>עריכת קמפיין</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="modal-body">
+          <div className="form-group">
+            <label>כותרת</label>
+            <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="כותרת (אופציונלי)" />
+          </div>
+
+          <div className="form-group">
+            <label>תוכן הפוסט</label>
+            <textarea value={text} onChange={e => setText(e.target.value)} rows={4} required />
+          </div>
+
+          <div className="form-group">
+            <label>תמונות ({imagePreviews.length}/10)</label>
+            <div className="edit-images-grid">
+              {imagePreviews.map((src, i) => (
+                <div key={i} className="edit-image-item">
+                  <img src={src} alt="" />
+                  <button type="button" className="edit-image-remove" onClick={() => removeImage(i)}>✕</button>
+                </div>
+              ))}
+              {imagePreviews.length < 10 && (
+                <label className="edit-image-add">
+                  <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden />
+                  <span>+</span>
+                </label>
+              )}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>קבוצות</label>
+            <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." />
+            <div className="group-checkboxes">
+              {filteredGroups.map(g => (
+                <label key={g.id} className={`group-checkbox ${selectedGroups.includes(g.id) ? 'checked' : ''}`}>
+                  <input type="checkbox" checked={selectedGroups.includes(g.id)} onChange={() => toggleGroup(g.id)} />
+                  <span>{g.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-row">
+            <label className="checkbox-label">
+              <input type="checkbox" checked={anonymous} onChange={e => setAnonymous(e.target.checked)} />
+              פרסום אנונימי
+            </label>
+          </div>
+
+          <div className="form-group">
+            <label>מיקום</label>
+            <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="מיקום (אופציונלי)" />
+          </div>
+
+          <div className="form-group">
+            <label>סוג קמפיין</label>
+            <div className="campaign-type-btns">
+              <button type="button" className={campaignType === 'ONE_TIME' ? 'active' : ''} onClick={() => setCampaignType('ONE_TIME')}>חד-פעמי</button>
+              <button type="button" className={campaignType === 'SCHEDULED' ? 'active' : ''} onClick={() => setCampaignType('SCHEDULED')}>מתוזמן</button>
+              <button type="button" className={campaignType === 'RECURRING' ? 'active' : ''} onClick={() => setCampaignType('RECURRING')}>חוזר</button>
+            </div>
+          </div>
+
+          {campaignType === 'SCHEDULED' && (
+            <div className="form-row">
+              <div className="form-group">
+                <label>תאריך</label>
+                <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>שעה</label>
+                <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} />
+              </div>
+            </div>
+          )}
+
+          {campaignType === 'RECURRING' && (
+            <>
+              <div className="form-group">
+                <label>ימים</label>
+                <div className="day-picker">
+                  {DAY_NAMES.map((name, i) => (
+                    <button key={i} type="button" className={`day-btn ${recurringDays.includes(i) ? 'active' : ''}`} onClick={() => toggleDay(i)}>{name}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label>שעה</label>
+                <input type="time" value={recurringTime} onChange={e => setRecurringTime(e.target.value)} />
+              </div>
+            </>
+          )}
+
+          <button type="submit" className="modal-submit-btn" disabled={loading || !text || !selectedGroups.length}>
+            {loading ? '⏳ מעדכן...' : 'עדכן קמפיין מתוזמן'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── RESCHEDULE MODAL ───────────────────────────────────
+
+function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
+  const [selectedGroups, setSelectedGroups] = useState(
+    post.group ? [post.group.id || post.groupId] : []
+  )
+  const [scheduleDate, setScheduleDate] = useState('')
+  const [scheduleTime, setScheduleTime] = useState('')
+  const [groupSearch, setGroupSearch] = useState('')
+  const [text, setText] = useState(post.post?.content || '')
+  const [isAnonymous, setIsAnonymous] = useState(post.post?.isAnonymous || false)
+  const [location, setLocation] = useState(post.post?.location || '')
+  const [newImages, setNewImages] = useState([])
+  const existingImages = (post.post?.images || post.images || [])
+    .map(url => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url)
+  const [imagePreviews, setImagePreviews] = useState(existingImages)
+
+  const handleImageSelect = (e) => {
+    const files = Array.from(e.target.files)
+    const combined = [...newImages, ...files].slice(0, 10)
+    setNewImages(combined)
+    setImagePreviews(combined.map(f => URL.createObjectURL(f)))
+  }
+  const removeImage = (idx) => {
+    setNewImages(prev => prev.filter((_, i) => i !== idx))
+    setImagePreviews(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const filteredGroups = groups.filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
+
+  const toggleGroup = (id) => {
+    setSelectedGroups(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id])
+  }
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (!scheduleDate || !scheduleTime || !selectedGroups.length) return
+    onSchedule({
+      groupIds: selectedGroups,
+      scheduledAt: new Date(`${scheduleDate}T${scheduleTime}:00`).toISOString(),
+      text,
+      isAnonymous,
+      location,
+    }, newImages)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content reschedule-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>הפעלה מחדש</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="modal-body reschedule-body">
+          {/* Content editing */}
+          <div className="form-group">
+            <label>תוכן הפוסט</label>
+            <textarea
+              className="reschedule-textarea"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={4}
+              placeholder="מה ברצונך לשתף?"
+            />
+          </div>
+
+          {/* Image editing */}
+          <div className="form-group">
+            <label>תמונות</label>
+            {imagePreviews.length > 0 && (
+              <div className="reschedule-images">
+                {imagePreviews.map((src, i) => (
+                  <div key={i} className="reschedule-img-item">
+                    <img src={src} alt="" />
+                    <button type="button" onClick={() => removeImage(i)} className="reschedule-img-remove">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="reschedule-img-add">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              הוסף תמונות
+              <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden />
+            </label>
+          </div>
+
+          {/* Options */}
+          <div className="form-row reschedule-options">
+            <label className={`reschedule-option ${isAnonymous ? 'active' : ''}`}>
+              <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} hidden />
+              🕶️ אנונימי
+            </label>
+            <div className="reschedule-location-field">
+              <input
+                type="text"
+                placeholder="📍 מיקום (אופציונלי)"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Groups */}
+          <div className="form-group">
+            <label>קבוצות לפרסום</label>
+            <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." />
+            <div className="group-checkboxes">
+              {filteredGroups.map(g => (
+                <label key={g.id} className={`group-checkbox ${selectedGroups.includes(g.id) ? 'checked' : ''}`}>
+                  <input type="checkbox" checked={selectedGroups.includes(g.id)} onChange={() => toggleGroup(g.id)} />
+                  <span>{g.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Schedule */}
+          <div className="form-row">
+            <div className="form-group">
+              <label>תאריך</label>
+              <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} required />
+            </div>
+            <div className="form-group">
+              <label>שעה</label>
+              <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} required />
+            </div>
+          </div>
+
+          <button type="submit" className="modal-submit-btn" disabled={loading || !scheduleDate || !scheduleTime || !selectedGroups.length}>
+            {loading ? '⏳ מתזמן...' : 'תזמן פרסום'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Campaign Detail Modal ─────────────────────────────────
+
+const API_HOST = 'http://localhost:5001'
+
+function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, onDelete, groups, loading, onSave }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [lightboxIdx, setLightboxIdx] = useState(null)
+  const menuRef = useRef(null)
+
+  const images = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
+  const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
+
+  const STATUS_LABELS = {
+    scheduled: 'מתוזמן', paused: 'מושהה', draft: 'טיוטה',
+    recurring: 'חוזר', active: 'פעיל', 'one-time': 'חד-פעמי',
+  }
+  const DAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
+
+  // Edit form state
+  const [text, setText] = useState(campaign.content || '')
+  const [title, setTitle] = useState(campaign.title || '')
+  const [anonymous, setAnonymous] = useState(campaign.isAnonymous || false)
+  const [locationVal, setLocationVal] = useState(campaign.location || '')
+  const [selectedGroups, setSelectedGroups] = useState(campaign.groups?.map(g => g.id) || [])
+  const [campaignType, setCampaignType] = useState(campaign.campaignType || 'ONE_TIME')
+  const [recurringDays, setRecurringDays] = useState(campaign.recurringDays || [])
+  const [recurringTime, setRecurringTime] = useState(campaign.recurringTime || '')
+  const [scheduleDate, setScheduleDate] = useState('')
+  const [scheduleTime, setScheduleTime] = useState('')
+  const [groupSearch, setGroupSearch] = useState('')
+  const [newImages, setNewImages] = useState([])
+  const existingDetailImgs = (campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : []))
+    .map(url => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url)
+  const [imagePreviews, setImagePreviews] = useState(existingDetailImgs)
+
+  const handleImageSelect = (e) => {
+    const files = Array.from(e.target.files)
+    const combined = [...newImages, ...files].slice(0, 10)
+    setNewImages(combined)
+    setImagePreviews(combined.map(f => URL.createObjectURL(f)))
+  }
+  const removeImage = (idx) => {
+    setNewImages(prev => prev.filter((_, i) => i !== idx))
+    setImagePreviews(prev => prev.filter((_, i) => i !== idx))
+  }
+  const filteredGroups = (groups || []).filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
+  const toggleGroup = (id) => setSelectedGroups(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id])
+  const toggleDay = (day) => setRecurringDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort())
+
+  const handleEditSubmit = (e) => {
+    e.preventDefault()
+    const scheduleMode = campaignType === 'RECURRING' ? 'recurring' : (scheduleDate && scheduleTime) ? 'scheduled' : null
+    onSave({
+      text, title: title || null, anonymous, location: locationVal,
+      groupIds: selectedGroups, campaignType, recurringDays, recurringTime,
+      scheduleMode, scheduleDate, scheduleTime,
+    }, newImages)
+  }
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuOpen])
+
+  // Visible images for grid: max 3 shown
+  const visibleImages = images.slice(0, 3)
+  const extraCount = images.length - 3
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content detail-modal" onClick={e => e.stopPropagation()}>
+        <div className="detail-modal-header">
+          <button className="modal-close" onClick={onClose}>✕</button>
+          <div className="actions-menu-wrap" ref={menuRef}>
+            <button className="actions-dots-btn" onClick={() => setMenuOpen(!menuOpen)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </button>
+            {menuOpen && (
+              <div className="actions-dropdown">
+                <button onClick={() => { setMenuOpen(false); setEditing(!editing) }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  {editing ? 'ביטול עריכה' : 'ערוך'}
+                </button>
+                <button onClick={onPause}>
+                  {campaign.isPaused ? (
+                    <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> הפעל מחדש</>
+                  ) : (
+                    <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> השהה</>
+                  )}
+                </button>
+                <button onClick={onDuplicate}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                  שכפל
+                </button>
+                <button className="actions-danger" onClick={onDelete}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                  מחק
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Image grid: 1 big + 2 small + plus */}
+        {!editing && (
+          <div className={`detail-image-grid imgs-${Math.min(images.length, 3)}`}>
+            {images.length > 0 ? (
+              <>
+                {visibleImages.map((img, i) => (
+                  <div key={i} className={`detail-grid-cell ${i === 0 ? 'detail-grid-main' : 'detail-grid-side'}`} onClick={() => setLightboxIdx(i)}>
+                    <img src={imgSrc(img)} alt="" />
+                    {i === 2 && extraCount > 0 && (
+                      <div className="detail-grid-plus">+{extraCount}</div>
+                    )}
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div className="detail-no-image">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                </svg>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Lightbox */}
+        {lightboxIdx !== null && (
+          <div className="detail-lightbox" onClick={() => setLightboxIdx(null)}>
+            <img src={imgSrc(images[lightboxIdx])} alt="" onClick={e => e.stopPropagation()} />
+            {images.length > 1 && (
+              <>
+                <button className="lightbox-nav lightbox-prev" onClick={e => { e.stopPropagation(); setLightboxIdx(i => (i - 1 + images.length) % images.length) }}>‹</button>
+                <button className="lightbox-nav lightbox-next" onClick={e => { e.stopPropagation(); setLightboxIdx(i => (i + 1) % images.length) }}>›</button>
+                <span className="lightbox-count">{lightboxIdx + 1} / {images.length}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Edit mode */}
+        {editing ? (
+          <form onSubmit={handleEditSubmit} className="detail-edit-form">
+            <div className="form-group">
+              <label>כותרת</label>
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="כותרת (אופציונלי)" />
+            </div>
+            <div className="form-group">
+              <label>תוכן הפוסט</label>
+              <textarea value={text} onChange={e => setText(e.target.value)} rows={4} required />
+            </div>
+            <div className="form-group">
+              <label>תמונות ({imagePreviews.length}/10)</label>
+              <div className="edit-images-grid">
+                {imagePreviews.map((src, i) => (
+                  <div key={i} className="edit-image-item">
+                    <img src={src} alt="" />
+                    <button type="button" className="edit-image-remove" onClick={() => removeImage(i)}>✕</button>
+                  </div>
+                ))}
+                {imagePreviews.length < 10 && (
+                  <label className="edit-image-add">
+                    <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden />
+                    <span>+</span>
+                  </label>
+                )}
+              </div>
+            </div>
+            <div className="form-group">
+              <label>קבוצות</label>
+              <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." />
+              <div className="group-checkboxes">
+                {filteredGroups.map(g => (
+                  <label key={g.id} className={`group-checkbox ${selectedGroups.includes(g.id) ? 'checked' : ''}`}>
+                    <input type="checkbox" checked={selectedGroups.includes(g.id)} onChange={() => toggleGroup(g.id)} />
+                    <span>{g.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="form-row">
+              <label className="checkbox-label">
+                <input type="checkbox" checked={anonymous} onChange={e => setAnonymous(e.target.checked)} />
+                פרסום אנונימי
+              </label>
+            </div>
+            <div className="form-group">
+              <label>מיקום</label>
+              <input type="text" value={locationVal} onChange={e => setLocationVal(e.target.value)} placeholder="מיקום (אופציונלי)" />
+            </div>
+            <div className="form-group">
+              <label>סוג קמפיין</label>
+              <div className="campaign-type-btns">
+                <button type="button" className={campaignType === 'ONE_TIME' ? 'active' : ''} onClick={() => setCampaignType('ONE_TIME')}>חד-פעמי</button>
+                <button type="button" className={campaignType === 'SCHEDULED' ? 'active' : ''} onClick={() => setCampaignType('SCHEDULED')}>מתוזמן</button>
+                <button type="button" className={campaignType === 'RECURRING' ? 'active' : ''} onClick={() => setCampaignType('RECURRING')}>חוזר</button>
+              </div>
+            </div>
+            {campaignType === 'SCHEDULED' && (
+              <div className="form-row">
+                <div className="form-group"><label>תאריך</label><input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} /></div>
+                <div className="form-group"><label>שעה</label><input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} /></div>
+              </div>
+            )}
+            {campaignType === 'RECURRING' && (
+              <>
+                <div className="form-group">
+                  <label>ימים</label>
+                  <div className="day-picker">
+                    {DAY_NAMES.map((name, i) => (
+                      <button key={i} type="button" className={`day-btn ${recurringDays.includes(i) ? 'active' : ''}`} onClick={() => toggleDay(i)}>{name}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-group"><label>שעה</label><input type="time" value={recurringTime} onChange={e => setRecurringTime(e.target.value)} /></div>
+              </>
+            )}
+            <div className="detail-edit-actions">
+              <button type="submit" className="modal-submit-btn" disabled={loading || !text || !selectedGroups.length}>
+                {loading ? '⏳ מעדכן...' : 'עדכן קמפיין'}
+              </button>
+              <button type="button" className="modal-cancel-btn" onClick={() => setEditing(false)}>ביטול</button>
+            </div>
+          </form>
+        ) : (
+          /* View mode details */
+          <div className="detail-body">
+            <h3 className="detail-title">{campaign.title || 'קמפיין'}</h3>
+            <p className="detail-content">{campaign.content}</p>
+
+            <div className="detail-meta">
+              <div className="detail-meta-item">
+                <span className="detail-label">סטטוס</span>
+                <span className={`detail-badge badge-${campaign.status}`}>{STATUS_LABELS[campaign.status] || campaign.status}</span>
+              </div>
+              <div className="detail-meta-item">
+                <span className="detail-label">סוג</span>
+                <span>{campaign.campaignType === 'RECURRING' ? 'חוזר' : campaign.campaignType === 'SCHEDULED' ? 'מתוזמן' : 'חד-פעמי'}</span>
+              </div>
+              {campaign.recurringDays?.length > 0 && (
+                <div className="detail-meta-item">
+                  <span className="detail-label">ימים</span>
+                  <span>{campaign.recurringDays.map(d => DAY_NAMES[d]).join(', ')}{campaign.recurringTime ? ` • ${campaign.recurringTime}` : ''}</span>
+                </div>
+              )}
+              <div className="detail-meta-item">
+                <span className="detail-label">קבוצות</span>
+                <span>👥 {campaign.groupCount || campaign.groupNames?.length || 0} — {campaign.groupNames?.join(', ') || ''}</span>
+              </div>
+              {campaign.isAnonymous && (
+                <div className="detail-meta-item">
+                  <span className="detail-label">אנונימי</span>
+                  <span>כן</span>
+                </div>
+              )}
+              {campaign.location && (
+                <div className="detail-meta-item">
+                  <span className="detail-label">מיקום</span>
+                  <span>{campaign.location}</span>
+                </div>
+              )}
+              <div className="detail-meta-item">
+                <span className="detail-label">נוצר</span>
+                <span>{new Date(campaign.createdAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Post Detail Modal ─────────────────────────────────────
+
+function PostDetailModal({ item, onClose, onRestart, onDelete }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  const images = item.post?.images || item.images || []
+  const [imageIdx, setImageIdx] = useState(0)
+  const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuOpen])
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content detail-modal" onClick={e => e.stopPropagation()}>
+        <div className="detail-modal-header">
+          <button className="modal-close" onClick={onClose}>✕</button>
+          <div className="actions-menu-wrap" ref={menuRef}>
+            <button className="actions-dots-btn" onClick={() => setMenuOpen(!menuOpen)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </button>
+            {menuOpen && (
+              <div className="actions-dropdown">
+                <button onClick={onRestart}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  הפעל מחדש
+                </button>
+                <button className="actions-danger" onClick={onDelete}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                  מחק
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Image / Screenshot */}
+        <div className="detail-images">
+          {images.length > 0 ? (
+            <>
+              <img src={imgSrc(images[imageIdx])} alt="" className="detail-main-image" />
+              {images.length > 1 && (
+                <div className="detail-image-nav">
+                  <button onClick={() => setImageIdx(i => (i - 1 + images.length) % images.length)} className="img-nav-btn">‹</button>
+                  <span className="img-nav-count">{imageIdx + 1} / {images.length}</span>
+                  <button onClick={() => setImageIdx(i => (i + 1) % images.length)} className="img-nav-btn">›</button>
+                </div>
+              )}
+            </>
+          ) : item.hasScreenshot && item.screenshotUrl && item.screenshotUrl !== 'stored' ? (
+            <img src={`data:image/png;base64,${item.screenshotUrl}`} alt="" className="detail-main-image" />
+          ) : (
+            <div className="detail-no-image">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+            </div>
+          )}
+        </div>
+
+        <div className="detail-body">
+          <p className="detail-content">{item.post?.content || '—'}</p>
+          <div className="detail-meta">
+            <div className="detail-meta-item">
+              <span className="detail-label">קבוצה</span>
+              <span>👥 {item.group?.name || '—'}</span>
+            </div>
+            <div className="detail-meta-item">
+              <span className="detail-label">סטטוס</span>
+              <span className="detail-badge badge-success">✓ פורסם</span>
+            </div>
+            {item.publishedAt && (
+              <div className="detail-meta-item">
+                <span className="detail-label">תאריך פרסום</span>
+                <span>{new Date(item.publishedAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            )}
+            {item.postUrl && (
+              <div className="detail-meta-item">
+                <span className="detail-label">קישור</span>
+                <a href={item.postUrl} target="_blank" rel="noopener noreferrer" className="detail-link">צפה בפוסט ←</a>
+              </div>
+            )}
           </div>
         </div>
       </div>
