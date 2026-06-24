@@ -9,12 +9,23 @@ vi.mock('react-router-dom', async () => {
 });
 
 const mockLogin = vi.fn();
-const mockRefresh = vi.fn();
 vi.mock('../../services/api.js', () => ({
   authAPI: {
     login: (...args) => mockLogin(...args),
-    refresh: (...args) => mockRefresh(...args),
   },
+}));
+
+const mockCheckAuth = vi.fn();
+const mockSetUser = vi.fn();
+const mockAppData = {
+  user: null,
+  authChecked: true,
+  checkAuth: mockCheckAuth,
+  setUser: mockSetUser,
+};
+
+vi.mock('../../context/DataProvider', () => ({
+  useAppData: () => mockAppData,
 }));
 
 vi.mock('../../services/http.js', () => ({
@@ -33,17 +44,20 @@ vi.mock('../../services/http.js', () => ({
 
 vi.mock('../../styles/auth.css', () => ({}));
 
+import Login from '../../pages/Login.jsx';
+
 describe('Login page', () => {
   beforeEach(() => {
     mockNavigate.mockClear();
     mockLogin.mockClear();
-    mockRefresh.mockClear();
-    mockRefresh.mockRejectedValue(new Error('No token'));
+    mockCheckAuth.mockClear();
+    mockSetUser.mockClear();
+    // Default: not authenticated
+    mockAppData.user = null;
+    mockAppData.authChecked = true;
   });
 
-  const renderLogin = async () => {
-    vi.resetModules();
-    const Login = (await import('../../pages/Login.jsx')).default;
+  const renderLogin = () => {
     render(
       <MemoryRouter>
         <Login />
@@ -51,44 +65,36 @@ describe('Login page', () => {
     );
   };
 
-  it('should render email and password fields', async () => {
-    await renderLogin();
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('אימייל')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText('סיסמה')).toBeInTheDocument();
-    });
+  it('should render email and password fields', () => {
+    renderLogin();
+    expect(screen.getByPlaceholderText('אימייל')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('סיסמה')).toBeInTheDocument();
   });
 
-  it('should render submit button', async () => {
-    await renderLogin();
-    await waitFor(() => {
-      expect(screen.getByText('🔑 התחבר')).toBeInTheDocument();
-    });
+  it('should render submit button', () => {
+    renderLogin();
+    expect(screen.getByText('🔑 התחבר')).toBeInTheDocument();
   });
 
-  it('should render link to register page', async () => {
-    await renderLogin();
-    await waitFor(() => {
-      expect(screen.getByText('הירשם')).toBeInTheDocument();
-    });
+  it('should render link to register page', () => {
+    renderLogin();
+    expect(screen.getByText('הירשם')).toBeInTheDocument();
   });
 
-  it('should login successfully', async () => {
+  it('should login successfully and set user', async () => {
+    const mockUser = { id: '1', email: 'a@b.com', name: 'Test' };
     mockLogin.mockResolvedValue({
-      data: { success: true, accessToken: 'tok', user: { id: '1', email: 'a@b.com' } },
+      data: { success: true, accessToken: 'tok', user: mockUser },
     });
 
-    await renderLogin();
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('אימייל')).toBeInTheDocument();
-    });
+    renderLogin();
     fireEvent.change(screen.getByPlaceholderText('אימייל'), { target: { value: 'a@b.com' } });
     fireEvent.change(screen.getByPlaceholderText('סיסמה'), { target: { value: 'password123' } });
     fireEvent.submit(document.querySelector('form'));
 
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith('a@b.com', 'password123');
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+      expect(mockSetUser).toHaveBeenCalledWith(mockUser);
     });
   });
 
@@ -97,10 +103,7 @@ describe('Login page', () => {
       response: { data: { error: 'Invalid email or password' } },
     });
 
-    await renderLogin();
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('אימייל')).toBeInTheDocument();
-    });
+    renderLogin();
     fireEvent.change(screen.getByPlaceholderText('אימייל'), { target: { value: 'a@b.com' } });
     fireEvent.change(screen.getByPlaceholderText('סיסמה'), { target: { value: 'wrong' } });
     fireEvent.submit(document.querySelector('form'));
@@ -110,13 +113,35 @@ describe('Login page', () => {
     });
   });
 
-  it('should redirect to dashboard if already logged in', async () => {
-    mockRefresh.mockResolvedValue({ data: { accessToken: 'tok' } });
+  it('should redirect to dashboard if already authenticated', async () => {
+    mockAppData.user = { id: '1', email: 'a@b.com' };
+    mockAppData.authChecked = true;
 
-    await renderLogin();
+    renderLogin();
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard', { replace: true });
+    });
+  });
+
+  it('should show loading state while checking auth', () => {
+    mockAppData.authChecked = false;
+    renderLogin();
+    // When authChecked is false, the form should not be visible yet
+    expect(screen.queryByPlaceholderText('אימייל')).not.toBeInTheDocument();
+  });
+
+  it('should disable button while submitting', async () => {
+    // Never resolve — keep loading forever
+    mockLogin.mockReturnValue(new Promise(() => {}));
+
+    renderLogin();
+    fireEvent.change(screen.getByPlaceholderText('אימייל'), { target: { value: 'a@b.com' } });
+    fireEvent.change(screen.getByPlaceholderText('סיסמה'), { target: { value: 'pass123' } });
+    fireEvent.submit(document.querySelector('form'));
+
+    await waitFor(() => {
+      expect(screen.getByText('⏳ מתחבר...')).toBeInTheDocument();
     });
   });
 });

@@ -2,11 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockPost = vi.fn();
 const mockGet = vi.fn();
+const mockPatch = vi.fn();
+const mockDelete = vi.fn();
 
 vi.mock("../../services/http.js", () => ({
   default: {
     post: mockPost,
     get: mockGet,
+    patch: mockPatch,
+    delete: mockDelete,
   },
 }));
 
@@ -16,6 +20,8 @@ describe("groupsService", () => {
   beforeEach(async () => {
     mockPost.mockClear();
     mockGet.mockClear();
+    mockPatch.mockClear();
+    mockDelete.mockClear();
 
     const module = await import("../../services/groupsService.js");
     groupsService = module.groupsService;
@@ -51,12 +57,16 @@ describe("groupsService", () => {
   });
 
   describe("bootstrapSession", () => {
-    it("should call POST /groups/session/bootstrap", async () => {
+    it("should call POST /groups/session/bootstrap with timeout", async () => {
       mockPost.mockResolvedValue({ data: { success: true } });
 
       await groupsService.bootstrapSession();
 
-      expect(mockPost).toHaveBeenCalledWith("/groups/session/bootstrap");
+      expect(mockPost).toHaveBeenCalledWith(
+        "/groups/session/bootstrap",
+        {},
+        { timeout: 360000 },
+      );
     });
 
     it("should return the response data", async () => {
@@ -98,6 +108,138 @@ describe("groupsService", () => {
       await groupsService.getGroupPosts("123");
 
       expect(mockGet).toHaveBeenCalledWith("/groups/123/posts");
+    });
+  });
+
+  describe("getPublicationHistory", () => {
+    it("should call GET /scheduler/history", async () => {
+      mockGet.mockResolvedValue({ data: { success: true, history: [] } });
+
+      await groupsService.getPublicationHistory();
+
+      expect(mockGet).toHaveBeenCalledWith("/scheduler/history");
+    });
+  });
+
+  describe("getJobs", () => {
+    it("should call GET /scheduler/jobs", async () => {
+      mockGet.mockResolvedValue({ data: { success: true, jobs: [] } });
+
+      await groupsService.getJobs();
+
+      expect(mockGet).toHaveBeenCalledWith("/scheduler/jobs");
+    });
+  });
+
+  describe("getCampaigns", () => {
+    it("should call GET /scheduler/campaigns", async () => {
+      mockGet.mockResolvedValue({ data: { success: true, campaigns: [] } });
+
+      await groupsService.getCampaigns();
+
+      expect(mockGet).toHaveBeenCalledWith("/scheduler/campaigns");
+    });
+  });
+
+  describe("createCampaign", () => {
+    it("should call POST /scheduler/campaigns with data", async () => {
+      const campaignData = { content: "test", groups: ["g1"] };
+      mockPost.mockResolvedValue({ data: { success: true } });
+
+      await groupsService.createCampaign(campaignData);
+
+      expect(mockPost).toHaveBeenCalledWith(
+        "/scheduler/campaigns",
+        campaignData,
+      );
+    });
+  });
+
+  describe("togglePause", () => {
+    it("should call PATCH /scheduler/campaigns/:id/pause", async () => {
+      mockPatch.mockResolvedValue({ data: { success: true } });
+
+      await groupsService.togglePause("post-1");
+
+      expect(mockPatch).toHaveBeenCalledWith(
+        "/scheduler/campaigns/post-1/pause",
+      );
+    });
+  });
+
+  describe("schedulePost", () => {
+    it("should call POST /scheduler/schedule with data", async () => {
+      const scheduleData = { postId: "p1", scheduledAt: "2026-01-01" };
+      mockPost.mockResolvedValue({ data: { success: true } });
+
+      await groupsService.schedulePost(scheduleData);
+
+      expect(mockPost).toHaveBeenCalledWith(
+        "/scheduler/schedule",
+        scheduleData,
+      );
+    });
+  });
+
+  describe("cancelJob", () => {
+    it("should call DELETE /scheduler/jobs/:id", async () => {
+      mockDelete.mockResolvedValue({ data: { success: true } });
+
+      await groupsService.cancelJob("job-1");
+
+      expect(mockDelete).toHaveBeenCalledWith("/scheduler/jobs/job-1");
+    });
+  });
+
+  describe("getNotifications", () => {
+    it("should call GET /scheduler/notifications", async () => {
+      mockGet.mockResolvedValue({ data: { notifications: [] } });
+
+      await groupsService.getNotifications();
+
+      expect(mockGet).toHaveBeenCalledWith("/scheduler/notifications");
+    });
+  });
+
+  describe("markNotificationsRead", () => {
+    it("should call PATCH /scheduler/notifications/read", async () => {
+      mockPatch.mockResolvedValue({ data: { success: true } });
+
+      await groupsService.markNotificationsRead();
+
+      expect(mockPatch).toHaveBeenCalledWith("/scheduler/notifications/read");
+    });
+  });
+
+  describe("getSessionStatus", () => {
+    it("should call GET /scheduler/session-status", async () => {
+      mockGet.mockResolvedValue({ data: { active: true } });
+
+      await groupsService.getSessionStatus();
+
+      expect(mockGet).toHaveBeenCalledWith("/scheduler/session-status");
+    });
+  });
+
+  describe("getStats", () => {
+    it("should call GET /scheduler/stats with params", async () => {
+      mockGet.mockResolvedValue({ data: { stats: {} } });
+
+      await groupsService.getStats({ from: "2026-01-01" });
+
+      expect(mockGet).toHaveBeenCalledWith("/scheduler/stats", {
+        params: { from: "2026-01-01" },
+      });
+    });
+
+    it("should work without params", async () => {
+      mockGet.mockResolvedValue({ data: { stats: {} } });
+
+      await groupsService.getStats();
+
+      expect(mockGet).toHaveBeenCalledWith("/scheduler/stats", {
+        params: undefined,
+      });
     });
   });
 });

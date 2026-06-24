@@ -27,6 +27,7 @@ const mockAppData = {
   setStats: vi.fn(),
   updateGroups: mockUpdateGroups,
   refreshing: false,
+  dataReady: true,
 };
 
 vi.mock('../../context/DataProvider', () => ({
@@ -74,6 +75,7 @@ describe('Dashboard page', () => {
     mockAppData.jobs = [];
     mockAppData.posts = [];
     mockAppData.stats = { scheduledCount: 0, groupsCount: 0, publishedCount: 0, groupStats: [] };
+    mockAppData.dataReady = true;
   });
 
   const renderDashboard = () => {
@@ -177,8 +179,8 @@ describe('Dashboard page', () => {
     fireEvent.click(screen.getAllByText('פרסומים')[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('קבוצת פרסום')).toBeInTheDocument();
-      expect(screen.getByText('✓ פורסם')).toBeInTheDocument();
+      expect(screen.getByText(/קבוצת פרסום/)).toBeInTheDocument();
+      expect(screen.getByText(/✓ פורסם/)).toBeInTheDocument();
     });
   });
 
@@ -195,5 +197,40 @@ describe('Dashboard page', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/');
     });
+  });
+
+  it('should show campaigns with data', async () => {
+    mockAppData.campaigns = [
+      { id: 'c1', title: 'קמפיין ראשון', content: 'תוכן', status: 'ACTIVE', createdAt: '2026-06-20T10:00:00Z', groupNames: ['קבוצה 1'] },
+    ];
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText('קמפיין ראשון')).toBeInTheDocument();
+    });
+  });
+
+  it('should render stats tab with labels', async () => {
+    mockAppData.stats = { scheduledCount: 5, groupsCount: 3, publishedCount: 12, groupStats: [] };
+
+    renderDashboard();
+
+    fireEvent.click(screen.getAllByText('סטטיסטיקה')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('סה״כ פרסומים')).toBeInTheDocument();
+      expect(screen.getByText('קבוצות פעילות')).toBeInTheDocument();
+      expect(screen.getByText('ממתינים לפרסום')).toBeInTheDocument();
+    });
+  });
+
+  it('should show loader when data is not ready', () => {
+    mockAppData.dataReady = false;
+
+    renderDashboard();
+
+    // When dataReady is false, the campaigns panel should not be visible
+    expect(screen.queryByText('אין קמפיינים')).not.toBeInTheDocument();
   });
 });

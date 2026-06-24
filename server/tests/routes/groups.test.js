@@ -361,3 +361,95 @@ describe("requireAuth middleware", () => {
     expect(res.body.error).toBe("Not authenticated");
   });
 });
+
+describe("POST /api/groups/search", () => {
+  it("should return matched group when found in user groups", async () => {
+    const axios = (await import("axios")).default;
+    // First call: search results, second call: user's groups
+    vi.mocked(axios.get)
+      .mockResolvedValueOnce({
+        data: { data: [{ id: "g1", name: "Test Group" }] },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            {
+              id: "g1",
+              name: "Test Group",
+              picture: { data: { url: "pic.jpg" } },
+            },
+          ],
+        },
+      });
+
+    const res = await request(app)
+      .post("/api/groups/search")
+      .send({ groupName: "Test Group" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.group.name).toBe("Test Group");
+  });
+
+  it("should return success=false when group not in user groups", async () => {
+    const axios = (await import("axios")).default;
+    vi.mocked(axios.get)
+      .mockResolvedValueOnce({ data: { data: [] } })
+      .mockResolvedValueOnce({ data: { data: [] } });
+
+    const res = await request(app)
+      .post("/api/groups/search")
+      .send({ groupName: "Unknown Group" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(false);
+  });
+
+  it("should return 400 when no access token", async () => {
+    const groupsModule = await import("../../src/routes/groups.js");
+    const noTokenApp = express();
+    noTokenApp.use(express.json());
+    noTokenApp.use((req, _res, next) => {
+      req.user = { id: "u1", facebookAccessToken: null };
+      next();
+    });
+    noTokenApp.use("/api/groups", groupsModule.default);
+
+    const res = await request(noTokenApp)
+      .post("/api/groups/search")
+      .send({ groupName: "Test" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("should handle Graph API errors gracefully", async () => {
+    const axios = (await import("axios")).default;
+    vi.mocked(axios.get).mockRejectedValue(new Error("Graph API error"));
+
+    const res = await request(app)
+      .post("/api/groups/search")
+      .send({ groupName: "Test" });
+
+    // Route catches errors and returns 200 with success=false
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(false);
+  });
+});
+
+describe("GET /api/groups/refresh-screenshot", () => {
+  it("should return 400 when no access token", async () => {
+    const groupsModule = await import("../../src/routes/groups.js");
+    const noTokenApp = express();
+    noTokenApp.use(express.json());
+    noTokenApp.use((req, _res, next) => {
+      req.user = { id: "u1", facebookAccessToken: null };
+      next();
+    });
+    noTokenApp.use("/api/groups", groupsModule.default);
+
+    const res = await request(noTokenApp).get("/api/groups/refresh-screenshot");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("No Facebook access token");
+  });
+});

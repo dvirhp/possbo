@@ -262,7 +262,7 @@ export default function CreatePost() {
                     await handlePublish()
                   } catch {
                     setReconnecting(false)
-                    alert('החיבור לא הושלם — נסה שוב')
+                    window.alert('החיבור לא הושלם — נסה שוב')
                   }
                 }}
               >
