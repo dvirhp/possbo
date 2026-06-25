@@ -1506,6 +1506,70 @@
   transform: translateX(-2px);
 }
 
+/* Group Detail Modal */
+.group-detail-top {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.group-detail-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.group-detail-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.group-detail-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.group-detail-link {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+.group-detail-link:hover {
+  border-color: var(--indigo);
+  color: var(--indigo);
+}
+
+.group-detail-btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--indigo);
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.group-detail-btn:hover {
+  background: #6366f1;
+}
+
 /* ═══════════ STATS ═══════════ */
 .stats-layout {
   display: flex;
@@ -3171,6 +3235,24 @@
   align-items: center;
   justify-content: center;
 }
+
+.image-number-badge {
+  position: absolute;
+  bottom: 4px;
+  inset-inline-end: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
 .edit-image-add {
   aspect-ratio: 1;
   display: flex;

@@ -192,6 +192,8 @@ router.get("/me", async (req, res) => {
     name: req.user.name,
     profileImage: req.user.profileImage,
     fbSessionValid: req.user.fbSessionValid || false,
+    whatsappNumber: req.user.whatsappNumber || null,
+    whatsappMessage: req.user.whatsappMessage || null,
   });
 });
 
@@ -290,6 +292,58 @@ router.post("/disconnect-facebook", async (req, res) => {
   });
 
   res.json({ success: true, message: "חיבור הפייסבוק נותק" });
+});
+
+// Save WhatsApp number
+router.patch("/whatsapp", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const { whatsappNumber, whatsappMessage } = req.body;
+
+  // If updating message only
+  if (whatsappMessage !== undefined && whatsappNumber === undefined) {
+    const msg = whatsappMessage ? whatsappMessage.trim().slice(0, 500) : null;
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { whatsappMessage: msg || null },
+    });
+    return res.json({ success: true, whatsappMessage: msg || null });
+  }
+
+  if (
+    whatsappNumber !== undefined &&
+    whatsappNumber !== null &&
+    whatsappNumber !== ""
+  ) {
+    const cleaned = whatsappNumber.replace(/[^0-9]/g, "");
+    if (cleaned.length < 9 || cleaned.length > 15) {
+      return res.status(400).json({ error: "מספר וואטסאפ לא תקין" });
+    }
+    const data = { whatsappNumber: cleaned };
+    if (whatsappMessage !== undefined) {
+      data.whatsappMessage = whatsappMessage
+        ? whatsappMessage.trim().slice(0, 500)
+        : null;
+    }
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data,
+    });
+    return res.json({
+      success: true,
+      whatsappNumber: cleaned,
+      whatsappMessage: data.whatsappMessage ?? undefined,
+    });
+  }
+
+  // Remove whatsapp number (and message)
+  await prisma.user.update({
+    where: { id: req.user.id },
+    data: { whatsappNumber: null, whatsappMessage: null },
+  });
+  res.json({ success: true, whatsappNumber: null, whatsappMessage: null });
 });
 
 export default router;

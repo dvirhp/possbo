@@ -280,12 +280,16 @@ router.get(
             update: {
               groupName: g.name,
               groupImage: g.image || null,
+              memberCount: g.memberCount || null,
+              privacyType: g.privacyType || null,
             },
             create: {
               userId,
               groupId: g.id,
               groupName: g.name,
               groupImage: g.image || null,
+              memberCount: g.memberCount || null,
+              privacyType: g.privacyType || null,
             },
           });
         }
@@ -336,6 +340,8 @@ router.get(
       name: g.groupName,
       image: g.groupImage,
       url: `https://www.facebook.com/groups/${g.groupId}`,
+      memberCount: g.memberCount || null,
+      privacyType: g.privacyType || null,
     }));
     res.json({ success: true, groups: formatted });
   }),

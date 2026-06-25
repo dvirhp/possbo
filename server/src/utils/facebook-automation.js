@@ -271,24 +271,40 @@ export async function scrapeMyGroups(userId) {
         let image = null;
 
         // Try to find group image - look for img near this link
-        const container = link.closest('[role="listitem"]') || link.parentElement?.parentElement?.parentElement;
+        const container =
+          link.closest('[role="listitem"]') ||
+          link.parentElement?.parentElement?.parentElement;
         if (container) {
-          const img = container.querySelector('image[*|href]') || container.querySelector('img[src*="scontent"]') || container.querySelector('img[src*="fbcdn"]');
+          const img =
+            container.querySelector("image[*|href]") ||
+            container.querySelector('img[src*="scontent"]') ||
+            container.querySelector('img[src*="fbcdn"]');
           if (img) {
-            image = img.getAttribute('xlink:href') || img.getAttribute('src') || null;
+            image =
+              img.getAttribute("xlink:href") || img.getAttribute("src") || null;
           }
           // Also check SVG image elements
           if (!image) {
-            const svgImg = container.querySelector('image');
+            const svgImg = container.querySelector("image");
             if (svgImg) {
-              image = svgImg.getAttribute('xlink:href') || svgImg.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || null;
+              image =
+                svgImg.getAttribute("xlink:href") ||
+                svgImg.getAttributeNS("http://www.w3.org/1999/xlink", "href") ||
+                null;
             }
           }
         }
         // Fallback: check for img inside or adjacent to the link
         if (!image) {
-          const nearbyImg = link.querySelector('img') || link.parentElement?.querySelector('img');
-          if (nearbyImg && nearbyImg.src && (nearbyImg.src.includes('scontent') || nearbyImg.src.includes('fbcdn'))) {
+          const nearbyImg =
+            link.querySelector("img") ||
+            link.parentElement?.querySelector("img");
+          if (
+            nearbyImg &&
+            nearbyImg.src &&
+            (nearbyImg.src.includes("scontent") ||
+              nearbyImg.src.includes("fbcdn"))
+          ) {
             image = nearbyImg.src;
           }
         }
@@ -341,11 +357,88 @@ export async function scrapeMyGroups(userId) {
           name = `קבוצה: ${groupSlug}`;
         }
 
+        // Try to extract member count and privacy type from nearby text
+        let memberCount = null;
+        let privacyType = null;
+        if (container) {
+          const allText = container.innerText || "";
+
+          // Try multiple patterns for member count
+          // English: "1,234 members", "1.2K members", "1.2M members"
+          // Hebrew: "1,234 חברים", "1.2 אלף חברים", "12K חברים"
+          // Facebook compact: "12K", "1.2M", "1,234"
+          const patterns = [
+            /(\d[\d,.]*)\s*(?:M|m|מיליון)\s*(?:members|חברי[ם]?|member)/i,
+            /(\d[\d,.]*)\s*(?:K|k|אלף)\s*(?:members|חברי[ם]?|member)/i,
+            /(\d[\d,.]*)\s*(?:members|חברי[ם]?|member)/i,
+            /(?:members|חברי[ם]?|member)\s*[:\s]*(\d[\d,.]*)\s*(?:M|m|מיליון)?/i,
+            /(?:members|חברי[ם]?|member)\s*[:\s]*(\d[\d,.]*)\s*(?:K|k|אלף)?/i,
+            // Patterns without the word "members" - look for number + K/M near group context
+            /(\d[\d,.]*)\s*(?:M)\s/,
+            /(\d[\d,.]*)\s*(?:K)\s/,
+            // Hebrew: "חברים: 1,234" or just "1,234 חברים"
+            /(\d[\d,.]*)\s*חברי[ם]?/,
+            /חברי[ם]?\s*(\d[\d,.]*)/,
+          ];
+
+          for (const pattern of patterns) {
+            const m = allText.match(pattern);
+            if (m) {
+              let num = m[1].replace(/,/g, "");
+              const matchedStr = m[0].toLowerCase();
+              if (/m|מיליון/.test(matchedStr)) {
+                num = parseFloat(num) * 1000000;
+              } else if (/k|אלף/.test(matchedStr)) {
+                num = parseFloat(num) * 1000;
+              }
+              const parsed = Math.round(Number(num));
+              if (parsed > 0) {
+                memberCount = parsed;
+                break;
+              }
+            }
+          }
+
+          // Also look in span elements for structured member count text
+          if (!memberCount) {
+            const spans = container.querySelectorAll("span");
+            for (const span of spans) {
+              const spanText = span.textContent?.trim() || "";
+              if (/member|חברי/i.test(spanText) && /\d/.test(spanText)) {
+                const numMatch = spanText.match(
+                  /([\d,.]+)\s*(?:K|k|M|m|אלף|מיליון)?/,
+                );
+                if (numMatch) {
+                  let num = numMatch[1].replace(/,/g, "");
+                  if (/M|m|מיליון/.test(spanText))
+                    num = parseFloat(num) * 1000000;
+                  else if (/K|k|אלף/.test(spanText))
+                    num = parseFloat(num) * 1000;
+                  const parsed = Math.round(Number(num));
+                  if (parsed > 0) {
+                    memberCount = parsed;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
+          // Check privacy
+          if (/private|פרטית|סגורה/i.test(allText)) {
+            privacyType = "private";
+          } else if (/public|ציבורית|פתוחה/i.test(allText)) {
+            privacyType = "public";
+          }
+        }
+
         results.push({
           id: groupSlug,
           name,
           image: image || null,
           url: `https://www.facebook.com/groups/${groupSlug}/`,
+          memberCount,
+          privacyType,
         });
       }
 
@@ -353,6 +446,92 @@ export async function scrapeMyGroups(userId) {
     });
 
     log.info(`Total groups found: ${groups.length}`);
+
+    // Second pass: visit each group page to get member count if missing
+    const groupsNeedingInfo = groups.filter((g) => !g.memberCount);
+    if (groupsNeedingInfo.length > 0) {
+      log.info(
+        `Fetching member count for ${groupsNeedingInfo.length} groups...`,
+      );
+      for (const group of groupsNeedingInfo) {
+        try {
+          await page.goto(group.url, {
+            waitUntil: "domcontentloaded",
+            timeout: 15000,
+          });
+          await page.waitForTimeout(2000);
+          const info = await page.evaluate(() => {
+            let memberCount = null;
+            let privacyType = null;
+            const bodyText = document.body.innerText || "";
+
+            // Look for member count patterns in the group header area
+            // Facebook typically shows "X members" or "X חברים" in group headers
+            const memberPatterns = [
+              /([\d,.]+)\s*(?:M|מיליון)\s*(?:members|חברי[ם]?|total members|סה"כ חברים)/i,
+              /([\d,.]+)\s*(?:K|אלף)\s*(?:members|חברי[ם]?|total members|סה"כ חברים)/i,
+              /([\d,.]+)\s*(?:members|חברי[ם]?|total members|סה"כ חברים)/i,
+              /(?:members|חברי[ם]?|total members|סה"כ חברים)\s*[·•:\s]*([\d,.]+)\s*(?:K|k|M|m|אלף|מיליון)?/i,
+            ];
+
+            // Focus on spans and links near the top of the page
+            const headerElements = document.querySelectorAll(
+              'a[href*="members"], span',
+            );
+            for (const el of headerElements) {
+              const text = el.textContent?.trim() || "";
+              if (text.length > 200) continue;
+              for (const pattern of memberPatterns) {
+                const m = text.match(pattern);
+                if (m) {
+                  let num = m[1].replace(/,/g, "");
+                  if (/M|m|מיליון/i.test(text)) num = parseFloat(num) * 1000000;
+                  else if (/K|k|אלף/i.test(text)) num = parseFloat(num) * 1000;
+                  const parsed = Math.round(Number(num));
+                  if (parsed > 0) {
+                    memberCount = parsed;
+                    break;
+                  }
+                }
+              }
+              if (memberCount) break;
+            }
+
+            // Fallback: search full page text
+            if (!memberCount) {
+              for (const pattern of memberPatterns) {
+                const m = bodyText.match(pattern);
+                if (m) {
+                  let num = m[1].replace(/,/g, "");
+                  if (/M|m|מיליון/i.test(m[0])) num = parseFloat(num) * 1000000;
+                  else if (/K|k|אלף/i.test(m[0])) num = parseFloat(num) * 1000;
+                  const parsed = Math.round(Number(num));
+                  if (parsed > 0) {
+                    memberCount = parsed;
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Privacy from page text
+            if (/private group|קבוצה פרטית|סגורה/i.test(bodyText)) {
+              privacyType = "private";
+            } else if (/public group|קבוצה ציבורית|פתוחה/i.test(bodyText)) {
+              privacyType = "public";
+            }
+
+            return { memberCount, privacyType };
+          });
+
+          if (info.memberCount) group.memberCount = info.memberCount;
+          if (info.privacyType && !group.privacyType)
+            group.privacyType = info.privacyType;
+        } catch (err) {
+          log.debug(`Could not fetch info for ${group.name}: ${err.message}`);
+        }
+      }
+    }
 
     // Save updated storage state back to DB
     const updatedState = await context.storageState();

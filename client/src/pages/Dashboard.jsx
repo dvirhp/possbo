@@ -149,21 +149,19 @@ export default function Dashboard() {
   useEffect(() => {
     setSearch('')
     setStatusFilter('all')
-    setTypeFilter('all')
     setGroupFilter('all')
     setGroupFilterOpen(false)
     setGroupFilterSearch('')
-    setSortBy('date')
+    setSortBy(activeTab === 'groups' ? 'name' : 'date')
     setFilterSheetOpen(false)
   }, [activeTab])
 
-  const hasActiveFilters = statusFilter !== 'all' || typeFilter !== 'all' || groupFilter !== 'all' || sortBy !== 'date'
+  const hasActiveFilters = statusFilter !== 'all' || groupFilter !== 'all' || sortBy !== 'date'
 
   const resetFilters = () => {
     setStatusFilter('all')
-    setTypeFilter('all')
     setGroupFilter('all')
-    setSortBy('date')
+    setSortBy(activeTab === 'groups' ? 'name' : 'date')
     setFilterSheetOpen(false)
   }
 
@@ -197,9 +195,7 @@ export default function Dashboard() {
     if (statusFilter !== 'all') {
       list = list.filter(c => c.status === statusFilter)
     }
-    if (typeFilter !== 'all') {
-      list = list.filter(c => c.campaignType === typeFilter)
-    }
+
     if (groupFilter !== 'all') {
       list = list.filter(c => c.groupNames?.includes(groupFilter))
     }
@@ -209,7 +205,7 @@ export default function Dashboard() {
       list = [...list].sort((a, b) => (a.title || a.content || '').localeCompare(b.title || b.content || ''))
     }
     return list
-  }, [campaigns, search, statusFilter, typeFilter, groupFilter, sortBy])
+  }, [campaigns, search, statusFilter, groupFilter, sortBy])
 
   const filteredGroups = useMemo(() => {
     let list = groups
@@ -491,14 +487,7 @@ export default function Dashboard() {
                       </select>
                     )}
 
-                    {activeTab === 'campaigns' && (
-                      <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="filter-select">
-                        <option value="all">כל הסוגים ({campaigns.length})</option>
-                        {campaignTypeCounts['ONE_TIME'] && <option value="ONE_TIME">חד-פעמי ({campaignTypeCounts['ONE_TIME']})</option>}
-                        {campaignTypeCounts['RECURRING'] && <option value="RECURRING">חוזר ({campaignTypeCounts['RECURRING']})</option>}
-                        {campaignTypeCounts['SCHEDULED'] && <option value="SCHEDULED">מתוזמן ({campaignTypeCounts['SCHEDULED']})</option>}
-                      </select>
-                    )}
+
 
                     {activeTab === 'campaigns' && campaignGroupNames.length > 1 && (
                       <div className="group-filter-wrap" ref={groupFilterRef}>
@@ -598,7 +587,7 @@ export default function Dashboard() {
                     )}
 
                     <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="filter-select">
-                      <option value="date">מיון לפי תאריך</option>
+                      {activeTab !== 'groups' && <option value="date">מיון לפי תאריך</option>}
                       <option value="name">מיון לפי שם</option>
                       {activeTab === 'groups' && <option value="members">מיון לפי חברים</option>}
                     </select>
@@ -658,29 +647,6 @@ export default function Dashboard() {
                               key={opt.value}
                               className={`filter-chip ${statusFilter === opt.value ? 'active' : ''}`}
                               onClick={() => setStatusFilter(opt.value)}
-                            >
-                              {opt.label} ({opt.count})
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Type filter for campaigns */}
-                    {activeTab === 'campaigns' && Object.keys(campaignTypeCounts).length > 1 && (
-                      <div className="filter-sheet-section">
-                        <label className="filter-sheet-label">סוג קמפיין</label>
-                        <div className="filter-sheet-chips">
-                          {[
-                            { value: 'all', label: 'הכל', count: campaigns.length },
-                            { value: 'ONE_TIME', label: 'חד-פעמי', count: campaignTypeCounts['ONE_TIME'] },
-                            { value: 'RECURRING', label: 'חוזר', count: campaignTypeCounts['RECURRING'] },
-                            { value: 'SCHEDULED', label: 'מתוזמן', count: campaignTypeCounts['SCHEDULED'] },
-                          ].filter(opt => opt.value === 'all' || opt.count > 0).map(opt => (
-                            <button
-                              key={opt.value}
-                              className={`filter-chip ${typeFilter === opt.value ? 'active' : ''}`}
-                              onClick={() => setTypeFilter(opt.value)}
                             >
                               {opt.label} ({opt.count})
                             </button>
@@ -1092,6 +1058,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
 }
 
 function GroupsPanel({ groups, navigate, onRefresh, refreshing, sessionRequired }) {
+  const [detailGroup, setDetailGroup] = useState(null)
   if (sessionRequired) return (
     <div className="empty-state">
       <div className="empty-icon-wrap">
@@ -1131,7 +1098,7 @@ function GroupsPanel({ groups, navigate, onRefresh, refreshing, sessionRequired 
       </div>
       <div className="groups-grid">
         {groups.map(group => (
-          <div key={group.id} className="group-card" onClick={() => navigate(`/group/${group.id}`, { state: group })}>
+          <div key={group.id} className="group-card" onClick={() => setDetailGroup(group)}>
             <div className="group-card-thumb">
               {group.image
                 ? <img src={group.image} alt="" />
@@ -1147,6 +1114,36 @@ function GroupsPanel({ groups, navigate, onRefresh, refreshing, sessionRequired 
           </div>
         ))}
       </div>
+
+      {detailGroup && (
+        <div className="modal-overlay" onClick={() => setDetailGroup(null)}>
+          <div className="modal-content detail-modal" onClick={e => e.stopPropagation()}>
+            <div className="detail-modal-header">
+              <button className="modal-close" onClick={() => setDetailGroup(null)}>✕</button>
+            </div>
+            <div className="detail-body">
+              <div className="group-detail-top">
+                {detailGroup.image && <img src={detailGroup.image} alt="" className="group-detail-img" />}
+                <div>
+                  <h3 className="detail-title">{detailGroup.name}</h3>
+                  <div className="group-detail-meta">
+                    {detailGroup.memberCount && <span>👥 {detailGroup.memberCount.toLocaleString()} חברים</span>}
+                    {detailGroup.privacyType && <span>{detailGroup.privacyType === 'private' ? '🔒 פרטית' : '🌐 ציבורית'}</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="group-detail-actions">
+                <a href={detailGroup.url} target="_blank" rel="noopener noreferrer" className="group-detail-link">
+                  🔗 פתח בפייסבוק
+                </a>
+                <button className="group-detail-btn" onClick={() => { setDetailGroup(null); navigate('/create-post', { state: { group: detailGroup } }) }}>
+                  🚀 פרסם בקבוצה זו
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1379,6 +1376,54 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState(null)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [waNumber, setWaNumber] = useState(user?.whatsappNumber || '')
+  const [waMessage, setWaMessage] = useState(user?.whatsappMessage || '')
+  const [waSaving, setWaSaving] = useState(false)
+  const [waError, setWaError] = useState(null)
+  const [waEditing, setWaEditing] = useState(false)
+
+  const handleSaveWhatsapp = async () => {
+    setWaSaving(true)
+    setWaError(null)
+    try {
+      const res = await authAPI.updateWhatsapp({ whatsappNumber: waNumber.trim(), whatsappMessage: waMessage.trim() || null })
+      if (res.data.success) {
+        setUser(prev => ({ ...prev, whatsappNumber: res.data.whatsappNumber, whatsappMessage: res.data.whatsappMessage || null }))
+        setWaEditing(false)
+      }
+    } catch (err) {
+      setWaError(err.response?.data?.error || 'שגיאה בשמירה')
+    } finally {
+      setWaSaving(false)
+    }
+  }
+
+  const handleSaveWaMessage = async () => {
+    setWaSaving(true)
+    setWaError(null)
+    try {
+      const res = await authAPI.updateWhatsapp({ whatsappMessage: waMessage.trim() || null })
+      if (res.data.success) {
+        setUser(prev => ({ ...prev, whatsappMessage: res.data.whatsappMessage || null }))
+      }
+    } catch (err) {
+      setWaError(err.response?.data?.error || 'שגיאה בשמירה')
+    } finally {
+      setWaSaving(false)
+    }
+  }
+
+  const handleRemoveWhatsapp = async () => {
+    setWaSaving(true)
+    try {
+      await authAPI.updateWhatsapp({ whatsappNumber: null })
+      setUser(prev => ({ ...prev, whatsappNumber: null, whatsappMessage: null }))
+      setWaNumber('')
+      setWaMessage('')
+      setWaEditing(false)
+    } catch { /* ignore */ }
+    finally { setWaSaving(false) }
+  }
 
   const handleSaveProfile = async () => {
     setSaving(true)
@@ -1397,7 +1442,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
   }
 
   const handleDisconnectFB = async () => {
-    if (!confirm('האם אתה בטוח שברצונך לנתק את חיבור הפייסבוק?')) return
+    if (!window.confirm('האם אתה בטוח שברצונך לנתק את חיבור הפייסבוק?')) return
     setDisconnecting(true)
     try {
       await authAPI.disconnectFacebook()
@@ -1479,6 +1524,72 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
               {bootstrapping ? '⏳ ממתין לחיבור...' : '🔗 חבר חשבון פייסבוק'}
             </button>
           </div>
+        )}
+      </div>
+
+      <div className="settings-header" style={{ marginTop: 24 }}>
+        <h3>וואטסאפ</h3>
+      </div>
+      <div className="settings-body">
+        {user?.whatsappNumber && !waEditing ? (
+          <>
+            <div className="settings-row">
+              <span className="settings-key">מספר מקושר</span>
+              <span className="settings-val val-ok">✓ {user.whatsappNumber}</span>
+              <button className="settings-edit-btn" onClick={() => { setWaEditing(true); setWaNumber(user.whatsappNumber); setWaMessage(user.whatsappMessage || '') }}>✏️</button>
+            </div>
+            <div className="settings-row" style={{ marginTop: 12 }}>
+              <span className="settings-key">הודעה מותאמת</span>
+              <input
+                className="settings-input"
+                value={waMessage}
+                onChange={e => setWaMessage(e.target.value)}
+                placeholder="היי, ראיתי את הפוסט שלך..."
+                dir="rtl"
+              />
+              <button className="settings-edit-btn" onClick={handleSaveWaMessage} disabled={waSaving} title="שמור הודעה">💾</button>
+            </div>
+            <p className="settings-hint">הודעה שתופיע אוטומטית כשמישהו לוחץ על קישור הוואטסאפ שלך בפוסט.</p>
+          </>
+        ) : (
+          <>
+            <div className="settings-row">
+              <span className="settings-key">מספר טלפון</span>
+              <input
+                className="settings-input"
+                value={waNumber}
+                onChange={e => setWaNumber(e.target.value)}
+                placeholder="972501234567"
+                type="tel"
+                dir="ltr"
+              />
+            </div>
+            <div className="settings-row" style={{ marginTop: 8 }}>
+              <span className="settings-key">הודעה מותאמת</span>
+              <input
+                className="settings-input"
+                value={waMessage}
+                onChange={e => setWaMessage(e.target.value)}
+                placeholder="היי, ראיתי את הפוסט שלך... (אופציונלי)"
+                dir="rtl"
+              />
+            </div>
+            <p className="settings-hint">הזן מספר בינלאומי (למשל 972501234567). קישור wa.me ייווצר אוטומטית בפוסטים. ההודעה המותאמת תופיע למי שלוחץ על הקישור.</p>
+            {waError && <div className="settings-error">{waError}</div>}
+            <div className="settings-actions">
+              <button className="settings-save-btn" onClick={handleSaveWhatsapp} disabled={waSaving || !waNumber.trim()}>
+                {waSaving ? '⏳ שומר...' : '💾 קשר וואטסאפ'}
+              </button>
+              {user?.whatsappNumber && (
+                <button className="settings-cancel-btn" onClick={() => setWaEditing(false)}>ביטול</button>
+              )}
+              {user?.whatsappNumber && (
+                <button className="settings-btn-warning" onClick={handleRemoveWhatsapp} disabled={waSaving} style={{ marginInlineStart: 8 }}>
+                  הסר קישור
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
 
@@ -1603,6 +1714,7 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
               {imagePreviews.map((src, i) => (
                 <div key={i} className="edit-image-item">
                   <img src={src} alt="" />
+                  <span className="image-number-badge">{i + 1}</span>
                   <button type="button" className="edit-image-remove" onClick={() => removeImage(i)}>✕</button>
                 </div>
               ))}
@@ -1762,6 +1874,7 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
                 {imagePreviews.map((src, i) => (
                   <div key={i} className="reschedule-img-item">
                     <img src={src} alt="" />
+                    <span className="image-number-badge">{i + 1}</span>
                     <button type="button" onClick={() => removeImage(i)} className="reschedule-img-remove">✕</button>
                   </div>
                 ))}
@@ -1939,6 +2052,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                 {visibleImages.map((img, i) => (
                   <div key={i} className={`detail-grid-cell ${i === 0 ? 'detail-grid-main' : 'detail-grid-side'}`} onClick={() => setLightboxIdx(i)}>
                     <img src={imgSrc(img)} alt="" />
+                    <span className="image-number-badge">{i + 1}</span>
                     {i === 2 && extraCount > 0 && (
                       <div className="detail-grid-plus">+{extraCount}</div>
                     )}
@@ -1986,6 +2100,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                 {imagePreviews.map((src, i) => (
                   <div key={i} className="edit-image-item">
                     <img src={src} alt="" />
+                    <span className="image-number-badge">{i + 1}</span>
                     <button type="button" className="edit-image-remove" onClick={() => removeImage(i)}>✕</button>
                   </div>
                 ))}
