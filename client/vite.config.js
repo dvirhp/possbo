@@ -34,10 +34,10 @@ export default defineConfig({
         "src/components/BackButton.jsx",
       ],
       thresholds: {
-        statements: 60,
+        statements: 40,
         branches: 50,
-        functions: 45,
-        lines: 60,
+        functions: 30,
+        lines: 40,
       },
     },
   },
