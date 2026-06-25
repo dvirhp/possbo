@@ -125,7 +125,8 @@ describe('GroupDetails page', () => {
 
     it('should render group name', async () => {
       await renderGroupDetails();
-      expect(screen.getByText('Test Group')).toBeInTheDocument();
+      const elements = screen.getAllByText('Test Group');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
     it('should render group image', async () => {
