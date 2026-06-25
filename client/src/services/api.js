@@ -47,6 +47,7 @@ export const authAPI = {
     return res;
   },
   updateProfile: (data) => http.patch("/auth/profile", data),
+  updateWhatsapp: (data) => http.patch("/auth/whatsapp", data),
   disconnectFacebook: () => http.post("/auth/disconnect-facebook"),
 };
 

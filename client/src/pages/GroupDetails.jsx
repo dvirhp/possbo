@@ -142,13 +142,30 @@ export default function GroupDetails() {
 
   return (
     <div className="group-details-page">
+      <header className="gd-topbar">
+        <div className="gd-topbar-spacer" />
+        <h1 className="gd-topbar-title">{group.name}</h1>
+        <button className="gd-back" onClick={() => navigate(-1)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+          </svg>
+          <span>חזרה</span>
+        </button>
+      </header>
       <div className="group-details-card">
-        <BackButton />
 
         <div className="group-details-header">
           {group.image && <img src={group.image} alt="" className="group-details-image" />}
           <div>
             <h2 className="group-details-name">{group.name}</h2>
+            <div className="group-details-meta">
+              {group.memberCount && (
+                <span className="group-meta-item">👥 {group.memberCount.toLocaleString()} חברים</span>
+              )}
+              {group.privacyType && (
+                <span className="group-meta-item">{group.privacyType === 'private' ? '🔒 קבוצה פרטית' : '🌐 קבוצה ציבורית'}</span>
+              )}
+            </div>
             <a href={group.url} target="_blank" rel="noopener noreferrer" className="group-details-link">
               🔗 {locale.groupDetails.openInFacebook}
             </a>
