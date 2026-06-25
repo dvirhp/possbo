@@ -51,7 +51,7 @@ router.post(
   requireAuth,
   upload.array("images", 10),
   asyncHandler(async (req, res) => {
-    const { groupUrl, groupName, text, anonymous, location } = req.body;
+    const { groupUrl, groupName, text, anonymous, location, title } = req.body;
     if (!groupUrl || !text) {
       return res
         .status(400)
@@ -86,6 +86,7 @@ router.post(
         groupUrl,
         groupName,
         text: sanitizedText,
+        title: title || null,
         postUrl: result.postUrl,
         screenshot: result.screenshot,
         anonymous: isAnonymous,

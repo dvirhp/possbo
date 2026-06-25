@@ -1669,11 +1669,6 @@
   overflow: hidden;
 }
 
-.settings-header {
-  padding: 18px 22px;
-  border-bottom: 1px solid var(--border);
-}
-
 .settings-header h3 {
   font-size: 15px;
   font-weight: 700;
@@ -1739,6 +1734,150 @@
   color: var(--indigo);
   font-weight: 600;
 }
+
+/* Settings - header with edit button */
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-edit-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.settings-edit-btn:hover {
+  border-color: var(--indigo);
+  color: var(--indigo);
+}
+
+.settings-input {
+  flex: 1;
+  max-width: 240px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 13.5px;
+  direction: ltr;
+  text-align: right;
+}
+.settings-input:focus {
+  outline: none;
+  border-color: var(--indigo);
+}
+
+.settings-error {
+  padding: 8px 22px;
+  color: var(--rose);
+  font-size: 12.5px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 10px;
+  padding: 12px 22px;
+}
+
+.settings-save-btn {
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--indigo);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.settings-save-btn:hover { opacity: 0.9; }
+.settings-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.settings-cancel-btn {
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.settings-cancel-btn:hover { border-color: var(--border-hover); }
+
+.settings-fb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 15px 22px;
+}
+
+.settings-btn-primary {
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--indigo);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.settings-btn-primary:hover { opacity: 0.9; }
+.settings-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.settings-btn-secondary {
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.settings-btn-secondary:hover { border-color: var(--indigo); color: var(--indigo); }
+.settings-btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.settings-btn-warning {
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--rose);
+  background: transparent;
+  color: var(--rose);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.settings-btn-warning:hover { background: var(--rose); color: #fff; }
+.settings-btn-warning:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.settings-btn-danger {
+  width: 100%;
+  padding: 12px 20px;
+  margin: 15px 22px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--rose);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  width: calc(100% - 44px);
+}
+.settings-btn-danger:hover { background: var(--rose); color: #fff; border-color: var(--rose); }
 
 /* ═══════════ RESPONSIVE ═══════════ */
 @media (max-width: 1024px) {
@@ -2925,6 +3064,12 @@
 .detail-title {
   font-size: 16px;
   font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--text-primary);
+}
+.detail-title {
+  font-size: 16px;
+  font-weight: 700;
   margin: 0 0 8px;
   color: var(--text-primary);
 }

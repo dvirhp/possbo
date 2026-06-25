@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
+import { authAPI } from '../services/api'
 import '../styles/dashboard.css'
 
 const TABS = [
@@ -36,7 +37,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const location = useLocation()
   const {
-    user, authChecked, logout, ensureFresh, forceRefresh,
+    user, setUser, authChecked, logout, ensureFresh, forceRefresh,
     campaigns, groups, jobs, posts, stats, dataReady,
     setStats, updateGroups, refreshing,
   } = useAppData()
@@ -49,6 +50,7 @@ export default function Dashboard() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all')
   const [groupFilter, setGroupFilter] = useState('all')
   const [groupFilterOpen, setGroupFilterOpen] = useState(false)
   const [groupFilterSearch, setGroupFilterSearch] = useState('')
@@ -147,6 +149,7 @@ export default function Dashboard() {
   useEffect(() => {
     setSearch('')
     setStatusFilter('all')
+    setTypeFilter('all')
     setGroupFilter('all')
     setGroupFilterOpen(false)
     setGroupFilterSearch('')
@@ -154,10 +157,11 @@ export default function Dashboard() {
     setFilterSheetOpen(false)
   }, [activeTab])
 
-  const hasActiveFilters = statusFilter !== 'all' || groupFilter !== 'all' || sortBy !== 'date'
+  const hasActiveFilters = statusFilter !== 'all' || typeFilter !== 'all' || groupFilter !== 'all' || sortBy !== 'date'
 
   const resetFilters = () => {
     setStatusFilter('all')
+    setTypeFilter('all')
     setGroupFilter('all')
     setSortBy('date')
     setFilterSheetOpen(false)
@@ -193,13 +197,19 @@ export default function Dashboard() {
     if (statusFilter !== 'all') {
       list = list.filter(c => c.status === statusFilter)
     }
+    if (typeFilter !== 'all') {
+      list = list.filter(c => c.campaignType === typeFilter)
+    }
+    if (groupFilter !== 'all') {
+      list = list.filter(c => c.groupNames?.includes(groupFilter))
+    }
     if (sortBy === 'date') {
       list = [...list].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     } else if (sortBy === 'name') {
       list = [...list].sort((a, b) => (a.title || a.content || '').localeCompare(b.title || b.content || ''))
     }
     return list
-  }, [campaigns, search, statusFilter, sortBy])
+  }, [campaigns, search, statusFilter, typeFilter, groupFilter, sortBy])
 
   const filteredGroups = useMemo(() => {
     let list = groups
@@ -240,6 +250,48 @@ export default function Dashboard() {
   const postGroupNames = useMemo(() => {
     const names = [...new Set(posts.map(p => p.group?.name).filter(Boolean))]
     return names.sort((a, b) => a.localeCompare(b))
+  }, [posts])
+
+  // Unique group names from campaigns
+  const campaignGroupNames = useMemo(() => {
+    const names = [...new Set(campaigns.flatMap(c => c.groupNames || []).filter(Boolean))]
+    return names.sort((a, b) => a.localeCompare(b))
+  }, [campaigns])
+
+  // Filter counts for campaigns
+  const campaignStatusCounts = useMemo(() => {
+    const counts = {}
+    campaigns.forEach(c => { counts[c.status] = (counts[c.status] || 0) + 1 })
+    return counts
+  }, [campaigns])
+
+  const campaignTypeCounts = useMemo(() => {
+    const counts = {}
+    campaigns.forEach(c => { counts[c.campaignType] = (counts[c.campaignType] || 0) + 1 })
+    return counts
+  }, [campaigns])
+
+  const campaignGroupCounts = useMemo(() => {
+    const counts = {}
+    campaigns.forEach(c => {
+      (c.groupNames || []).forEach(name => { counts[name] = (counts[name] || 0) + 1 })
+    })
+    return counts
+  }, [campaigns])
+
+  // Filter counts for posts
+  const postStatusCounts = useMemo(() => {
+    const counts = {}
+    posts.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1 })
+    return counts
+  }, [posts])
+
+  const postGroupCounts = useMemo(() => {
+    const counts = {}
+    posts.forEach(p => {
+      if (p.group?.name) counts[p.group.name] = (counts[p.group.name] || 0) + 1
+    })
+    return counts
   }, [posts])
 
   const tabCounts = {
@@ -429,32 +481,32 @@ export default function Dashboard() {
                   <div className="filter-bar-controls">
                     {activeTab === 'campaigns' && (
                       <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
-                        <option value="all">כל הסטטוסים</option>
-                        <option value="scheduled">מתוזמן</option>
-                        <option value="recurring">חוזר</option>
-                        <option value="paused">מושהה</option>
-                        <option value="draft">טיוטה</option>
-                        <option value="active">פעיל</option>
-                        <option value="one-time">חד-פעמי</option>
+                        <option value="all">כל הסטטוסים ({campaigns.length})</option>
+                        {campaignStatusCounts['active'] && <option value="active">פעיל ({campaignStatusCounts['active']})</option>}
+                        {campaignStatusCounts['scheduled'] && <option value="scheduled">מתוזמן ({campaignStatusCounts['scheduled']})</option>}
+                        {campaignStatusCounts['recurring'] && <option value="recurring">חוזר ({campaignStatusCounts['recurring']})</option>}
+                        {campaignStatusCounts['paused'] && <option value="paused">מושהה ({campaignStatusCounts['paused']})</option>}
+                        {campaignStatusCounts['draft'] && <option value="draft">טיוטה ({campaignStatusCounts['draft']})</option>}
+                        {campaignStatusCounts['one-time'] && <option value="one-time">חד-פעמי ({campaignStatusCounts['one-time']})</option>}
                       </select>
                     )}
 
-                    {activeTab === 'posts' && (
-                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
-                        <option value="all">כל הסטטוסים</option>
-                        <option value="SUCCESS">פורסם</option>
-                        <option value="FAILED">נכשל</option>
-                        <option value="PENDING">ממתין</option>
+                    {activeTab === 'campaigns' && (
+                      <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="filter-select">
+                        <option value="all">כל הסוגים ({campaigns.length})</option>
+                        {campaignTypeCounts['ONE_TIME'] && <option value="ONE_TIME">חד-פעמי ({campaignTypeCounts['ONE_TIME']})</option>}
+                        {campaignTypeCounts['RECURRING'] && <option value="RECURRING">חוזר ({campaignTypeCounts['RECURRING']})</option>}
+                        {campaignTypeCounts['SCHEDULED'] && <option value="SCHEDULED">מתוזמן ({campaignTypeCounts['SCHEDULED']})</option>}
                       </select>
                     )}
 
-                    {activeTab === 'posts' && postGroupNames.length > 0 && (
+                    {activeTab === 'campaigns' && campaignGroupNames.length > 1 && (
                       <div className="group-filter-wrap" ref={groupFilterRef}>
                         <button
                           className={`filter-select group-filter-btn ${groupFilter !== 'all' ? 'active' : ''}`}
                           onClick={() => setGroupFilterOpen(!groupFilterOpen)}
                         >
-                          {groupFilter === 'all' ? '👥 כל הקבוצות' : `👥 ${groupFilter}`}
+                          {groupFilter === 'all' ? `👥 כל הקבוצות (${campaigns.length})` : `👥 ${groupFilter} (${campaignGroupCounts[groupFilter] || 0})`}
                         </button>
                         {groupFilterOpen && (
                           <div className="group-filter-dropdown">
@@ -472,7 +524,60 @@ export default function Dashboard() {
                                 className={`group-filter-item ${groupFilter === 'all' ? 'active' : ''}`}
                                 onClick={() => { setGroupFilter('all'); setGroupFilterOpen(false); setGroupFilterSearch('') }}
                               >
-                                כל הקבוצות
+                                כל הקבוצות ({campaigns.length})
+                              </button>
+                              {campaignGroupNames
+                                .filter(name => !groupFilterSearch || name.toLowerCase().includes(groupFilterSearch.toLowerCase()))
+                                .map(name => (
+                                  <button
+                                    key={name}
+                                    className={`group-filter-item ${groupFilter === name ? 'active' : ''}`}
+                                    onClick={() => { setGroupFilter(name); setGroupFilterOpen(false); setGroupFilterSearch('') }}
+                                  >
+                                    {name} ({campaignGroupCounts[name] || 0})
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {activeTab === 'posts' && (
+                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
+                        <option value="all">כל הסטטוסים ({posts.length})</option>
+                        {postStatusCounts['SUCCESS'] && <option value="SUCCESS">פורסם ({postStatusCounts['SUCCESS']})</option>}
+                        {postStatusCounts['FAILED'] && <option value="FAILED">נכשל ({postStatusCounts['FAILED']})</option>}
+                        {postStatusCounts['PENDING'] && <option value="PENDING">ממתין ({postStatusCounts['PENDING']})</option>}
+                      </select>
+                    )}
+
+                    {activeTab === 'posts' && postGroupNames.length > 1 && (
+                      <div className="group-filter-wrap" ref={groupFilterRef}>
+                        <button
+                          className={`filter-select group-filter-btn ${groupFilter !== 'all' ? 'active' : ''}`}
+                          onClick={() => setGroupFilterOpen(!groupFilterOpen)}
+                        >
+                          {groupFilter === 'all' ? `👥 כל הקבוצות (${posts.length})` : `👥 ${groupFilter} (${postGroupCounts[groupFilter] || 0})`}
+                        </button>
+                        {groupFilterOpen && (
+                          <div className="group-filter-dropdown">
+                            <div className="group-filter-search">
+                              <input
+                                type="text"
+                                placeholder="חפש קבוצה..."
+                                value={groupFilterSearch}
+                                onChange={e => setGroupFilterSearch(e.target.value)}
+                                autoFocus
+                              />
+                            </div>
+                            <div className="group-filter-list">
+                              <button
+                                className={`group-filter-item ${groupFilter === 'all' ? 'active' : ''}`}
+                                onClick={() => { setGroupFilter('all'); setGroupFilterOpen(false); setGroupFilterSearch('') }}
+                              >
+                                כל הקבוצות ({posts.length})
                               </button>
                               {postGroupNames
                                 .filter(name => !groupFilterSearch || name.toLowerCase().includes(groupFilterSearch.toLowerCase()))
@@ -482,7 +587,7 @@ export default function Dashboard() {
                                     className={`group-filter-item ${groupFilter === name ? 'active' : ''}`}
                                     onClick={() => { setGroupFilter(name); setGroupFilterOpen(false); setGroupFilterSearch('') }}
                                   >
-                                    {name}
+                                    {name} ({postGroupCounts[name] || 0})
                                   </button>
                                 ))
                               }
@@ -527,41 +632,65 @@ export default function Dashboard() {
                         <label className="filter-sheet-label">סטטוס</label>
                         <div className="filter-sheet-chips">
                           {activeTab === 'campaigns' && [
-                            { value: 'all', label: 'הכל' },
-                            { value: 'scheduled', label: 'מתוזמן' },
-                            { value: 'recurring', label: 'חוזר' },
-                            { value: 'paused', label: 'מושהה' },
-                            { value: 'active', label: 'פעיל' },
-                            { value: 'one-time', label: 'חד-פעמי' },
-                          ].map(opt => (
+                            { value: 'all', label: 'הכל', count: campaigns.length },
+                            { value: 'active', label: 'פעיל', count: campaignStatusCounts['active'] },
+                            { value: 'scheduled', label: 'מתוזמן', count: campaignStatusCounts['scheduled'] },
+                            { value: 'recurring', label: 'חוזר', count: campaignStatusCounts['recurring'] },
+                            { value: 'paused', label: 'מושהה', count: campaignStatusCounts['paused'] },
+                            { value: 'draft', label: 'טיוטה', count: campaignStatusCounts['draft'] },
+                            { value: 'one-time', label: 'חד-פעמי', count: campaignStatusCounts['one-time'] },
+                          ].filter(opt => opt.value === 'all' || opt.count > 0).map(opt => (
                             <button
                               key={opt.value}
                               className={`filter-chip ${statusFilter === opt.value ? 'active' : ''}`}
                               onClick={() => setStatusFilter(opt.value)}
                             >
-                              {opt.label}
+                              {opt.label} ({opt.count})
                             </button>
                           ))}
                           {activeTab === 'posts' && [
-                            { value: 'all', label: 'הכל' },
-                            { value: 'SUCCESS', label: 'פורסם' },
-                            { value: 'FAILED', label: 'נכשל' },
-                            { value: 'PENDING', label: 'ממתין' },
-                          ].map(opt => (
+                            { value: 'all', label: 'הכל', count: posts.length },
+                            { value: 'SUCCESS', label: 'פורסם', count: postStatusCounts['SUCCESS'] },
+                            { value: 'FAILED', label: 'נכשל', count: postStatusCounts['FAILED'] },
+                            { value: 'PENDING', label: 'ממתין', count: postStatusCounts['PENDING'] },
+                          ].filter(opt => opt.value === 'all' || opt.count > 0).map(opt => (
                             <button
                               key={opt.value}
                               className={`filter-chip ${statusFilter === opt.value ? 'active' : ''}`}
                               onClick={() => setStatusFilter(opt.value)}
                             >
-                              {opt.label}
+                              {opt.label} ({opt.count})
                             </button>
                           ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Group filter for posts */}
-                    {activeTab === 'posts' && postGroupNames.length > 0 && (
+                    {/* Type filter for campaigns */}
+                    {activeTab === 'campaigns' && Object.keys(campaignTypeCounts).length > 1 && (
+                      <div className="filter-sheet-section">
+                        <label className="filter-sheet-label">סוג קמפיין</label>
+                        <div className="filter-sheet-chips">
+                          {[
+                            { value: 'all', label: 'הכל', count: campaigns.length },
+                            { value: 'ONE_TIME', label: 'חד-פעמי', count: campaignTypeCounts['ONE_TIME'] },
+                            { value: 'RECURRING', label: 'חוזר', count: campaignTypeCounts['RECURRING'] },
+                            { value: 'SCHEDULED', label: 'מתוזמן', count: campaignTypeCounts['SCHEDULED'] },
+                          ].filter(opt => opt.value === 'all' || opt.count > 0).map(opt => (
+                            <button
+                              key={opt.value}
+                              className={`filter-chip ${typeFilter === opt.value ? 'active' : ''}`}
+                              onClick={() => setTypeFilter(opt.value)}
+                            >
+                              {opt.label} ({opt.count})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Group filter for campaigns */}
+                    {activeTab === 'campaigns' && campaignGroupNames.length > 1 && (
                       <div className="filter-sheet-section">
                         <label className="filter-sheet-label">קבוצה</label>
                         <div className="filter-sheet-group-search">
@@ -577,7 +706,42 @@ export default function Dashboard() {
                             className={`filter-chip ${groupFilter === 'all' ? 'active' : ''}`}
                             onClick={() => { setGroupFilter('all'); setGroupFilterSearch('') }}
                           >
-                            כל הקבוצות
+                            כל הקבוצות ({campaigns.length})
+                          </button>
+                          {campaignGroupNames
+                            .filter(name => !groupFilterSearch || name.toLowerCase().includes(groupFilterSearch.toLowerCase()))
+                            .map(name => (
+                              <button
+                                key={name}
+                                className={`filter-chip ${groupFilter === name ? 'active' : ''}`}
+                                onClick={() => { setGroupFilter(name); setGroupFilterSearch('') }}
+                              >
+                                {name} ({campaignGroupCounts[name] || 0})
+                              </button>
+                            ))
+                          }
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Group filter for posts */}
+                    {activeTab === 'posts' && postGroupNames.length > 1 && (
+                      <div className="filter-sheet-section">
+                        <label className="filter-sheet-label">קבוצה</label>
+                        <div className="filter-sheet-group-search">
+                          <input
+                            type="text"
+                            placeholder="חפש קבוצה..."
+                            value={groupFilterSearch}
+                            onChange={e => setGroupFilterSearch(e.target.value)}
+                          />
+                        </div>
+                        <div className="filter-sheet-chips filter-sheet-groups">
+                          <button
+                            className={`filter-chip ${groupFilter === 'all' ? 'active' : ''}`}
+                            onClick={() => { setGroupFilter('all'); setGroupFilterSearch('') }}
+                          >
+                            כל הקבוצות ({posts.length})
                           </button>
                           {postGroupNames
                             .filter(name => !groupFilterSearch || name.toLowerCase().includes(groupFilterSearch.toLowerCase()))
@@ -587,7 +751,7 @@ export default function Dashboard() {
                                 className={`filter-chip ${groupFilter === name ? 'active' : ''}`}
                                 onClick={() => { setGroupFilter(name); setGroupFilterSearch('') }}
                               >
-                                {name}
+                                {name} ({postGroupCounts[name] || 0})
                               </button>
                             ))
                           }
@@ -629,7 +793,7 @@ export default function Dashboard() {
                   <StatsPanel stats={stats} dateFrom={dateFrom} dateTo={dateTo}
                     setDateFrom={setDateFrom} setDateTo={setDateTo} onFilter={loadStats} />
                 )}
-                {activeTab === 'settings' && <SettingsPanel user={user} />}
+                {activeTab === 'settings' && <SettingsPanel user={user} logout={logout} setUser={setUser} navigate={navigate} handleBootstrap={handleBootstrap} bootstrapping={bootstrapping} />}
               </div>
             </>
           )}
@@ -868,8 +1032,8 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
                 onMouseEnter={() => setTooltipId(campaign.id)}
                 onMouseLeave={() => setTooltipId(null)}
               >
-                👥 {campaign.groupCount} קבוצות
-                {tooltipId === campaign.id && campaign.groupNames?.length > 0 && (
+                👥 {campaign.groupCount === 1 ? `פורסם ב: ${campaign.groupNames?.[0] || ''}` : `${campaign.groupCount} קבוצות`}
+                {tooltipId === campaign.id && campaign.groupNames?.length > 1 && (
                   <div className="campaign-tooltip">
                     {campaign.groupNames.map((name, i) => (
                       <div key={i} className="tooltip-group-name">{name}</div>
@@ -1083,7 +1247,7 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
           <div className="campaign-card-body">
             <div className="campaign-card-header">
               <h4 className="campaign-card-title" onClick={() => setDetailPost(item)}>
-                {item.post?.content?.slice(0, 40) || '—'}
+                {item.post?.title || item.post?.content?.slice(0, 40) || '—'}
               </h4>
               <div className="actions-menu-wrap" ref={menuId === item.id ? menuRef : undefined}>
                 <button className="actions-dots-btn" onClick={(e) => { e.stopPropagation(); setMenuId(menuId === item.id ? null : item.id) }}>
@@ -1207,28 +1371,115 @@ function StatsPanel({ stats, dateFrom, dateTo, setDateFrom, setDateTo, onFilter 
   )
 }
 
-function SettingsPanel({ user }) {
+function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, bootstrapping }) {
   const { theme, setTheme } = useTheme()
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(user?.name || '')
+  const [editEmail, setEditEmail] = useState(user?.email || '')
+  const [saving, setSaving] = useState(false)
+  const [editError, setEditError] = useState(null)
+  const [disconnecting, setDisconnecting] = useState(false)
+
+  const handleSaveProfile = async () => {
+    setSaving(true)
+    setEditError(null)
+    try {
+      const res = await authAPI.updateProfile({ name: editName, email: editEmail })
+      if (res.data.success) {
+        setUser(prev => ({ ...prev, name: res.data.user.name, email: res.data.user.email }))
+        setEditing(false)
+      }
+    } catch (err) {
+      setEditError(err.response?.data?.error || 'שגיאה בעדכון')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDisconnectFB = async () => {
+    if (!confirm('האם אתה בטוח שברצונך לנתק את חיבור הפייסבוק?')) return
+    setDisconnecting(true)
+    try {
+      await authAPI.disconnectFacebook()
+      setUser(prev => ({ ...prev, fbSessionValid: false }))
+    } catch { /* ignore */ }
+    finally { setDisconnecting(false) }
+  }
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login')
+  }
+
   return (
     <div className="settings-card">
       <div className="settings-header">
         <h3>פרטי חשבון</h3>
+        {!editing && (
+          <button className="settings-edit-btn" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }}>
+            ✏️ ערוך
+          </button>
+        )}
       </div>
       <div className="settings-body">
-        <div className="settings-row">
-          <span className="settings-key">שם</span>
-          <span className="settings-val">{user?.name || '—'}</span>
-        </div>
-        <div className="settings-row">
-          <span className="settings-key">אימייל</span>
-          <span className="settings-val">{user?.email || '—'}</span>
-        </div>
+        {editing ? (
+          <>
+            <div className="settings-row">
+              <span className="settings-key">שם</span>
+              <input className="settings-input" value={editName} onChange={e => setEditName(e.target.value)} placeholder="שם" />
+            </div>
+            <div className="settings-row">
+              <span className="settings-key">אימייל</span>
+              <input className="settings-input" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="אימייל" type="email" />
+            </div>
+            {editError && <div className="settings-error">{editError}</div>}
+            <div className="settings-actions">
+              <button className="settings-save-btn" onClick={handleSaveProfile} disabled={saving}>
+                {saving ? '⏳ שומר...' : '💾 שמור'}
+              </button>
+              <button className="settings-cancel-btn" onClick={() => setEditing(false)}>ביטול</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="settings-row">
+              <span className="settings-key">שם</span>
+              <span className="settings-val">{user?.name || '—'}</span>
+            </div>
+            <div className="settings-row">
+              <span className="settings-key">אימייל</span>
+              <span className="settings-val">{user?.email || '—'}</span>
+            </div>
+          </>
+        )}
         <div className="settings-row">
           <span className="settings-key">פייסבוק</span>
-          <span className={`settings-val ${user?.hasFacebookCredentials ? 'val-ok' : 'val-err'}`}>
-            {user?.hasFacebookCredentials ? '✓ מחובר' : '✗ לא מחובר'}
+          <span className={`settings-val ${user?.fbSessionValid ? 'val-ok' : 'val-err'}`}>
+            {user?.fbSessionValid ? '✓ מחובר' : '✗ לא מחובר'}
           </span>
         </div>
+      </div>
+
+      <div className="settings-header" style={{ marginTop: 24 }}>
+        <h3>פייסבוק</h3>
+      </div>
+      <div className="settings-body">
+        {user?.fbSessionValid ? (
+          <div className="settings-fb-actions">
+            <button className="settings-btn-warning" onClick={handleDisconnectFB} disabled={disconnecting}>
+              {disconnecting ? '⏳ מנתק...' : '🔌 נתק חיבור פייסבוק'}
+            </button>
+            <button className="settings-btn-secondary" onClick={handleBootstrap} disabled={bootstrapping}>
+              {bootstrapping ? '⏳ ממתין...' : '🔄 החלף משתמש פייסבוק'}
+            </button>
+          </div>
+        ) : (
+          <div className="settings-fb-actions">
+            <button className="settings-btn-primary" onClick={handleBootstrap} disabled={bootstrapping}>
+              {bootstrapping ? '⏳ ממתין לחיבור...' : '🔗 חבר חשבון פייסבוק'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="settings-header" style={{ marginTop: 24 }}>
@@ -1252,6 +1503,15 @@ function SettingsPanel({ user }) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="settings-header" style={{ marginTop: 24 }}>
+        <h3>חשבון</h3>
+      </div>
+      <div className="settings-body">
+        <button className="settings-btn-danger" onClick={handleLogout}>
+          🚪 התנתק מהמערכת
+        </button>
       </div>
     </div>
   )
@@ -1908,6 +2168,7 @@ function PostDetailModal({ item, onClose, onRestart, onDelete }) {
         </div>
 
         <div className="detail-body">
+          {item.post?.title && <h3 className="detail-title">{item.post.title}</h3>}
           <p className="detail-content">{item.post?.content || '—'}</p>
           <div className="detail-meta">
             <div className="detail-meta-item">

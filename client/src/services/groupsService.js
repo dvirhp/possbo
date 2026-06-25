@@ -4,7 +4,8 @@ function buildFormData(data, images) {
   const fd = new FormData();
   Object.entries(data).forEach(([key, val]) => {
     if (val === null || val === undefined) return;
-    if (Array.isArray(val)) fd.append(key, JSON.stringify(val));
+    if (Array.isArray(val) || (typeof val === "object" && val !== null))
+      fd.append(key, JSON.stringify(val));
     else fd.append(key, val);
   });
   if (images?.length) {

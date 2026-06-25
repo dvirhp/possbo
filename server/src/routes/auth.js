@@ -239,4 +239,57 @@ router.post("/logout", async (req, res) => {
   }
 });
 
+// Update profile (name / email)
+router.patch("/profile", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const { name, email } = req.body;
+  const data = {};
+  if (name !== undefined) data.name = name.trim() || null;
+  if (email !== undefined) {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return res.status(400).json({ error: "אימייל לא תקין" });
+    }
+    // Check uniqueness
+    const existing = await prisma.user.findFirst({
+      where: { email: trimmed, id: { not: req.user.id } },
+    });
+    if (existing) {
+      return res.status(409).json({ error: "אימייל כבר בשימוש" });
+    }
+    data.email = trimmed;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return res.status(400).json({ error: "אין שדות לעדכון" });
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: req.user.id },
+    data,
+  });
+
+  res.json({
+    success: true,
+    user: { id: updated.id, email: updated.email, name: updated.name },
+  });
+});
+
+// Disconnect Facebook session
+router.post("/disconnect-facebook", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  await prisma.user.update({
+    where: { id: req.user.id },
+    data: { facebookStorageState: null, fbSessionValid: false },
+  });
+
+  res.json({ success: true, message: "חיבור הפייסבוק נותק" });
+});
+
 export default router;
