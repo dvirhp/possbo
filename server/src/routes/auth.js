@@ -312,20 +312,30 @@ router.patch("/whatsapp", async (req, res) => {
     return res.json({ success: true, whatsappMessage: msg || null });
   }
 
-  if (whatsappNumber !== undefined && whatsappNumber !== null && whatsappNumber !== '') {
-    const cleaned = whatsappNumber.replace(/[^0-9]/g, '');
+  if (
+    whatsappNumber !== undefined &&
+    whatsappNumber !== null &&
+    whatsappNumber !== ""
+  ) {
+    const cleaned = whatsappNumber.replace(/[^0-9]/g, "");
     if (cleaned.length < 9 || cleaned.length > 15) {
       return res.status(400).json({ error: "מספר וואטסאפ לא תקין" });
     }
     const data = { whatsappNumber: cleaned };
     if (whatsappMessage !== undefined) {
-      data.whatsappMessage = whatsappMessage ? whatsappMessage.trim().slice(0, 500) : null;
+      data.whatsappMessage = whatsappMessage
+        ? whatsappMessage.trim().slice(0, 500)
+        : null;
     }
     await prisma.user.update({
       where: { id: req.user.id },
       data,
     });
-    return res.json({ success: true, whatsappNumber: cleaned, whatsappMessage: data.whatsappMessage ?? undefined });
+    return res.json({
+      success: true,
+      whatsappNumber: cleaned,
+      whatsappMessage: data.whatsappMessage ?? undefined,
+    });
   }
 
   // Remove whatsapp number (and message)
