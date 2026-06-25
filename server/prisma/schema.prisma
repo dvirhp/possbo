@@ -181,6 +181,10 @@ model Post {
   recurringDays  Int[]                @default([]) @map("recurring_days")
   scheduledDates DateTime[]           @default([]) @map("scheduled_dates")
   recurringTime  String?              @map("recurring_time")
+  recurringTimes String[]             @default([]) @map("recurring_times")
+  dayTimes       Json?                @map("day_times")
+  recurringStart DateTime?            @map("recurring_start")
+  recurringEnd   DateTime?            @map("recurring_end")
   isPaused       Boolean              @default(false) @map("is_paused")
   imageUrl       String?              @map("image_url")
   postGroups     PostGroup[]

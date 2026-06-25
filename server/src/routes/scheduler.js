@@ -300,6 +300,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const userId = req.user.id;
     let {
+      title,
       text,
       groupIds,
       anonymous,
@@ -309,6 +310,10 @@ router.post(
       scheduleTime,
       recurringDays,
       recurringTime,
+      recurringTimes,
+      dayTimes,
+      recurringStartDate,
+      recurringEndDate,
       campaignType,
     } = req.body;
 
@@ -316,6 +321,9 @@ router.post(
     if (typeof groupIds === "string") groupIds = JSON.parse(groupIds);
     if (typeof recurringDays === "string")
       recurringDays = JSON.parse(recurringDays);
+    if (typeof recurringTimes === "string")
+      recurringTimes = JSON.parse(recurringTimes);
+    if (typeof dayTimes === "string") dayTimes = JSON.parse(dayTimes);
     if (anonymous === "true") anonymous = true;
     if (anonymous === "false") anonymous = false;
 
@@ -330,43 +338,87 @@ router.post(
       if (scheduledAt <= new Date()) {
         return res.status(400).json({ error: "תאריך התזמון חייב להיות בעתיד" });
       }
-    } else if (scheduleMode === "recurring" && recurringTime) {
-      // For recurring, compute next occurrence
-      const now = new Date();
-      const [hours, minutes] = recurringTime.split(":").map(Number);
-      const today = now.getDay();
-      const sortedDays = [...(recurringDays || [])].sort((a, b) => a - b);
-
-      // Find next day that's in the future
-      let nextDay = sortedDays.find((d) => d > today) ?? sortedDays[0];
-      let daysUntil = nextDay > today ? nextDay - today : 7 - today + nextDay;
-      if (nextDay === today) {
-        const todayTime = new Date();
-        todayTime.setHours(hours, minutes, 0, 0);
-        if (todayTime > now) {
-          daysUntil = 0;
-        } else {
-          nextDay = sortedDays.find((d) => d > today) ?? sortedDays[0];
-          daysUntil = nextDay > today ? nextDay - today : 7 - today + nextDay;
-          if (daysUntil === 0) daysUntil = 7;
-        }
+    } else if (scheduleMode === "recurring") {
+      // Use the first available time from recurringTimes array or fallback to recurringTime
+      const effectiveTime =
+        (recurringTimes?.length && recurringTimes[0]) || recurringTime;
+      if (!effectiveTime) {
+        return res.status(400).json({ error: "יש לבחור שעת פרסום" });
       }
-      scheduledAt = new Date(now);
-      scheduledAt.setDate(scheduledAt.getDate() + daysUntil);
-      scheduledAt.setHours(hours, minutes, 0, 0);
+
+      const [hours, minutes] = effectiveTime.split(":").map(Number);
+
+      // If recurringStartDate is provided, use it; otherwise compute next occurrence
+      if (recurringStartDate) {
+        const startDate = new Date(`${recurringStartDate}T${effectiveTime}:00`);
+        if (startDate > new Date()) {
+          scheduledAt = startDate;
+        } else {
+          // Start date is today or past — find next occurrence from today
+          const now = new Date();
+          const today = now.getDay();
+          const sortedDays = [...(recurringDays || [])].sort((a, b) => a - b);
+          let nextDay = sortedDays.find((d) => d > today) ?? sortedDays[0];
+          let daysUntil =
+            nextDay > today ? nextDay - today : 7 - today + nextDay;
+          if (nextDay === today) {
+            const todayTime = new Date();
+            todayTime.setHours(hours, minutes, 0, 0);
+            if (todayTime > now) daysUntil = 0;
+            else {
+              nextDay = sortedDays.find((d) => d > today) ?? sortedDays[0];
+              daysUntil =
+                nextDay > today ? nextDay - today : 7 - today + nextDay;
+              if (daysUntil === 0) daysUntil = 7;
+            }
+          }
+          scheduledAt = new Date(now);
+          scheduledAt.setDate(scheduledAt.getDate() + daysUntil);
+          scheduledAt.setHours(hours, minutes, 0, 0);
+        }
+      } else {
+        // No start date — compute next occurrence from now
+        const now = new Date();
+        const today = now.getDay();
+        const sortedDays = [...(recurringDays || [])].sort((a, b) => a - b);
+        let nextDay = sortedDays.find((d) => d > today) ?? sortedDays[0];
+        let daysUntil = nextDay > today ? nextDay - today : 7 - today + nextDay;
+        if (nextDay === today) {
+          const todayTime = new Date();
+          todayTime.setHours(hours, minutes, 0, 0);
+          if (todayTime > now) daysUntil = 0;
+          else {
+            nextDay = sortedDays.find((d) => d > today) ?? sortedDays[0];
+            daysUntil = nextDay > today ? nextDay - today : 7 - today + nextDay;
+            if (daysUntil === 0) daysUntil = 7;
+          }
+        }
+        scheduledAt = new Date(now);
+        scheduledAt.setDate(scheduledAt.getDate() + daysUntil);
+        scheduledAt.setHours(hours, minutes, 0, 0);
+      }
     }
 
     // Create the Post
     const post = await prisma.post.create({
       data: {
         userId,
+        title: title || null,
         content: text,
         status: scheduledAt ? "ACTIVE" : "DRAFT",
         isAnonymous: anonymous || false,
         location: location || null,
         campaignType: campaignType || "ONE_TIME",
         recurringDays: recurringDays || [],
-        recurringTime: recurringTime || null,
+        recurringTime: recurringTime || recurringTimes?.[0] || null,
+        recurringTimes: recurringTimes || [],
+        dayTimes: dayTimes || null,
+        recurringStart: recurringStartDate
+          ? new Date(`${recurringStartDate}T00:00:00`)
+          : null,
+        recurringEnd: recurringEndDate
+          ? new Date(`${recurringEndDate}T23:59:59`)
+          : null,
         imageUrl: req.files?.length
           ? `/uploads/${req.files[0].filename}`
           : null,

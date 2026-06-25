@@ -7,6 +7,7 @@ export async function savePost({
   groupUrl,
   groupName,
   text,
+  title,
   postUrl,
   screenshot,
   anonymous,
@@ -30,6 +31,7 @@ export async function savePost({
   const post = await prisma.post.create({
     data: {
       userId,
+      title: title || null,
       content: text,
       status: "ACTIVE",
       isAnonymous: anonymous || false,

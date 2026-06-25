@@ -76,6 +76,269 @@
   box-sizing: border-box;
 }
 
+/* ─── Wizard Layout ─── */
+.cp-wizard-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 32px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 28px 60px;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: start;
+}
+
+.cp-wizard {
+  max-width: 700px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ─── Stepper ─── */
+.cp-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0;
+  margin-bottom: 28px;
+  position: relative;
+  padding: 0 10px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.cp-stepper::before {
+  content: '';
+  position: absolute;
+  top: 20px;
+  right: 50px;
+  left: 50px;
+  height: 2px;
+  background: var(--border, rgba(255,255,255,0.08));
+  z-index: 0;
+}
+
+.cp-stepper-progress {
+  position: absolute;
+  top: 20px;
+  right: 50px;
+  left: 50px;
+  height: 2px;
+  background: var(--indigo, #818cf8);
+  transition: transform 0.3s ease;
+  z-index: 1;
+  transform-origin: right;
+}
+
+.cp-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  z-index: 2;
+  flex: 1;
+  min-width: 0;
+  transition: 0.2s;
+}
+
+.cp-step-indicator {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-card, #23272f);
+  border: 2px solid var(--border, rgba(255,255,255,0.1));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s;
+  color: var(--text-muted, #6b7684);
+}
+
+.cp-step.active .cp-step-indicator {
+  border-color: var(--indigo, #818cf8);
+  background: var(--indigo, #818cf8);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.15);
+}
+
+.cp-step.completed .cp-step-indicator {
+  border-color: #34d399;
+  background: #34d399;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cp-step.has-error .cp-step-indicator {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+}
+
+.cp-step-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted, #6b7684);
+  transition: 0.2s;
+}
+
+.cp-step.active .cp-step-label {
+  color: var(--indigo, #818cf8);
+}
+
+.cp-step.completed .cp-step-label {
+  color: #34d399;
+}
+
+.cp-step.has-error .cp-step-label {
+  color: #f87171;
+}
+
+/* ─── Step Content ─── */
+.cp-step-content {
+  min-height: 300px;
+}
+
+.cp-step-panel {
+  animation: fadeSlideIn 0.2s ease;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Wizard Navigation ─── */
+.cp-wizard-nav {
+  display: flex;
+  align-items: center;
+  margin-top: 20px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cp-nav-spacer {
+  flex: 1;
+}
+
+.cp-nav-btn {
+  padding: 12px 28px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+}
+
+.cp-nav-next {
+  background: var(--indigo, #818cf8);
+  color: #fff;
+}
+
+.cp-nav-next:hover {
+  background: #6366f1;
+  transform: translateX(-2px);
+}
+
+.cp-nav-back {
+  background: transparent;
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  color: var(--text-secondary, #a3adb8);
+}
+
+.cp-nav-back:hover {
+  border-color: var(--text-muted, #6b7684);
+  color: var(--text-primary, #e8ecf0);
+}
+
+/* ─── Review Card ─── */
+.cp-review {
+  padding: 16px 20px;
+}
+
+.cp-review-section {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.04));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.cp-review-section:last-child {
+  border-bottom: none;
+}
+
+.cp-review-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted, #6b7684);
+  min-width: 80px;
+}
+
+.cp-review-text {
+  font-size: 13px;
+  color: var(--text-primary, #e8ecf0);
+  margin: 0;
+  line-height: 1.5;
+  flex: 1;
+}
+
+.cp-review-meta {
+  font-size: 11.5px;
+  color: var(--text-muted, #6b7684);
+  width: 100%;
+  padding-right: 88px;
+}
+
+.cp-review-images {
+  display: flex;
+  gap: 6px;
+}
+
+.cp-review-images img {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.cp-review-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cp-review-chip {
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: var(--bg-elevated, #2a2f3a);
+  color: var(--text-secondary, #a3adb8);
+}
+
+.cp-review-chip.cp-chip-more {
+  background: transparent;
+  color: var(--text-muted, #6b7684);
+}
+
+.cp-review-value {
+  font-size: 13px;
+  color: var(--text-primary, #e8ecf0);
+}
+
+/* ─── Input error state ─── */
+.input-error {
+  border-color: #f87171 !important;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.15);
+}
+
 .cp-editor,
 .cp-sidebar {
   min-width: 0;
@@ -112,6 +375,27 @@
   border-radius: 99px;
   background: var(--indigo-soft, rgba(129,140,248,0.12));
   color: var(--indigo, #818cf8);
+}
+
+/* ─── Title Input ─── */
+.cp-title-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border, #2a2f3a);
+  background: transparent;
+  padding: 14px 20px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf0);
+  direction: rtl;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.cp-title-input::placeholder {
+  color: var(--text-dim, #4a5260);
+  font-weight: 400;
 }
 
 /* ─── Textarea ─── */
@@ -190,6 +474,60 @@
 
 .cp-location-wrap {
   padding: 0 20px 16px;
+}
+
+/* ─── WhatsApp Link ─── */
+.cp-whatsapp-wrap {
+  padding: 0 20px 16px;
+}
+
+.cp-whatsapp-input {
+  display: flex;
+  align-items: center;
+  background: var(--bg-elevated, #2a2f3a);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.cp-whatsapp-input:focus-within {
+  border-color: #25d366;
+}
+
+.cp-whatsapp-prefix {
+  padding: 10px 10px 10px 14px;
+  font-size: 13px;
+  color: #25d366;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(37, 211, 102, 0.06);
+  border-left: 1px solid var(--border, rgba(255,255,255,0.06));
+}
+
+.cp-whatsapp-input input {
+  flex: 1;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary, #e8ecf0);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  direction: ltr;
+  text-align: left;
+}
+
+.cp-whatsapp-input input::placeholder {
+  color: var(--text-muted, #6b7684);
+}
+
+.cp-whatsapp-preview {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: #25d366;
+  direction: ltr;
+  text-align: right;
 }
 
 /* ─── Post Options ─── */
@@ -362,6 +700,198 @@
   color: #fff;
 }
 
+/* Schedule info */
+.schedule-info {
+  padding: 4px 0;
+}
+.schedule-info-text {
+  font-size: 13px;
+  color: var(--text-muted, #6b7684);
+  margin: 0;
+}
+
+.schedule-desc {
+  font-size: 12.5px;
+  color: var(--text-muted, #6b7684);
+  margin: 0 0 12px;
+}
+
+.schedule-row {
+  display: flex;
+  gap: 12px;
+}
+
+.schedule-section {
+  margin-bottom: 18px;
+}
+
+.schedule-section-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary, #a3adb8);
+  margin-bottom: 10px;
+}
+
+.days-summary {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted, #6b7684);
+}
+
+/* Per-day time cards */
+.day-times-section {
+  margin-top: 4px;
+}
+
+.day-times-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.day-times-card {
+  background: var(--bg-elevated, #2a2f3a);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: border-color 0.2s;
+}
+
+.day-times-card:hover {
+  border-color: var(--indigo, #818cf8);
+}
+
+.day-times-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.day-times-day-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, #e8ecf0);
+}
+
+.day-times-count {
+  font-size: 11px;
+  color: var(--text-muted, #6b7684);
+  background: var(--bg-card, #23272f);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.day-times-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.day-times-slots .time-slot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.day-times-slots .time-slot input {
+  width: 120px;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.day-times-slots .time-add-btn {
+  padding: 6px 10px;
+  font-size: 11.5px;
+}
+
+/* Multiple time slots */
+.times-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.time-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-slot input {
+  padding: 10px 12px;
+  background: var(--bg-elevated, #2a2f3a);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 8px;
+  color: var(--text-primary, #e8ecf0);
+  font-size: 13px;
+  font-family: inherit;
+  min-height: 42px;
+  color-scheme: dark;
+  cursor: pointer;
+  transition: 0.2s;
+  width: 140px;
+}
+.time-slot input:focus {
+  outline: none;
+  border-color: var(--indigo, #818cf8);
+}
+
+.time-remove-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  background: transparent;
+  color: var(--rose, #f87171);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.15s;
+}
+.time-remove-btn:hover {
+  background: var(--rose, #f87171);
+  color: #fff;
+  border-color: var(--rose, #f87171);
+}
+
+.time-add-btn {
+  padding: 8px 14px;
+  border: 1px dashed var(--border, rgba(255,255,255,0.1));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--indigo, #818cf8);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.15s;
+  width: fit-content;
+}
+.time-add-btn:hover {
+  background: var(--indigo-soft, rgba(129,140,248,0.08));
+  border-color: var(--indigo, #818cf8);
+}
+
+/* Schedule summary */
+.schedule-summary {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--indigo-soft, rgba(129,140,248,0.08));
+  border: 1px solid var(--indigo, #818cf8);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--indigo, #818cf8);
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
 /* ─── Group Selector (Sidebar) ─── */
 .cp-sidebar .cp-card {
   margin-bottom: 14px;
@@ -466,6 +996,8 @@
   animation: slideDown 0.2s ease;
   width: 100%;
   overflow: hidden;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 @keyframes slideDown {
@@ -825,6 +1357,15 @@
   .cp-topbar {
     padding: 12px 14px;
   }
+
+  .cp-wizard-layout {
+    grid-template-columns: 1fr;
+    padding: 16px 14px 60px;
+  }
+
+  .cp-wizard {
+    max-width: 100%;
+  }
 }
 
 @media (max-width: 600px) {
@@ -849,6 +1390,73 @@
   .cp-layout {
     padding: 12px 8px 60px;
     overflow-x: hidden;
+  }
+
+  .cp-wizard {
+    padding: 12px 8px 60px;
+  }
+
+  .cp-stepper {
+    gap: 0;
+    margin-bottom: 16px;
+    padding: 0 4px;
+  }
+
+  .cp-stepper::before {
+    right: 30px;
+    left: 30px;
+    top: 16px;
+  }
+
+  .cp-stepper-progress {
+    right: 30px;
+    left: 30px;
+    top: 16px;
+  }
+
+  .cp-step-indicator {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+  }
+
+  .cp-step-label {
+    font-size: 9.5px;
+    white-space: nowrap;
+  }
+
+  .cp-nav-btn {
+    padding: 10px 16px;
+    font-size: 12px;
+  }
+
+  .cp-wizard-nav {
+    gap: 8px;
+  }
+
+  .cp-nav-spacer {
+    flex: 0;
+  }
+
+  .cp-publish-btn {
+    flex: 1;
+    font-size: 13px;
+    padding: 12px 14px;
+  }
+
+  .cp-preview-btn-mobile {
+    padding: 10px 12px;
+    font-size: 11px;
+  }
+  }
+
+  .cp-review-section {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .cp-review-meta {
+    padding-right: 0;
   }
 
   .cp-card {
@@ -932,6 +1540,46 @@
   .day-btn {
     width: 34px;
     height: 34px;
+    font-size: 12px;
+  }
+
+  .schedule-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .schedule-desc {
+    font-size: 12px;
+  }
+
+  .schedule-summary {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+
+  .time-slot input {
+    width: 120px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .time-add-btn {
+    font-size: 11.5px;
+    padding: 6px 12px;
+  }
+
+  .day-times-card {
+    padding: 10px 12px;
+  }
+
+  .day-times-slots .time-slot input {
+    width: 100px;
+    min-height: 34px;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+
+  .day-times-day-name {
     font-size: 12px;
   }
 

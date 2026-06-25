@@ -46,6 +46,8 @@ export const authAPI = {
     clearAccessToken();
     return res;
   },
+  updateProfile: (data) => http.patch("/auth/profile", data),
+  disconnectFacebook: () => http.post("/auth/disconnect-facebook"),
 };
 
 export const groupsAPI = {

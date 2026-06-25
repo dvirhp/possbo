@@ -8,10 +8,14 @@ export const publishService = {
     groupName,
     anonymous = false,
     location = "",
+    title = "",
   ) => {
     const formData = new FormData();
     formData.append("groupUrl", groupUrl);
     formData.append("text", text);
+    if (title) {
+      formData.append("title", title);
+    }
     if (groupName) {
       formData.append("groupName", groupName);
     }
