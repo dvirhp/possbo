@@ -27,6 +27,8 @@ export default [
         File: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
         global: "readonly",
       },
     },
