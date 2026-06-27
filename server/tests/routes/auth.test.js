@@ -36,6 +36,24 @@ vi.mock("../../src/utils/encryption.js", () => ({
   decrypt: vi.fn((val) => val.replace("encrypted_", "")),
 }));
 
+vi.mock("../../src/utils/turnstile.js", () => ({
+  verifyTurnstile: vi.fn(async () => true),
+}));
+
+vi.mock("../../src/utils/mailer.js", () => ({
+  sendVerificationEmail: vi.fn(async () => true),
+  sendPasswordResetEmail: vi.fn(async () => true),
+  generateCode: vi.fn(() => "123456"),
+}));
+
+vi.mock("../../src/utils/logger.js", () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
 let app;
 
 beforeEach(async () => {
@@ -65,29 +83,19 @@ beforeEach(async () => {
 });
 
 describe("POST /api/auth/register", () => {
-  it("should register a new user with FB credentials", async () => {
+  it("should register a new user and require verification", async () => {
     mockUserFindUnique.mockResolvedValue(null);
-    mockUserCreate.mockResolvedValue({
-      id: "new-user-1",
-      email: "new@test.com",
-      name: "New User",
-    });
 
     const res = await request(app).post("/api/auth/register").send({
       email: "new@test.com",
       password: "password123",
       name: "New User",
-      facebookAppId: "fb-app-id",
-      facebookAppSecret: "fb-app-secret",
     });
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.accessToken).toBeDefined();
-    expect(res.body.user.email).toBe("new@test.com");
-    // Refresh token should be in cookie
-    const cookies = res.headers["set-cookie"];
-    expect(cookies?.some((c) => c.includes("refreshToken"))).toBe(true);
+    expect(res.body.requiresVerification).toBe(true);
+    expect(res.body.email).toBe("new@test.com");
   });
 
   it("should return 400 when email is missing", async () => {
@@ -109,20 +117,16 @@ describe("POST /api/auth/register", () => {
     expect(res.status).toBe(400);
   });
 
-  it("should register without Facebook credentials", async () => {
+  it("should register without name", async () => {
     mockUserFindUnique.mockResolvedValue(null);
-    mockUserCreate.mockResolvedValue({
-      id: "new-user-2",
-      email: "test@test.com",
-      name: null,
-    });
 
     const res = await request(app).post("/api/auth/register").send({
       email: "test@test.com",
       password: "password123",
     });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(res.body.requiresVerification).toBe(true);
   });
 
   it("should return 409 when email already exists", async () => {
@@ -134,8 +138,6 @@ describe("POST /api/auth/register", () => {
     const res = await request(app).post("/api/auth/register").send({
       email: "test@test.com",
       password: "password123",
-      facebookAppId: "id",
-      facebookAppSecret: "secret",
     });
     expect(res.status).toBe(409);
   });
@@ -352,42 +354,26 @@ describe("POST /api/auth/register — validation", () => {
       email: "not-an-email",
       password: "password123",
     });
-    // The route checks for empty email, not format — so it might pass
-    // This verifies the route handles the input without crashing
-    expect([400, 201, 500]).toContain(res.status);
+    // The route checks for empty email, not format — so it might pass to verification
+    expect([400, 200, 500]).toContain(res.status);
   });
 
-  it("should store password as bcrypt hash", async () => {
+  it("should send verification email on register", async () => {
     mockUserFindUnique.mockResolvedValue(null);
-    mockUserCreate.mockResolvedValue({
-      id: "new-user",
-      email: "hash@test.com",
-      name: null,
-    });
+    const { sendVerificationEmail } = await import("../../src/utils/mailer.js");
 
     await request(app).post("/api/auth/register").send({
       email: "hash@test.com",
       password: "password123",
     });
 
-    expect(mockUserCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          passwordHash: "hashed_password123",
-        }),
-      }),
-    );
+    expect(sendVerificationEmail).toHaveBeenCalledWith("hash@test.com", "123456");
   });
 
-  it("should store name, gender, phone when provided", async () => {
+  it("should accept name, gender, phone fields", async () => {
     mockUserFindUnique.mockResolvedValue(null);
-    mockUserCreate.mockResolvedValue({
-      id: "new-user",
-      email: "full@test.com",
-      name: "Full User",
-    });
 
-    await request(app).post("/api/auth/register").send({
+    const res = await request(app).post("/api/auth/register").send({
       email: "full@test.com",
       password: "password123",
       name: "Full User",
@@ -395,14 +381,7 @@ describe("POST /api/auth/register — validation", () => {
       phone: "0501234567",
     });
 
-    expect(mockUserCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          name: "Full User",
-          gender: "male",
-          phone: "0501234567",
-        }),
-      }),
-    );
+    expect(res.status).toBe(200);
+    expect(res.body.requiresVerification).toBe(true);
   });
 });
