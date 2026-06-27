@@ -19,12 +19,14 @@ vi.mock("bcrypt", () => ({
 
 const mockUserCreate = vi.fn();
 const mockUserFindUnique = vi.fn();
+const mockUserFindFirst = vi.fn();
 const mockUserUpdate = vi.fn();
 
 vi.mock("@prisma/client", () => ({
   PrismaClient: vi.fn(() => ({
     user: {
       findUnique: mockUserFindUnique,
+      findFirst: mockUserFindFirst,
       create: mockUserCreate,
       update: mockUserUpdate,
     },
@@ -60,6 +62,7 @@ beforeEach(async () => {
   vi.resetModules();
   mockUserCreate.mockReset();
   mockUserFindUnique.mockReset();
+  mockUserFindFirst.mockReset().mockResolvedValue(null);
   mockUserUpdate.mockReset().mockResolvedValue({});
 
   const authModule = await import("../../src/routes/auth.js");
@@ -383,5 +386,298 @@ describe("POST /api/auth/register — validation", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.requiresVerification).toBe(true);
+  });
+});
+
+describe("POST /api/auth/verify-email", () => {
+  it("should return 400 when email or code missing", async () => {
+    const res = await request(app).post("/api/auth/verify-email").send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 when no pending verification", async () => {
+    const res = await request(app)
+      .post("/api/auth/verify-email")
+      .send({ email: "unknown@test.com", code: "123456" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should verify code and create user", async () => {
+    // First register to create pending verification
+    mockUserFindUnique.mockResolvedValue(null);
+    await request(app).post("/api/auth/register").send({
+      email: "verify@test.com",
+      password: "password123",
+      name: "Verify User",
+    });
+
+    mockUserCreate.mockResolvedValue({
+      id: "new-verified",
+      email: "verify@test.com",
+      name: "Verify User",
+    });
+    mockUserUpdate.mockResolvedValue({});
+
+    const res = await request(app)
+      .post("/api/auth/verify-email")
+      .send({ email: "verify@test.com", code: "123456" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.user.email).toBe("verify@test.com");
+  });
+
+  it("should return 400 for wrong code", async () => {
+    mockUserFindUnique.mockResolvedValue(null);
+    await request(app).post("/api/auth/register").send({
+      email: "wrongcode@test.com",
+      password: "password123",
+    });
+
+    const res = await request(app)
+      .post("/api/auth/verify-email")
+      .send({ email: "wrongcode@test.com", code: "000000" });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/auth/resend-code", () => {
+  it("should return 400 when no pending registration", async () => {
+    const res = await request(app)
+      .post("/api/auth/resend-code")
+      .send({ email: "nobody@test.com" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should resend code for pending registration", async () => {
+    mockUserFindUnique.mockResolvedValue(null);
+    await request(app).post("/api/auth/register").send({
+      email: "resend@test.com",
+      password: "password123",
+    });
+
+    const res = await request(app)
+      .post("/api/auth/resend-code")
+      .send({ email: "resend@test.com" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});
+
+describe("POST /api/auth/forgot-password", () => {
+  it("should return 400 when email missing", async () => {
+    const res = await request(app)
+      .post("/api/auth/forgot-password")
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("should return success even for non-existent user", async () => {
+    mockUserFindUnique.mockResolvedValue(null);
+    const res = await request(app)
+      .post("/api/auth/forgot-password")
+      .send({ email: "noone@test.com" });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it("should send reset code for existing user", async () => {
+    mockUserFindUnique.mockResolvedValue({ id: "user-1", email: "test@test.com" });
+    const res = await request(app)
+      .post("/api/auth/forgot-password")
+      .send({ email: "test@test.com" });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});
+
+describe("POST /api/auth/reset-password", () => {
+  it("should return 400 when fields missing", async () => {
+    const res = await request(app)
+      .post("/api/auth/reset-password")
+      .send({ email: "test@test.com" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 for short password", async () => {
+    const res = await request(app)
+      .post("/api/auth/reset-password")
+      .send({ email: "test@test.com", code: "123456", newPassword: "123" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 when no pending reset code", async () => {
+    const res = await request(app)
+      .post("/api/auth/reset-password")
+      .send({ email: "nobody@test.com", code: "123456", newPassword: "newpass123" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should reset password with valid code", async () => {
+    // Trigger forgot-password first
+    mockUserFindUnique.mockResolvedValue({ id: "user-1", email: "reset@test.com" });
+    await request(app)
+      .post("/api/auth/forgot-password")
+      .send({ email: "reset@test.com" });
+
+    mockUserUpdate.mockResolvedValue({});
+    const res = await request(app)
+      .post("/api/auth/reset-password")
+      .send({ email: "reset@test.com", code: "123456", newPassword: "newpassword123" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});
+
+describe("PATCH /api/auth/profile", () => {
+  it("should update name", async () => {
+    mockUserUpdate.mockResolvedValue({ id: "user-1", email: "test@test.com", name: "New Name" });
+    const res = await request(app)
+      .patch("/api/auth/profile")
+      .send({ name: "New Name" });
+    expect(res.status).toBe(200);
+    expect(res.body.user.name).toBe("New Name");
+  });
+
+  it("should return 400 for invalid email", async () => {
+    const res = await request(app)
+      .patch("/api/auth/profile")
+      .send({ email: "not-valid" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 when no fields provided", async () => {
+    const res = await request(app)
+      .patch("/api/auth/profile")
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 409 when email already taken", async () => {
+    mockUserFindFirst.mockResolvedValue({ id: "other-user" });
+    const res = await request(app)
+      .patch("/api/auth/profile")
+      .send({ email: "taken@test.com" });
+    expect(res.status).toBe(409);
+  });
+});
+
+describe("POST /api/auth/disconnect-facebook", () => {
+  it("should disconnect facebook session", async () => {
+    mockUserUpdate.mockResolvedValue({});
+    const res = await request(app).post("/api/auth/disconnect-facebook");
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});
+
+describe("PATCH /api/auth/whatsapp", () => {
+  it("should save valid whatsapp number", async () => {
+    mockUserUpdate.mockResolvedValue({});
+    const res = await request(app)
+      .patch("/api/auth/whatsapp")
+      .send({ whatsappNumber: "0501234567" });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.whatsappNumber).toBe("972501234567");
+  });
+
+  it("should remove whatsapp when empty", async () => {
+    mockUserUpdate.mockResolvedValue({});
+    const res = await request(app)
+      .patch("/api/auth/whatsapp")
+      .send({ whatsappNumber: null });
+    expect(res.status).toBe(200);
+    expect(res.body.whatsappNumber).toBeNull();
+  });
+
+  it("should return 400 for invalid number length", async () => {
+    const res = await request(app)
+      .patch("/api/auth/whatsapp")
+      .send({ whatsappNumber: "123" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should update message only", async () => {
+    mockUserUpdate.mockResolvedValue({});
+    const res = await request(app)
+      .patch("/api/auth/whatsapp")
+      .send({ whatsappMessage: "Hello from PostIt" });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});
+
+describe("POST /api/auth/password/request-code", () => {
+  it("should return 400 without current password", async () => {
+    const res = await request(app)
+      .post("/api/auth/password/request-code")
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 401 for wrong current password", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@test.com",
+      passwordHash: "hashed_correctpassword",
+    });
+    const res = await request(app)
+      .post("/api/auth/password/request-code")
+      .send({ currentPassword: "wrongpassword" });
+    expect(res.status).toBe(401);
+  });
+
+  it("should send code for correct password", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@test.com",
+      passwordHash: "hashed_mypassword",
+    });
+    const res = await request(app)
+      .post("/api/auth/password/request-code")
+      .send({ currentPassword: "mypassword" });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});
+
+describe("PATCH /api/auth/password", () => {
+  it("should return 400 without code or password", async () => {
+    const res = await request(app)
+      .patch("/api/auth/password")
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 for short new password", async () => {
+    const res = await request(app)
+      .patch("/api/auth/password")
+      .send({ code: "123456", newPassword: "12" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should change password with valid code", async () => {
+    // First request code
+    mockUserFindUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@test.com",
+      passwordHash: "hashed_currentpass",
+    });
+    await request(app)
+      .post("/api/auth/password/request-code")
+      .send({ currentPassword: "currentpass" });
+
+    // Now change
+    mockUserUpdate.mockResolvedValue({});
+    const res = await request(app)
+      .patch("/api/auth/password")
+      .send({ code: "123456", newPassword: "newpassword123" });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
   });
 });
