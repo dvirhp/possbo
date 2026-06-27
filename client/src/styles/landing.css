@@ -179,6 +179,20 @@
   background: var(--indigo-soft, rgba(129,140,248,0.12));
 }
 
+.landing-footer {
+  margin-top: 40px;
+  text-align: center;
+}
+.landing-footer a {
+  color: var(--text-muted, #6b7684);
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.landing-footer a:hover {
+  color: var(--indigo, #818cf8);
+}
+
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
   .hero-content h1 {

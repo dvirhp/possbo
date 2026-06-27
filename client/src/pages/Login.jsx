@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authAPI } from '../services/api'
 import { useAppData } from '../context/DataProvider'
+import OAuthButtons from '../components/OAuthButtons'
+import Turnstile from '../components/Turnstile'
 import '../styles/auth.css'
 
 export default function Login() {
@@ -10,6 +12,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
+  const [captchaToken, setCaptchaToken] = useState(null)
   const navigate = useNavigate()
   const { checkAuth, setUser, user, authChecked } = useAppData()
 
@@ -29,10 +32,14 @@ export default function Login() {
       setError('אימייל וסיסמה הם שדות חובה')
       return
     }
+    if (!captchaToken) {
+      setError('יש לאמת שאתה לא רובוט')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      const res = await authAPI.login(email, password)
+      const res = await authAPI.login(email, password, captchaToken)
       if (res.data?.user) {
         setUser(res.data.user)
         // Wait for state to propagate before navigating
@@ -81,13 +88,29 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+          <div className="auth-forgot-link">
+            <Link to="/forgot-password">שכחת סיסמה?</Link>
+          </div>
 
           {error && <div className="auth-error">{error}</div>}
 
-          <button type="submit" className="auth-submit-btn" disabled={loading}>
+          <Turnstile onVerify={setCaptchaToken} />
+
+          <button type="submit" className="auth-submit-btn" disabled={loading || !captchaToken}>
             {loading ? '⏳ מתחבר...' : '🔑 התחבר'}
           </button>
         </form>
+
+        <div className="auth-divider"><span>או התחבר עם</span></div>
+
+        <OAuthButtons
+          mode="login"
+          onSuccess={(result) => {
+            if (result.user) setUser(result.user)
+            setTimeout(() => navigate('/dashboard'), 0)
+          }}
+          onError={(msg) => setError(msg)}
+        />
 
         <div className="auth-footer">
           <span>אין לך חשבון? </span>

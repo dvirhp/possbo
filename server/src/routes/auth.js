@@ -8,11 +8,29 @@ import {
   verifyRefreshToken,
 } from "../utils/jwt.js";
 import { createLogger } from "../utils/logger.js";
+import { sendVerificationEmail, sendPasswordResetEmail, generateCode } from "../utils/mailer.js";
+import { verifyTurnstile } from "../utils/turnstile.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
 const log = createLogger("auth");
 const SALT_ROUNDS = 12;
+
+// In-memory store for pending email verifications (code → data)
+// Format: { email: { code, data, expiresAt } }
+const pendingVerifications = new Map();
+const passwordResetCodes = new Map();
+
+// Clean expired entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of pendingVerifications) {
+    if (val.expiresAt < now) pendingVerifications.delete(key);
+  }
+  for (const [key, val] of passwordResetCodes) {
+    if (val.expiresAt < now) passwordResetCodes.delete(key);
+  }
+}, 5 * 60 * 1000);
 
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -26,10 +44,16 @@ function setRefreshCookie(res, token) {
   });
 }
 
-// Register with email + password + Facebook App credentials
+// Register step 1: validate & send verification code
 router.post("/register", async (req, res) => {
   try {
-    const { email, password, name, gender, phone } = req.body;
+    const { email, password, name, gender, phone, captchaToken } = req.body;
+
+    // Verify Turnstile CAPTCHA
+    const captchaValid = await verifyTurnstile(captchaToken, req.ip);
+    if (!captchaValid) {
+      return res.status(400).json({ error: "אימות CAPTCHA נכשל — נסה שוב" });
+    }
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
@@ -41,18 +65,73 @@ router.post("/register", async (req, res) => {
         .json({ error: "Password must be at least 6 characters" });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     // Check if user already exists
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       return res.status(409).json({ error: "Email already registered" });
     }
 
-    // Hash password (bcrypt includes salt automatically)
+    // Generate and send verification code
+    const code = generateCode();
+    pendingVerifications.set(normalizedEmail, {
+      code,
+      data: { email: normalizedEmail, password, name, gender, phone },
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+    });
+
+    const sent = await sendVerificationEmail(normalizedEmail, code);
+    if (!sent) {
+      return res.status(500).json({ error: "שגיאה בשליחת המייל — נסה שוב" });
+    }
+
+    res.json({ success: true, requiresVerification: true, email: normalizedEmail });
+  } catch (error) {
+    log.error("Registration failed", error, { email: req.body?.email });
+    res.status(500).json({ error: "Registration failed" });
+  }
+});
+
+// Register step 2: verify code and create account
+router.post("/verify-email", async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!normalizedEmail || !code) {
+      return res.status(400).json({ error: "חסר אימייל או קוד" });
+    }
+
+    const pending = pendingVerifications.get(normalizedEmail);
+    if (!pending) {
+      return res.status(400).json({ error: "לא נמצא קוד אימות — נסה להירשם מחדש" });
+    }
+
+    if (pending.expiresAt < Date.now()) {
+      pendingVerifications.delete(normalizedEmail);
+      return res.status(400).json({ error: "הקוד פג תוקף — נסה להירשם מחדש" });
+    }
+
+    if (pending.code !== code.trim()) {
+      return res.status(400).json({ error: "קוד שגוי — נסה שוב" });
+    }
+
+    // Code verified — create the user
+    pendingVerifications.delete(normalizedEmail);
+    const { password, name, gender, phone } = pending.data;
+
+    // Double-check email not taken (race condition)
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (existing) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
     const user = await prisma.user.create({
       data: {
-        email,
+        email: normalizedEmail,
         passwordHash,
         name: name || null,
         gender: gender || null,
@@ -64,7 +143,6 @@ router.post("/register", async (req, res) => {
     const accessToken = generateAccessToken(user.id);
     const refreshToken = generateRefreshToken(user.id);
 
-    // Store refresh token hash in DB
     const refreshTokenHash = await bcrypt.hash(refreshToken, SALT_ROUNDS);
     await prisma.user.update({
       where: { id: user.id },
@@ -79,15 +157,49 @@ router.post("/register", async (req, res) => {
       user: { id: user.id, email: user.email, name: user.name },
     });
   } catch (error) {
-    log.error("Registration failed", error, { email: req.body?.email });
-    res.status(500).json({ error: "Registration failed" });
+    log.error("Email verification failed", error);
+    res.status(500).json({ error: "Verification failed" });
+  }
+});
+
+// Resend verification code
+router.post("/resend-code", async (req, res) => {
+  try {
+    const { email } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    const pending = pendingVerifications.get(normalizedEmail);
+    if (!pending) {
+      return res.status(400).json({ error: "לא נמצאה הרשמה בהמתנה" });
+    }
+
+    // Generate new code
+    const code = generateCode();
+    pending.code = code;
+    pending.expiresAt = Date.now() + 10 * 60 * 1000;
+
+    const sent = await sendVerificationEmail(normalizedEmail, code);
+    if (!sent) {
+      return res.status(500).json({ error: "שגיאה בשליחת המייל" });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    log.error("Resend code failed", error);
+    res.status(500).json({ error: "Failed to resend code" });
   }
 });
 
 // Login with email + password
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, captchaToken } = req.body;
+
+    // Verify Turnstile CAPTCHA
+    const captchaValid = await verifyTurnstile(captchaToken, req.ip);
+    if (!captchaValid) {
+      return res.status(400).json({ error: "אימות CAPTCHA נכשל — נסה שוב" });
+    }
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
@@ -124,6 +236,80 @@ router.post("/login", async (req, res) => {
   } catch (error) {
     log.error("Login failed", error, { email: req.body?.email });
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// Forgot password — step 1: send code to email
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      return res.status(400).json({ error: "יש להזין אימייל" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user) {
+      // Don't reveal if email exists — still return success
+      return res.json({ success: true });
+    }
+
+    const code = generateCode();
+    passwordResetCodes.set(normalizedEmail, {
+      code,
+      userId: user.id,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+
+    await sendPasswordResetEmail(normalizedEmail, code);
+    res.json({ success: true });
+  } catch (error) {
+    log.error("Forgot password failed", error);
+    res.status(500).json({ error: "שגיאה בשליחת הקוד" });
+  }
+});
+
+// Forgot password — step 2: verify code & set new password
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!normalizedEmail || !code || !newPassword) {
+      return res.status(400).json({ error: "חסרים שדות חובה" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "סיסמה חייבת להכיל לפחות 6 תווים" });
+    }
+
+    const pending = passwordResetCodes.get(normalizedEmail);
+    if (!pending) {
+      return res.status(400).json({ error: "לא נמצא קוד אימות — בקש קוד חדש" });
+    }
+
+    if (pending.expiresAt < Date.now()) {
+      passwordResetCodes.delete(normalizedEmail);
+      return res.status(400).json({ error: "הקוד פג תוקף — בקש קוד חדש" });
+    }
+
+    if (pending.code !== code.trim()) {
+      return res.status(400).json({ error: "קוד שגוי" });
+    }
+
+    passwordResetCodes.delete(normalizedEmail);
+
+    const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await prisma.user.update({
+      where: { id: pending.userId },
+      data: { passwordHash: newHash },
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    log.error("Reset password failed", error);
+    res.status(500).json({ error: "שגיאה באיפוס הסיסמה" });
   }
 });
 
@@ -186,12 +372,30 @@ router.get("/me", async (req, res) => {
     return res.status(401).json({ error: "Not authenticated" });
   }
 
+  // Verify FB session is actually valid (has storage state data)
+  let fbSessionValid = req.user.fbSessionValid || false;
+  if (fbSessionValid) {
+    // Check if storage state actually exists
+    const hasState = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { facebookStorageState: true },
+    });
+    if (!hasState?.facebookStorageState) {
+      fbSessionValid = false;
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { fbSessionValid: false },
+      }).catch(() => {});
+    }
+  }
+
   res.json({
     id: req.user.id,
     email: req.user.email,
     name: req.user.name,
     profileImage: req.user.profileImage,
-    fbSessionValid: req.user.fbSessionValid || false,
+    avatarUrl: req.user.avatarUrl || null,
+    fbSessionValid,
     whatsappNumber: req.user.whatsappNumber || null,
     whatsappMessage: req.user.whatsappMessage || null,
   });
@@ -239,6 +443,89 @@ router.post("/logout", async (req, res) => {
     res.clearCookie("refreshToken", { path: "/api/auth" });
     res.json({ success: true, message: "Logged out" });
   }
+});
+
+// Change password step 1: verify current password & send code
+router.post("/password/request-code", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const { currentPassword } = req.body;
+  if (!currentPassword) {
+    return res.status(400).json({ error: "יש להזין סיסמה נוכחית" });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!user || !user.passwordHash) {
+    return res.status(400).json({ error: "לא ניתן לשנות סיסמה — חשבון ללא סיסמה" });
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) {
+    return res.status(401).json({ error: "סיסמה נוכחית שגויה" });
+  }
+
+  // Send verification code
+  const code = generateCode();
+  passwordResetCodes.set(user.email, {
+    code,
+    userId: user.id,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  });
+
+  const sent = await sendPasswordResetEmail(user.email, code);
+  if (!sent) {
+    return res.status(500).json({ error: "שגיאה בשליחת הקוד למייל" });
+  }
+
+  res.json({ success: true, email: user.email });
+});
+
+// Change password step 2: verify code & set new password
+router.patch("/password", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const { code, newPassword } = req.body;
+
+  if (!code || !newPassword) {
+    return res.status(400).json({ error: "יש למלא קוד אימות וסיסמה חדשה" });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: "סיסמה חדשה חייבת להכיל לפחות 6 תווים" });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const pending = passwordResetCodes.get(user.email);
+  if (!pending || pending.userId !== user.id) {
+    return res.status(400).json({ error: "לא נמצא קוד אימות — בקש קוד חדש" });
+  }
+
+  if (pending.expiresAt < Date.now()) {
+    passwordResetCodes.delete(user.email);
+    return res.status(400).json({ error: "הקוד פג תוקף — בקש קוד חדש" });
+  }
+
+  if (pending.code !== code.trim()) {
+    return res.status(400).json({ error: "קוד שגוי" });
+  }
+
+  passwordResetCodes.delete(user.email);
+
+  const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  await prisma.user.update({
+    where: { id: req.user.id },
+    data: { passwordHash: newHash },
+  });
+
+  res.json({ success: true });
 });
 
 // Update profile (name / email)
@@ -317,9 +604,13 @@ router.patch("/whatsapp", async (req, res) => {
     whatsappNumber !== null &&
     whatsappNumber !== ""
   ) {
-    const cleaned = whatsappNumber.replace(/[^0-9]/g, "");
+    let cleaned = whatsappNumber.replace(/[^0-9]/g, "");
+    // Auto-convert Israeli mobile numbers (05x) to international format
+    if (/^0[5][0-9]/.test(cleaned) && cleaned.length === 10) {
+      cleaned = "972" + cleaned.slice(1);
+    }
     if (cleaned.length < 9 || cleaned.length > 15) {
-      return res.status(400).json({ error: "מספר וואטסאפ לא תקין" });
+      return res.status(400).json({ error: "מספר וואטסאפ לא תקין — אורך לא תקין" });
     }
     const data = { whatsappNumber: cleaned };
     if (whatsappMessage !== undefined) {

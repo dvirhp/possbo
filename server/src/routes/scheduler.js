@@ -327,8 +327,13 @@ router.post(
     if (anonymous === "true") anonymous = true;
     if (anonymous === "false") anonymous = false;
 
-    if (!text || !groupIds?.length) {
-      return res.status(400).json({ error: "text and groupIds are required" });
+    if (!text) {
+      return res.status(400).json({ error: "text is required" });
+    }
+
+    // Allow saving without groups (draft only)
+    if (!groupIds?.length && scheduleMode && scheduleMode !== 'draft') {
+      return res.status(400).json({ error: "groupIds are required for scheduled campaigns" });
     }
 
     // Determine scheduled datetime
@@ -441,7 +446,7 @@ router.post(
 
     // Create PostGroup + Schedule + Job for each group
     const results = [];
-    for (const groupId of groupIds) {
+    for (const groupId of (groupIds || [])) {
       // Find the Group record (groupId here is the facebook group slug)
       let group = await prisma.group.findFirst({
         where: { url: { contains: groupId } },
@@ -495,6 +500,86 @@ router.post(
         ? `הקמפיין תוזמן ל-${scheduledAt.toLocaleString("he-IL")}`
         : "הקמפיין נוצר כטיוטה",
       scheduled: results.length,
+    });
+  }),
+);
+
+// ─── Get recent drafts and history for restore ──────────
+
+router.get(
+  "/campaigns/recent",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+
+    // Get drafts (incomplete campaigns)
+    const drafts = await prisma.post.findMany({
+      where: { userId, status: "DRAFT" },
+      include: {
+        media: { orderBy: { orderIndex: "asc" } },
+        postGroups: {
+          include: {
+            group: { select: { id: true, name: true, url: true, pictureUrl: true } },
+            schedules: { where: { isActive: true }, take: 1 },
+          },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 10,
+    });
+
+    // Get last 10 completed/active campaigns for "restore from history"
+    const history = await prisma.post.findMany({
+      where: { userId, status: { in: ["ACTIVE", "ARCHIVED"] } },
+      include: {
+        media: { orderBy: { orderIndex: "asc" } },
+        postGroups: {
+          include: {
+            group: { select: { id: true, name: true, url: true, pictureUrl: true } },
+            schedules: { where: { isActive: true }, take: 1 },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+
+    const mapPost = (p) => ({
+      id: p.id,
+      title: p.title,
+      content: p.content,
+      imageUrl: p.media?.[0]?.url || p.imageUrl || null,
+      images: p.media?.map(m => m.url) || [],
+      status: p.status,
+      isAnonymous: p.isAnonymous,
+      location: p.location,
+      groups: p.postGroups?.map(pg => ({
+        id: pg.group?.id,
+        name: pg.group?.name,
+        url: pg.group?.url,
+        pictureUrl: pg.group?.pictureUrl,
+        externalId: pg.group?.url?.split('/groups/')?.[1]?.replace(/\/$/, '') || pg.group?.id,
+      })).filter(g => g.name) || [],
+      groupNames: p.postGroups?.map(pg => pg.group?.name).filter(Boolean) || [],
+      groupCount: p.postGroups?.length || 0,
+      campaignType: p.campaignType,
+      recurringDays: p.recurringDays || [],
+      recurringTime: p.recurringTime,
+      recurringTimes: p.recurringTimes || [],
+      dayTimes: p.dayTimes || null,
+      recurringStart: p.recurringStart,
+      recurringEnd: p.recurringEnd,
+      scheduleMode: p.campaignType === 'RECURRING' ? 'recurring'
+        : p.postGroups?.some(pg => pg.schedules?.length > 0) ? 'scheduled'
+        : 'now',
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    });
+
+    res.json({
+      success: true,
+      drafts: drafts.map(mapPost),
+      history: history.map(mapPost),
     });
   }),
 );

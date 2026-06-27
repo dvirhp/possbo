@@ -90,7 +90,7 @@ export default function PostDetails() {
 
         <div className="post-detail-content">
           <h4>תוכן הפוסט:</h4>
-          <p>{publication.post?.content || '—'}</p>
+          <p>{publication.post?.content || ''}</p>
         </div>
 
         {publication.post?.location && (

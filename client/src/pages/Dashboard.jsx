@@ -4,6 +4,7 @@ import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
 import { authAPI } from '../services/api'
+import ConfirmDialog from '../components/ConfirmDialog'
 import '../styles/dashboard.css'
 
 const TABS = [
@@ -104,10 +105,17 @@ export default function Dashboard() {
   }, [dateFrom, dateTo])
 
   const handleLogout = async () => {
-    await logout()
-    navigate('/')
+    setMainConfirm({
+      title: 'התנתקות',
+      message: 'האם אתה בטוח שברצונך להתנתק?',
+      action: async () => {
+        await logout()
+        navigate('/')
+      }
+    })
   }
 
+  const [mainConfirm, setMainConfirm] = useState(null)
   const [sessionRequired, setSessionRequired] = useState(false)
 
   const handleBootstrap = async () => {
@@ -118,14 +126,17 @@ export default function Dashboard() {
     } catch (err) {
       setBootstrapping(false)
       if (err.response?.data?.error === 'FACEBOOK_SESSION_NOT_COMPLETED') {
-        window.alert('החיבור לא הושלם — יש להתחבר לפייסבוק בדפדפן שנפתח')
+        window.alert('החיבור לא הושלם, יש להתחבר לפייסבוק בדפדפן שנפתח')
       }
     }
   }
 
+  const [syncBanner, setSyncBanner] = useState(null) // {type:'syncing'|'done'|'error', msg}
+
   const handleRefreshGroups = async () => {
     setRefreshingGroups(true)
     setSessionRequired(false)
+    setSyncBanner({ type: 'syncing', msg: 'מסנכרן קבוצות מפייסבוק... אפשר להמשיך לגלוש באתר' })
     try {
       const res = await groupsService.scrapeMyGroups()
       if (res.data.success && res.data.groups) {
@@ -135,10 +146,16 @@ export default function Dashboard() {
           image: g.image || null,
           url: g.url || `https://www.facebook.com/groups/${g.id}`,
         })))
+        setSyncBanner({ type: 'done', msg: `✅ סונכרנו ${res.data.groups.length} קבוצות בהצלחה!` })
+        setTimeout(() => setSyncBanner(null), 5000)
       }
     } catch (err) {
       if (err.response?.status === 428) {
         setSessionRequired(true)
+        setSyncBanner(null)
+      } else {
+        setSyncBanner({ type: 'error', msg: '⚠️ שגיאה בסנכרון הקבוצות' })
+        setTimeout(() => setSyncBanner(null), 5000)
       }
     } finally {
       setRefreshingGroups(false)
@@ -305,6 +322,7 @@ export default function Dashboard() {
   }
 
   return (
+    <>
     <div className="dash">
       {/* Mobile overlay */}
       {mobileMenuOpen && <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)} />}
@@ -398,12 +416,30 @@ export default function Dashboard() {
               {/* Facebook session banner */}
               {user && !user.fbSessionValid && !refreshing && (
                 <div className="session-banner">
-                  <span>⚠️ חשבון הפייסבוק לא מחובר — פוסטים מתוזמנים לא יפורסמו</span>
+                  <span>⚠️ חשבון הפייסבוק לא מחובר, פוסטים מתוזמנים לא יפורסמו</span>
                   <button className="session-banner-btn" disabled={bootstrapping} onClick={handleBootstrap}>
                     {bootstrapping ? '⏳ ממתין לחיבור...' : '🔗 חבר עכשיו'}
                   </button>
                 </div>
               )}
+
+              {/* Sync banner */}
+              {syncBanner && (
+                <div className={`sync-banner sync-banner-${syncBanner.type}`}>
+                  {syncBanner.type === 'syncing' && (
+                    <div className="sync-logos">
+                      <span className="sync-logo-fb">f</span>
+                      <span className="sync-arrows">⇄</span>
+                      <span className="sync-logo-postit">📌</span>
+                    </div>
+                  )}
+                  <span>{syncBanner.msg}</span>
+                  {syncBanner.type !== 'syncing' && (
+                    <button onClick={() => setSyncBanner(null)}>✕</button>
+                  )}
+                </div>
+              )}
+
               {/* KPIs — always visible except stats/settings */}
               {activeTab !== 'settings' && activeTab !== 'stats' && (
                 <section className="kpi-row">
@@ -781,6 +817,14 @@ export default function Dashboard() {
         ))}
       </nav>
     </div>
+    <ConfirmDialog
+      open={!!mainConfirm}
+      title={mainConfirm?.title}
+      message={mainConfirm?.message}
+      onConfirm={() => { mainConfirm?.action(); setMainConfirm(null) }}
+      onCancel={() => setMainConfirm(null)}
+    />
+    </>
   )
 }
 
@@ -793,6 +837,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
   const [detailCampaign, setDetailCampaign] = useState(null)
   const [loading, setLoading] = useState(false)
   const [localCampaigns, setLocalCampaigns] = useState(campaigns)
+  const [confirmAction, setConfirmAction] = useState(null)
   const menuRef = useRef(null)
 
   useEffect(() => { setLocalCampaigns(campaigns) }, [campaigns])
@@ -854,14 +899,19 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
 
   const handleDelete = async (campaign) => {
     setMenuId(null)
-    if (!window.confirm('למחוק את הקמפיין? פעולה זו לא ניתנת לביטול.')) return
-    setLocalCampaigns(prev => prev.filter(c => c.id !== campaign.id))
-    try {
-      await groupsService.deleteCampaign(campaign.id)
-      onUpdate()
-    } catch {
-      setLocalCampaigns(prev => [...prev, campaign])
-    }
+    setConfirmAction({
+      title: 'מחיקת קמפיין',
+      message: 'האם אתה בטוח שברצונך למחוק את הקמפיין? פעולה זו לא ניתנת לביטול.',
+      action: async () => {
+        setLocalCampaigns(prev => prev.filter(c => c.id !== campaign.id))
+        try {
+          await groupsService.deleteCampaign(campaign.id)
+          onUpdate()
+        } catch {
+          setLocalCampaigns(prev => [...prev, campaign])
+        }
+      }
+    })
   }
 
   const handleDuplicate = async (campaign) => {
@@ -926,6 +976,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
       {localCampaigns.map(campaign => {
         const allImages = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
         const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url
+        const handleImgError = (e) => { e.target.style.display = 'none'; e.target.parentElement.classList.add('card-img-broken') }
         const cardImages = allImages.slice(0, 3)
         const extraImgs = allImages.length - 3
         return (
@@ -935,7 +986,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
               ? <>
                   {cardImages.map((img, i) => (
                     <div key={i} className={`card-img-cell ${i === 0 ? 'card-img-main' : 'card-img-side'}`}>
-                      <img src={resolveImg(img)} alt="" />
+                      <img src={resolveImg(img)} alt="" onError={handleImgError} />
                       {i === 2 && extraImgs > 0 && (
                         <div className="card-img-plus">+{extraImgs}</div>
                       )}
@@ -963,11 +1014,13 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
                 </button>
                 {menuId === campaign.id && (
                   <div className="actions-dropdown">
-                    <button onClick={() => handleEdit(campaign)}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                      ערוך
-                    </button>
-                    {campaign.isPaused || campaign.status === 'draft' || campaign.status === 'one-time' ? (
+                    {campaign.status !== 'draft' && (
+                      <button onClick={() => handleEdit(campaign)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        ערוך
+                      </button>
+                    )}
+                    {campaign.status !== 'draft' && (campaign.isPaused || campaign.status === 'one-time' ? (
                       <button onClick={() => handleRestart(campaign)}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                         הפעל מחדש
@@ -977,11 +1030,17 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                         השהה
                       </button>
-                    )}
+                    ))}
                     <button onClick={() => handleDuplicate(campaign)}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
                       שכפל
                     </button>
+                    {campaign.status === 'draft' && (
+                      <button onClick={() => navigate('/create-post', { state: { republish: campaign } })}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        המשך מאיפה שעצרתי
+                      </button>
+                    )}
                     <button className="actions-danger" onClick={() => handleDelete(campaign)}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                       מחק
@@ -1053,6 +1112,13 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
         onDelete={() => { setDetailCampaign(null); handleDelete(detailCampaign) }}
       />
     )}
+    <ConfirmDialog
+      open={!!confirmAction}
+      title={confirmAction?.title}
+      message={confirmAction?.message}
+      onConfirm={() => { confirmAction?.action(); setConfirmAction(null) }}
+      onCancel={() => setConfirmAction(null)}
+    />
     </>
   )
 }
@@ -1154,6 +1220,7 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
   const [detailPost, setDetailPost] = useState(null)
   const [loading, setLoading] = useState(false)
   const [localPosts, setLocalPosts] = useState(posts)
+  const [confirmAction, setConfirmAction] = useState(null)
   const menuRef = useRef(null)
 
   useEffect(() => { setLocalPosts(posts) }, [posts])
@@ -1169,14 +1236,19 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
 
   const handleDelete = async (item) => {
     setMenuId(null)
-    if (!window.confirm('למחוק את רשומת הפרסום?')) return
-    setLocalPosts(prev => prev.filter(p => p.id !== item.id))
-    try {
-      await groupsService.deleteHistory(item.id)
-      onUpdate()
-    } catch {
-      setLocalPosts(prev => [...prev, item])
-    }
+    setConfirmAction({
+      title: 'מחיקת רשומת פרסום',
+      message: 'האם אתה בטוח שברצונך למחוק את רשומת הפרסום?',
+      action: async () => {
+        setLocalPosts(prev => prev.filter(p => p.id !== item.id))
+        try {
+          await groupsService.deleteHistory(item.id)
+          onUpdate()
+        } catch {
+          setLocalPosts(prev => [...prev, item])
+        }
+      }
+    })
   }
 
   const handleRestart = (item) => {
@@ -1210,6 +1282,7 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
   )
 
   const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url
+  const handleImgError2 = (e) => { e.target.style.display = 'none'; e.target.parentElement.classList.add('card-img-broken') }
 
   return (
     <>
@@ -1225,7 +1298,7 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
               ? <>
                   {cardImages.map((img, i) => (
                     <div key={i} className={`card-img-cell ${i === 0 ? 'card-img-main' : 'card-img-side'}`}>
-                      <img src={resolveImg(img)} alt="" />
+                      <img src={resolveImg(img)} alt="" onError={handleImgError2} />
                       {i === 2 && extraImgs > 0 && (
                         <div className="card-img-plus">+{extraImgs}</div>
                       )}
@@ -1244,7 +1317,7 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
           <div className="campaign-card-body">
             <div className="campaign-card-header">
               <h4 className="campaign-card-title" onClick={() => setDetailPost(item)}>
-                {item.post?.title || item.post?.content?.slice(0, 40) || '—'}
+                {item.post?.title || item.post?.content?.slice(0, 40) || ''}
               </h4>
               <div className="actions-menu-wrap" ref={menuId === item.id ? menuRef : undefined}>
                 <button className="actions-dots-btn" onClick={(e) => { e.stopPropagation(); setMenuId(menuId === item.id ? null : item.id) }}>
@@ -1266,11 +1339,11 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
             </div>
 
             <div className="campaign-card-meta">
-              <span className="campaign-groups-count">👥 {item.group?.name || '—'}</span>
+              <span className="campaign-groups-count">👥 {item.group?.name || ''}</span>
               <span className="campaign-date">
                 {item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('he-IL', {
                   day: 'numeric', month: 'short', year: 'numeric'
-                }) : '—'}
+                }) : ''}
               </span>
             </div>
           </div>
@@ -1370,17 +1443,67 @@ function StatsPanel({ stats, dateFrom, dateTo, setDateFrom, setDateTo, onFilter 
 
 function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, bootstrapping }) {
   const { theme, setTheme } = useTheme()
+  const [confirmAction, setConfirmAction] = useState(null)
+  // Profile
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(user?.name || '')
   const [editEmail, setEditEmail] = useState(user?.email || '')
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState(null)
+  // Password
+  const [showPassword, setShowPassword] = useState(false)
+  const [pwStep, setPwStep] = useState(1) // 1=current password, 2=code+new password
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwCode, setPwCode] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwError, setPwError] = useState(null)
+  const [pwSuccess, setPwSuccess] = useState(false)
+  // Facebook
   const [disconnecting, setDisconnecting] = useState(false)
+  // WhatsApp
   const [waNumber, setWaNumber] = useState(user?.whatsappNumber || '')
   const [waMessage, setWaMessage] = useState(user?.whatsappMessage || '')
   const [waSaving, setWaSaving] = useState(false)
   const [waError, setWaError] = useState(null)
   const [waEditing, setWaEditing] = useState(false)
+  const [waValidation, setWaValidation] = useState(null)
+
+  // WhatsApp number validation
+  const validateWaNumber = (num) => {
+    const cleaned = num.replace(/[^0-9]/g, '')
+    if (!cleaned) { setWaValidation(null); return }
+    // Israeli mobile: 05x with 10 digits total
+    if (/^0[5][0-9]/.test(cleaned)) {
+      if (cleaned.length !== 10) {
+        setWaValidation({ type: 'error', msg: `מספר ישראלי צריך להיות 10 ספרות (הזנת ${cleaned.length})` })
+      } else {
+        setWaValidation({ type: 'ok', msg: `יומר אוטומטית ל-972${cleaned.slice(1)}` })
+      }
+      return
+    }
+    // International with 972
+    if (/^972/.test(cleaned)) {
+      if (cleaned.length < 12 || cleaned.length > 13) {
+        setWaValidation({ type: 'error', msg: `מספר עם קידומת 972 צריך להיות 12-13 ספרות (הזנת ${cleaned.length})` })
+      } else {
+        setWaValidation({ type: 'ok', msg: '✓ מספר תקין' })
+      }
+      return
+    }
+    // Generic international
+    if (cleaned.length < 9 || cleaned.length > 15) {
+      setWaValidation({ type: 'error', msg: `מספר לא תקין, צריך להיות בין 9 ל-15 ספרות` })
+    } else {
+      setWaValidation({ type: 'ok', msg: '✓ מספר תקין' })
+    }
+  }
+
+  const handleWaNumberChange = (e) => {
+    setWaNumber(e.target.value)
+    validateWaNumber(e.target.value)
+  }
 
   const handleSaveWhatsapp = async () => {
     setWaSaving(true)
@@ -1390,6 +1513,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
       if (res.data.success) {
         setUser(prev => ({ ...prev, whatsappNumber: res.data.whatsappNumber, whatsappMessage: res.data.whatsappMessage || null }))
         setWaEditing(false)
+        setWaValidation(null)
       }
     } catch (err) {
       setWaError(err.response?.data?.error || 'שגיאה בשמירה')
@@ -1414,15 +1538,22 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
   }
 
   const handleRemoveWhatsapp = async () => {
-    setWaSaving(true)
-    try {
-      await authAPI.updateWhatsapp({ whatsappNumber: null })
-      setUser(prev => ({ ...prev, whatsappNumber: null, whatsappMessage: null }))
-      setWaNumber('')
-      setWaMessage('')
-      setWaEditing(false)
-    } catch { /* ignore */ }
-    finally { setWaSaving(false) }
+    setConfirmAction({
+      title: 'הסרת וואטסאפ',
+      message: 'האם אתה בטוח שברצונך להסיר את קישור הוואטסאפ?',
+      action: async () => {
+        setWaSaving(true)
+        try {
+          await authAPI.updateWhatsapp({ whatsappNumber: null })
+          setUser(prev => ({ ...prev, whatsappNumber: null, whatsappMessage: null }))
+          setWaNumber('')
+          setWaMessage('')
+          setWaEditing(false)
+          setWaValidation(null)
+        } catch { /* ignore */ }
+        finally { setWaSaving(false) }
+      }
+    })
   }
 
   const handleSaveProfile = async () => {
@@ -1441,189 +1572,376 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
     }
   }
 
-  const handleDisconnectFB = async () => {
-    if (!window.confirm('האם אתה בטוח שברצונך לנתק את חיבור הפייסבוק?')) return
-    setDisconnecting(true)
+  const handleChangePassword = async () => {
+    setPwError(null)
+    setPwSuccess(false)
+
+    if (pwStep === 1) {
+      // Step 1: verify current password & request code
+      if (!currentPassword) {
+        setPwError('יש להזין סיסמה נוכחית')
+        return
+      }
+      setPwSaving(true)
+      try {
+        const res = await authAPI.requestPasswordCode({ currentPassword })
+        if (res.data.success) {
+          setPwStep(2)
+        }
+      } catch (err) {
+        setPwError(err.response?.data?.error || 'שגיאה')
+      } finally {
+        setPwSaving(false)
+      }
+      return
+    }
+
+    // Step 2: verify code & set new password
+    if (!pwCode.trim()) {
+      setPwError('יש להזין את הקוד שנשלח למייל')
+      return
+    }
+    if (newPassword.length < 6) {
+      setPwError('סיסמה חדשה חייבת להכיל לפחות 6 תווים')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPwError('הסיסמאות לא תואמות')
+      return
+    }
+    setPwSaving(true)
     try {
-      await authAPI.disconnectFacebook()
-      setUser(prev => ({ ...prev, fbSessionValid: false }))
-    } catch { /* ignore */ }
-    finally { setDisconnecting(false) }
+      const res = await authAPI.changePassword({ code: pwCode, newPassword })
+      if (res.data.success) {
+        setPwSuccess(true)
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+        setPwCode('')
+        setPwStep(1)
+        setTimeout(() => { setPwSuccess(false); setShowPassword(false) }, 2000)
+      }
+    } catch (err) {
+      setPwError(err.response?.data?.error || 'שגיאה בשינוי סיסמה')
+    } finally {
+      setPwSaving(false)
+    }
+  }
+
+  const handleDisconnectFB = async () => {
+    setConfirmAction({
+      title: 'ניתוק פייסבוק',
+      message: 'האם אתה בטוח שברצונך לנתק את חיבור הפייסבוק? לא תוכל לפרסם בקבוצות עד שתתחבר מחדש.',
+      action: async () => {
+        setDisconnecting(true)
+        try {
+          await authAPI.disconnectFacebook()
+          setUser(prev => ({ ...prev, fbSessionValid: false }))
+        } catch { /* ignore */ }
+        finally { setDisconnecting(false) }
+      }
+    })
   }
 
   const handleLogout = async () => {
-    await logout()
-    navigate('/login')
+    setConfirmAction({
+      title: 'התנתקות',
+      message: 'האם אתה בטוח שברצונך להתנתק מהמערכת?',
+      action: async () => {
+        await logout()
+        navigate('/login')
+      }
+    })
   }
 
   return (
-    <div className="settings-card">
-      <div className="settings-header">
-        <h3>פרטי חשבון</h3>
-        {!editing && (
-          <button className="settings-edit-btn" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }}>
-            ✏️ ערוך
-          </button>
-        )}
-      </div>
-      <div className="settings-body">
-        {editing ? (
-          <>
-            <div className="settings-row">
-              <span className="settings-key">שם</span>
-              <input className="settings-input" value={editName} onChange={e => setEditName(e.target.value)} placeholder="שם" />
-            </div>
-            <div className="settings-row">
-              <span className="settings-key">אימייל</span>
-              <input className="settings-input" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="אימייל" type="email" />
-            </div>
-            {editError && <div className="settings-error">{editError}</div>}
-            <div className="settings-actions">
-              <button className="settings-save-btn" onClick={handleSaveProfile} disabled={saving}>
-                {saving ? '⏳ שומר...' : '💾 שמור'}
-              </button>
-              <button className="settings-cancel-btn" onClick={() => setEditing(false)}>ביטול</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="settings-row">
-              <span className="settings-key">שם</span>
-              <span className="settings-val">{user?.name || '—'}</span>
-            </div>
-            <div className="settings-row">
-              <span className="settings-key">אימייל</span>
-              <span className="settings-val">{user?.email || '—'}</span>
-            </div>
-          </>
-        )}
-        <div className="settings-row">
-          <span className="settings-key">פייסבוק</span>
-          <span className={`settings-val ${user?.fbSessionValid ? 'val-ok' : 'val-err'}`}>
-            {user?.fbSessionValid ? '✓ מחובר' : '✗ לא מחובר'}
-          </span>
-        </div>
+    <div className="settings-page">
+      <div className="settings-page-header">
+        <h2>⚙️ הגדרות</h2>
+        <p>ניהול החשבון, חיבורים ומראה</p>
       </div>
 
-      <div className="settings-header" style={{ marginTop: 24 }}>
-        <h3>פייסבוק</h3>
-      </div>
-      <div className="settings-body">
-        {user?.fbSessionValid ? (
-          <div className="settings-fb-actions">
-            <button className="settings-btn-warning" onClick={handleDisconnectFB} disabled={disconnecting}>
-              {disconnecting ? '⏳ מנתק...' : '🔌 נתק חיבור פייסבוק'}
-            </button>
-            <button className="settings-btn-secondary" onClick={handleBootstrap} disabled={bootstrapping}>
-              {bootstrapping ? '⏳ ממתין...' : '🔄 החלף משתמש פייסבוק'}
-            </button>
-          </div>
-        ) : (
-          <div className="settings-fb-actions">
-            <button className="settings-btn-primary" onClick={handleBootstrap} disabled={bootstrapping}>
-              {bootstrapping ? '⏳ ממתין לחיבור...' : '🔗 חבר חשבון פייסבוק'}
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="settings-header" style={{ marginTop: 24 }}>
-        <h3>וואטסאפ</h3>
-      </div>
-      <div className="settings-body">
-        {user?.whatsappNumber && !waEditing ? (
-          <>
-            <div className="settings-row">
-              <span className="settings-key">מספר מקושר</span>
-              <span className="settings-val val-ok">✓ {user.whatsappNumber}</span>
-              <button className="settings-edit-btn" onClick={() => { setWaEditing(true); setWaNumber(user.whatsappNumber); setWaMessage(user.whatsappMessage || '') }}>✏️</button>
+      <div className="settings-sections">
+        {/* ═══ Profile Section ═══ */}
+        <section className="settings-section">
+          <div className="settings-section-header">
+            <div className="settings-section-icon">👤</div>
+            <div>
+              <h3>פרטי משתמש</h3>
+              <p>שם, אימייל וסיסמה</p>
             </div>
-            <div className="settings-row" style={{ marginTop: 12 }}>
-              <span className="settings-key">הודעה מותאמת</span>
-              <input
-                className="settings-input"
-                value={waMessage}
-                onChange={e => setWaMessage(e.target.value)}
-                placeholder="היי, ראיתי את הפוסט שלך..."
-                dir="rtl"
-              />
-              <button className="settings-edit-btn" onClick={handleSaveWaMessage} disabled={waSaving} title="שמור הודעה">💾</button>
-            </div>
-            <p className="settings-hint">הודעה שתופיע אוטומטית כשמישהו לוחץ על קישור הוואטסאפ שלך בפוסט.</p>
-          </>
-        ) : (
-          <>
-            <div className="settings-row">
-              <span className="settings-key">מספר טלפון</span>
-              <input
-                className="settings-input"
-                value={waNumber}
-                onChange={e => setWaNumber(e.target.value)}
-                placeholder="972501234567"
-                type="tel"
-                dir="ltr"
-              />
-            </div>
-            <div className="settings-row" style={{ marginTop: 8 }}>
-              <span className="settings-key">הודעה מותאמת</span>
-              <input
-                className="settings-input"
-                value={waMessage}
-                onChange={e => setWaMessage(e.target.value)}
-                placeholder="היי, ראיתי את הפוסט שלך... (אופציונלי)"
-                dir="rtl"
-              />
-            </div>
-            <p className="settings-hint">הזן מספר בינלאומי (למשל 972501234567). קישור wa.me ייווצר אוטומטית בפוסטים. ההודעה המותאמת תופיע למי שלוחץ על הקישור.</p>
-            {waError && <div className="settings-error">{waError}</div>}
-            <div className="settings-actions">
-              <button className="settings-save-btn" onClick={handleSaveWhatsapp} disabled={waSaving || !waNumber.trim()}>
-                {waSaving ? '⏳ שומר...' : '💾 קשר וואטסאפ'}
+            {!editing && (
+              <button className="settings-edit-btn" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }}>
+                ✏️ ערוך
               </button>
-              {user?.whatsappNumber && (
-                <button className="settings-cancel-btn" onClick={() => setWaEditing(false)}>ביטול</button>
-              )}
-              {user?.whatsappNumber && (
-                <button className="settings-btn-warning" onClick={handleRemoveWhatsapp} disabled={waSaving} style={{ marginInlineStart: 8 }}>
-                  הסר קישור
+            )}
+          </div>
+          <div className="settings-section-body">
+            {editing ? (
+              <>
+                <div className="settings-field">
+                  <label>שם</label>
+                  <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="השם שלך" />
+                </div>
+                <div className="settings-field">
+                  <label>אימייל</label>
+                  <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="email@example.com" type="email" dir="ltr" />
+                </div>
+                {editError && <div className="settings-msg settings-msg-error">{editError}</div>}
+                <div className="settings-field-actions">
+                  <button className="settings-btn-save" onClick={handleSaveProfile} disabled={saving}>
+                    {saving ? '⏳ שומר...' : '💾 שמור שינויים'}
+                  </button>
+                  <button className="settings-btn-cancel" onClick={() => setEditing(false)}>ביטול</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="settings-info-row">
+                  <span className="settings-info-label">שם</span>
+                  <span className="settings-info-value">{user?.name || ''}</span>
+                </div>
+                <div className="settings-info-row">
+                  <span className="settings-info-label">אימייל</span>
+                  <span className="settings-info-value">{user?.email || ''}</span>
+                </div>
+              </>
+            )}
+
+            {/* Password change */}
+            <div className="settings-divider" />
+            {!showPassword ? (
+              <button className="settings-btn-outline" onClick={() => setShowPassword(true)}>
+                🔒 שנה סיסמה
+              </button>
+            ) : (
+              <div className="settings-password-form">
+                {pwStep === 1 ? (
+                  <div className="settings-field">
+                    <label>סיסמה נוכחית</label>
+                    <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="הזן סיסמה נוכחית" dir="ltr" />
+                    <span className="settings-field-hint hint-info">לאחר אימות, ישלח קוד למייל שלך</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="settings-msg settings-msg-success" style={{ marginBottom: 12 }}>
+                      📧 קוד אימות נשלח ל-{user?.email}
+                    </div>
+                    <div className="settings-field">
+                      <label>קוד אימות</label>
+                      <input type="text" value={pwCode} onChange={e => setPwCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6 ספרות" dir="ltr" maxLength={6} style={{ textAlign: 'center', letterSpacing: '4px', fontSize: '18px' }} />
+                    </div>
+                    <div className="settings-field">
+                      <label>סיסמה חדשה</label>
+                      <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="לפחות 6 תווים" dir="ltr" />
+                    </div>
+                    <div className="settings-field">
+                      <label>אימות סיסמה חדשה</label>
+                      <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="הזן שוב" dir="ltr" />
+                    </div>
+                  </>
+                )}
+                {pwError && <div className="settings-msg settings-msg-error">{pwError}</div>}
+                {pwSuccess && <div className="settings-msg settings-msg-success">✓ הסיסמה שונתה בהצלחה!</div>}
+                <div className="settings-field-actions">
+                  <button className="settings-btn-save" onClick={handleChangePassword} disabled={pwSaving || (pwStep === 1 ? !currentPassword : (!pwCode || !newPassword))}>
+                    {pwSaving ? '⏳' : pwStep === 1 ? '📧 שלח קוד אימות' : '🔑 שנה סיסמה'}
+                  </button>
+                  <button className="settings-btn-cancel" onClick={() => { setShowPassword(false); setPwError(null); setPwStep(1); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPwCode('') }}>ביטול</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ═══ Connections Section ═══ */}
+        <section className="settings-section">
+          <div className="settings-section-header">
+            <div className="settings-section-icon">🔗</div>
+            <div>
+              <h3>חיבורים</h3>
+              <p>פייסבוק, וואטסאפ ושירותים חיצוניים</p>
+            </div>
+          </div>
+          <div className="settings-section-body">
+            {/* Facebook */}
+            <div className={`settings-connection-item ${!user?.fbSessionValid ? 'connection-disconnected' : ''}`}>
+              <div className="settings-connection-info">
+                <span className="settings-connection-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                </span>
+                <div>
+                  <span className="settings-connection-name">פייסבוק</span>
+                  <span className={`settings-connection-status ${user?.fbSessionValid ? 'status-ok' : 'status-err'}`}>
+                    {user?.fbSessionValid ? '✓ מחובר' : '✗ לא מחובר'}
+                  </span>
+                </div>
+              </div>
+              <div className="settings-connection-actions">
+                {user?.fbSessionValid ? (
+                  <>
+                    <button className="settings-btn-outline settings-btn-sm" onClick={handleBootstrap} disabled={bootstrapping}>
+                      {bootstrapping ? '⏳' : '🔄'} החלף
+                    </button>
+                    <button className="settings-btn-danger-sm" onClick={handleDisconnectFB} disabled={disconnecting}>
+                      {disconnecting ? '⏳' : '🔌'} נתק
+                    </button>
+                  </>
+                ) : (
+                  <button className="settings-btn-primary-sm" onClick={handleBootstrap} disabled={bootstrapping}>
+                    {bootstrapping ? '⏳ ממתין...' : '🔗 קשר חיבור'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* WhatsApp */}
+            <div className={`settings-connection-item ${!user?.whatsappNumber ? 'connection-disconnected' : ''}`}>
+              <div className="settings-connection-info">
+                <span className="settings-connection-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                </span>
+                <div>
+                  <span className="settings-connection-name">וואטסאפ</span>
+                  <span className={`settings-connection-status ${user?.whatsappNumber ? 'status-ok' : 'status-err'}`}>
+                    {user?.whatsappNumber ? `✓ ${user.whatsappNumber}` : '✗ לא מקושר'}
+                  </span>
+                </div>
+              </div>
+              <div className="settings-connection-actions">
+                {user?.whatsappNumber && !waEditing ? (
+                  <>
+                    <button className="settings-btn-outline settings-btn-sm" onClick={() => { setWaEditing(true); setWaNumber(user.whatsappNumber); setWaMessage(user.whatsappMessage || ''); setWaValidation(null) }}>
+                      ✏️ ערוך
+                    </button>
+                    <button className="settings-btn-danger-sm" onClick={handleRemoveWhatsapp} disabled={waSaving}>
+                      🗑️ הסר
+                    </button>
+                  </>
+                ) : !user?.whatsappNumber && !waEditing ? (
+                  <button className="settings-btn-primary-sm" onClick={() => setWaEditing(true)}>
+                    🔗 קשר חיבור
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {/* WhatsApp bottom-sheet form */}
+            {waEditing && (
+              <div className="settings-bottomsheet">
+                <div className="settings-bottomsheet-header">
+                  <h4>קישור וואטסאפ</h4>
+                  <button className="settings-bottomsheet-close" onClick={() => { setWaEditing(false); setWaValidation(null) }}>✕</button>
+                </div>
+                <div className="settings-bottomsheet-body">
+                  <div className="settings-field">
+                    <label>מספר טלפון</label>
+                    <input
+                      value={waNumber}
+                      onChange={handleWaNumberChange}
+                      placeholder="050-123-4567 או 972501234567"
+                      type="tel"
+                      dir="ltr"
+                    />
+                    {waValidation && (
+                      <span className={`settings-field-hint ${waValidation.type === 'error' ? 'hint-error' : 'hint-ok'}`}>
+                        {waValidation.msg}
+                      </span>
+                    )}
+                  </div>
+                  <div className="settings-field">
+                    <label>הודעה מותאמת <span className="settings-optional">(אופציונלי)</span></label>
+                    <input
+                      value={waMessage}
+                      onChange={e => setWaMessage(e.target.value)}
+                      placeholder="היי, ראיתי את הפוסט שלך..."
+                      dir="rtl"
+                    />
+                    <span className="settings-field-hint hint-info">הודעה שתופיע אוטומטית כשמישהו לוחץ על קישור הוואטסאפ שלך</span>
+                  </div>
+                  {waError && <div className="settings-msg settings-msg-error">{waError}</div>}
+                  <div className="settings-field-actions">
+                    <button className="settings-btn-save" onClick={handleSaveWhatsapp} disabled={waSaving || !waNumber.trim()}>
+                      {waSaving ? '⏳ שומר...' : '💾 שמור'}
+                    </button>
+                    <button className="settings-btn-cancel" onClick={() => { setWaEditing(false); setWaValidation(null) }}>ביטול</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* WhatsApp message edit (when already linked and not editing) */}
+            {user?.whatsappNumber && !waEditing && (
+              <div className="settings-wa-message-edit">
+                <div className="settings-field">
+                  <label>הודעה מותאמת</label>
+                  <div className="settings-field-row">
+                    <input
+                      value={waMessage}
+                      onChange={e => setWaMessage(e.target.value)}
+                      placeholder="היי, ראיתי את הפוסט שלך..."
+                      dir="rtl"
+                    />
+                    <button className="settings-btn-save settings-btn-sm" onClick={handleSaveWaMessage} disabled={waSaving}>
+                      💾
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ═══ Appearance Section ═══ */}
+        <section className="settings-section">
+          <div className="settings-section-header">
+            <div className="settings-section-icon">🎨</div>
+            <div>
+              <h3>מראה</h3>
+              <p>ערכת נושא ותצוגה</p>
+            </div>
+          </div>
+          <div className="settings-section-body">
+            <div className="settings-theme-row">
+              <span>ערכת נושא</span>
+              <div className="theme-toggle">
+                <button
+                  className={`theme-toggle-btn ${theme === 'dark' ? 'active' : ''}`}
+                  onClick={() => setTheme('dark')}
+                >
+                  🌙 כהה
                 </button>
-              )}
+                <button
+                  className={`theme-toggle-btn ${theme === 'light' ? 'active' : ''}`}
+                  onClick={() => setTheme('light')}
+                >
+                  ☀️ בהיר
+                </button>
+              </div>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+        </section>
 
-      <div className="settings-header" style={{ marginTop: 24 }}>
-        <h3>מראה</h3>
-      </div>
-      <div className="settings-body">
-        <div className="settings-row">
-          <span className="settings-key">ערכת נושא</span>
-          <div className="theme-toggle">
-            <button
-              className={`theme-toggle-btn ${theme === 'dark' ? 'active' : ''}`}
-              onClick={() => setTheme('dark')}
-            >
-              🌙 כהה
-            </button>
-            <button
-              className={`theme-toggle-btn ${theme === 'light' ? 'active' : ''}`}
-              onClick={() => setTheme('light')}
-            >
-              ☀️ בהיר
+        {/* ═══ Account Section ═══ */}
+        <section className="settings-section settings-section-danger">
+          <div className="settings-section-body">
+            <button className="settings-logout-btn" onClick={handleLogout}>
+              🚪 התנתק מהמערכת
             </button>
           </div>
+        </section>
+
+        <div className="settings-privacy-link">
+          <Link to="/privacy">מדיניות פרטיות ותנאי שימוש</Link>
         </div>
       </div>
-
-      <div className="settings-header" style={{ marginTop: 24 }}>
-        <h3>חשבון</h3>
-      </div>
-      <div className="settings-body">
-        <button className="settings-btn-danger" onClick={handleLogout}>
-          🚪 התנתק מהמערכת
-        </button>
-      </div>
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={confirmAction?.title}
+        message={confirmAction?.message}
+        onConfirm={() => { confirmAction?.action(); setConfirmAction(null) }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   )
 }
@@ -1643,6 +1961,8 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
   const [scheduleTime, setScheduleTime] = useState('')
   const [groupSearch, setGroupSearch] = useState('')
   const [newImages, setNewImages] = useState([])
+  const [whatsappNumber, setWhatsappNumber] = useState(campaign.whatsappNumber || '')
+  const [whatsappMessage, setWhatsappMessage] = useState(campaign.whatsappMessage || '')
   const existingEditImgs = (campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : []))
     .map(url => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url)
   const [imagePreviews, setImagePreviews] = useState(existingEditImgs)
@@ -1687,6 +2007,8 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
       scheduleMode,
       scheduleDate,
       scheduleTime,
+      whatsappNumber: whatsappNumber.trim() || null,
+      whatsappMessage: whatsappMessage.trim() || null,
     }, newImages)
   }
 
@@ -1791,8 +2113,16 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
             </>
           )}
 
+          <div className="form-group">
+            <label>וואטסאפ (אופציונלי)</label>
+            <input type="text" value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="מספר וואטסאפ" />
+            {whatsappNumber.trim() && (
+              <input type="text" value={whatsappMessage} onChange={e => setWhatsappMessage(e.target.value)} placeholder="הודעה מוכנה (אופציונלי)" style={{ marginTop: '8px' }} />
+            )}
+          </div>
+
           <button type="submit" className="modal-submit-btn" disabled={loading || !text || !selectedGroups.length}>
-            {loading ? '⏳ מעדכן...' : 'עדכן קמפיין מתוזמן'}
+            {loading ? '⏳ מעדכן...' : 'עדכן קמפיין'}
           </button>
         </form>
       </div>
@@ -2191,7 +2521,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
               )}
               <div className="detail-meta-item">
                 <span className="detail-label">קבוצות</span>
-                <span>👥 {campaign.groupCount || campaign.groupNames?.length || 0} — {campaign.groupNames?.join(', ') || ''}</span>
+                <span>👥 {campaign.groupCount || campaign.groupNames?.length || 0} {campaign.groupNames?.join(', ') || ''}</span>
               </div>
               {campaign.isAnonymous && (
                 <div className="detail-meta-item">
@@ -2284,11 +2614,11 @@ function PostDetailModal({ item, onClose, onRestart, onDelete }) {
 
         <div className="detail-body">
           {item.post?.title && <h3 className="detail-title">{item.post.title}</h3>}
-          <p className="detail-content">{item.post?.content || '—'}</p>
+          <p className="detail-content">{item.post?.content || ''}</p>
           <div className="detail-meta">
             <div className="detail-meta-item">
               <span className="detail-label">קבוצה</span>
-              <span>👥 {item.group?.name || '—'}</span>
+              <span>👥 {item.group?.name || ''}</span>
             </div>
             <div className="detail-meta-item">
               <span className="detail-label">סטטוס</span>

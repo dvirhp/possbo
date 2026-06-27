@@ -52,7 +52,7 @@
 .auth-back-btn {
   position: absolute;
   top: 16px;
-  right: 16px;
+  left: 16px;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -137,6 +137,21 @@
   box-shadow: 0 0 0 3px var(--indigo-soft, rgba(129,140,248,0.12));
 }
 
+.auth-forgot-link {
+  text-align: right;
+  margin-top: -8px;
+  margin-bottom: 12px;
+}
+.auth-forgot-link a {
+  font-size: 12px;
+  color: var(--text-muted, #6b7684);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.auth-forgot-link a:hover {
+  color: var(--indigo, #818cf8);
+}
+
 .auth-error {
   margin-bottom: 12px;
   padding: 12px;
@@ -146,6 +161,24 @@
   border-radius: 10px;
   text-align: center;
   font-size: 13px;
+}
+
+.auth-success-msg {
+  margin-bottom: 12px;
+  padding: 16px;
+  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.15);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.turnstile-widget {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
 }
 
 .auth-submit-btn {
@@ -197,6 +230,120 @@
   text-decoration: underline;
 }
 
+/* ─── Terms Checkbox ─── */
+.auth-terms-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-secondary, #a3adb8);
+  cursor: pointer;
+}
+.auth-terms-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--indigo, #818cf8);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.auth-terms-checkbox a {
+  color: var(--indigo, #818cf8);
+  text-decoration: none;
+}
+.auth-terms-checkbox a:hover {
+  text-decoration: underline;
+}
+.auth-terms-error {
+  color: var(--rose, #fda4af);
+}
+.auth-terms-error input[type="checkbox"] {
+  outline: 2px solid var(--rose, #fda4af);
+  outline-offset: 1px;
+}
+
+.auth-oauth-terms {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted, #6b7684);
+  margin: 8px 0 0;
+  padding: 0 24px;
+}
+.auth-oauth-terms a {
+  color: var(--indigo, #818cf8);
+  text-decoration: none;
+}
+.auth-oauth-terms a:hover {
+  text-decoration: underline;
+}
+
+/* ─── OAuth ─── */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  margin: 4px 0 16px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border, rgba(255,255,255,0.06));
+}
+
+.auth-divider span {
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--text-muted, #6b7684);
+  white-space: nowrap;
+}
+
+.oauth-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 24px 16px;
+}
+
+.oauth-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  background: var(--bg-hover, #2a2f38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.oauth-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.oauth-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.oauth-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #818cf8;
+  border-radius: 50%;
+  animation: oauth-spin 0.6s linear infinite;
+}
+
+@keyframes oauth-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ─── Select ─── */
 .auth-select-wrapper {
   margin-bottom: 12px;
@@ -231,6 +378,131 @@
   color: var(--text-muted, #6b7684);
   white-space: nowrap;
   font-weight: 600;
+}
+
+/* ─── Resend link button ─── */
+.auth-link-btn {
+  background: none;
+  border: none;
+  color: var(--indigo, #818cf8);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  text-decoration: underline;
+}
+.auth-link-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ═══════════ Privacy Page ═══════════ */
+.privacy-page {
+  max-width: 680px;
+  width: 100%;
+  padding: 40px 24px;
+  position: relative;
+}
+
+.privacy-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.privacy-header h1 {
+  font-size: 28px;
+  color: var(--text-primary, #e8ecf0);
+  margin: 0 0 8px;
+}
+
+.privacy-header p {
+  font-size: 14px;
+  color: var(--text-muted, #6b7684);
+  margin: 0;
+}
+
+.privacy-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.privacy-section {
+  background: var(--bg-card, #23272f);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.privacy-section h2 {
+  font-size: 18px;
+  color: var(--text-primary, #e8ecf0);
+  margin: 0 0 16px;
+}
+
+.privacy-section h3 {
+  font-size: 14px;
+  color: var(--indigo, #818cf8);
+  margin: 18px 0 8px;
+  font-weight: 600;
+}
+
+.privacy-section p {
+  font-size: 13.5px;
+  color: var(--text-secondary, #a3adb8);
+  line-height: 1.7;
+  margin: 8px 0;
+}
+
+.privacy-section ul {
+  margin: 8px 0;
+  padding-right: 20px;
+}
+
+.privacy-section li {
+  font-size: 13.5px;
+  color: var(--text-secondary, #a3adb8);
+  line-height: 1.8;
+}
+
+.privacy-contact {
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--bg-elevated, #2a2f38);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.privacy-contact a {
+  color: var(--indigo, #818cf8);
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.privacy-contact a:hover {
+  text-decoration: underline;
+}
+
+.privacy-note {
+  text-align: center;
+  font-size: 12px !important;
+  color: var(--text-muted, #6b7684) !important;
+}
+
+.privacy-footer {
+  text-align: center;
+  margin-top: 32px;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--text-muted, #6b7684);
+}
+
+.privacy-footer a {
+  color: var(--indigo, #818cf8);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.privacy-footer a:hover {
+  text-decoration: underline;
 }
 
 /* ─── Back button in auth header ─── */
