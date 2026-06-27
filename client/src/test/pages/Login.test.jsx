@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const mockNavigate = vi.fn();
@@ -43,6 +43,14 @@ vi.mock('../../services/http.js', () => ({
 }));
 
 vi.mock('../../styles/auth.css', () => ({}));
+vi.mock('../../components/OAuthButtons', () => ({ default: () => <div data-testid="oauth-buttons" /> }));
+let mockCaptchaCallback = null;
+vi.mock('../../components/Turnstile', () => ({
+  default: ({ onVerify }) => {
+    mockCaptchaCallback = onVerify;
+    return <div data-testid="turnstile" onClick={() => onVerify('token-123')} />;
+  },
+}));
 
 import Login from '../../pages/Login.jsx';
 
@@ -88,12 +96,13 @@ describe('Login page', () => {
     });
 
     renderLogin();
+    fireEvent.click(screen.getByTestId('turnstile'));
     fireEvent.change(screen.getByPlaceholderText('אימייל'), { target: { value: 'a@b.com' } });
     fireEvent.change(screen.getByPlaceholderText('סיסמה'), { target: { value: 'password123' } });
     fireEvent.submit(document.querySelector('form'));
 
     await waitFor(() => {
-      expect(mockLogin).toHaveBeenCalledWith('a@b.com', 'password123');
+      expect(mockLogin).toHaveBeenCalledWith('a@b.com', 'password123', 'token-123');
       expect(mockSetUser).toHaveBeenCalledWith(mockUser);
     });
   });
@@ -104,6 +113,7 @@ describe('Login page', () => {
     });
 
     renderLogin();
+    fireEvent.click(screen.getByTestId('turnstile'));
     fireEvent.change(screen.getByPlaceholderText('אימייל'), { target: { value: 'a@b.com' } });
     fireEvent.change(screen.getByPlaceholderText('סיסמה'), { target: { value: 'wrong' } });
     fireEvent.submit(document.querySelector('form'));
@@ -136,6 +146,7 @@ describe('Login page', () => {
     mockLogin.mockReturnValue(new Promise(() => {}));
 
     renderLogin();
+    fireEvent.click(screen.getByTestId('turnstile'));
     fireEvent.change(screen.getByPlaceholderText('אימייל'), { target: { value: 'a@b.com' } });
     fireEvent.change(screen.getByPlaceholderText('סיסמה'), { target: { value: 'pass123' } });
     fireEvent.submit(document.querySelector('form'));

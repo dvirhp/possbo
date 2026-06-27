@@ -194,6 +194,12 @@ describe('Dashboard page', () => {
 
     fireEvent.click(screen.getByTitle('התנתק'));
 
+    // Confirmation dialog appears — click confirm button
+    await waitFor(() => {
+      expect(screen.getByText('בטוח!')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('בטוח!'));
+
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/');
     });
