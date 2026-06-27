@@ -34,6 +34,12 @@ model User {
   gender               String?
   fbSessionValid       Boolean                  @default(false) @map("fb_session_valid")
   whatsappNumber       String?                  @map("whatsapp_number")
+  google_id            String?                  @unique
+  github_id            String?                  @unique
+  linkedin_id          String?                  @unique
+  facebook_oauth_id    String?                  @unique
+  avatar_url           String?
+  apple_id             String?                  @unique
   whatsappMessage      String?                  @map("whatsapp_message")
   auditLogs            AuditLog[]
   connectedAccounts    ConnectedAccount[]
@@ -61,9 +67,9 @@ model FacebookGroup {
   groupId     String   @map("group_id")
   groupImage  String?  @map("group_image")
   groupName   String   @map("group_name")
+  userId      String   @map("user_id")
   memberCount Int?     @map("member_count")
   privacyType String?  @map("privacy_type")
-  userId      String   @map("user_id")
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, groupId])
@@ -185,12 +191,12 @@ model Post {
   recurringDays  Int[]                @default([]) @map("recurring_days")
   scheduledDates DateTime[]           @default([]) @map("scheduled_dates")
   recurringTime  String?              @map("recurring_time")
-  recurringTimes String[]             @default([]) @map("recurring_times")
-  dayTimes       Json?                @map("day_times")
-  recurringStart DateTime?            @map("recurring_start")
-  recurringEnd   DateTime?            @map("recurring_end")
   isPaused       Boolean              @default(false) @map("is_paused")
   imageUrl       String?              @map("image_url")
+  recurringEnd   DateTime?            @map("recurring_end")
+  recurringStart DateTime?            @map("recurring_start")
+  recurringTimes String[]             @default([]) @map("recurring_times")
+  dayTimes       Json?                @map("day_times")
   postGroups     PostGroup[]
   media          PostMedia[]
   templates      PostTemplate[]

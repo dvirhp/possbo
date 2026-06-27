@@ -28,7 +28,7 @@ export default function Landing() {
           <h1>פרסם בכל הקבוצות בלחיצה אחת</h1>
           <p className="hero-subtitle">
             PostIt מאפשר לך לנהל את כל קבוצות הפייסבוק שלך, ליצור פוסטים ולפרסם אותם
-            במספר קבוצות במקביל — בקליק אחד.
+            במספר קבוצות במקביל, בקליק אחד.
           </p>
 
           <div className="hero-features">
@@ -63,8 +63,12 @@ export default function Landing() {
           </div>
 
           <div className="hero-cta">
-            <Link to="/register" className="cta-btn cta-btn-primary">התחל עכשיו — בחינם</Link>
+            <Link to="/register" className="cta-btn cta-btn-primary">התחל עכשיו בחינם</Link>
             <Link to="/login" className="cta-btn cta-btn-secondary">כבר יש לי חשבון</Link>
+          </div>
+
+          <div className="landing-footer">
+            <Link to="/privacy">מדיניות פרטיות ותנאי שימוש</Link>
           </div>
         </div>
       </main>

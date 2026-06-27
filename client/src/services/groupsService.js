@@ -23,6 +23,7 @@ export const groupsService = {
   getPublicationHistory: () => api.get("/scheduler/history"),
   getJobs: () => api.get("/scheduler/jobs"),
   getCampaigns: () => api.get("/scheduler/campaigns"),
+  getRecentCampaigns: () => api.get("/scheduler/campaigns/recent"),
   getCampaign: (postId) => api.get(`/scheduler/campaigns/${postId}`),
   createCampaign: (data, images) => {
     if (images?.length) {

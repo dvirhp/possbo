@@ -7,6 +7,7 @@ import { authAPI } from '../services/api'
 import confetti from 'canvas-confetti'
 import LocationAutocomplete from '../components/LocationAutocomplete'
 import FacebookPreview from '../components/FacebookPreview'
+import ConfirmDialog from '../components/ConfirmDialog'
 import '../styles/create-post.css'
 
 export default function CreatePost() {
@@ -73,6 +74,11 @@ export default function CreatePost() {
       loadGroups()
     }
   }, [authChecked, user, navigate, cachedGroups])
+
+  // Load recent drafts/history for restore panel
+  useEffect(() => {
+    if (user && !republishData) loadRecentCampaigns()
+  }, [user])
 
   const loadGroups = async () => {
     setLoadingGroups(true)
@@ -168,6 +174,7 @@ export default function CreatePost() {
             scheduled: true,
           }])
           forceRefresh()
+          confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
         } else {
           setError(res.data.error || 'שגיאה ביצירת הקמפיין')
         }
@@ -179,16 +186,26 @@ export default function CreatePost() {
       return
     }
 
-    // Immediate publish
+    // Immediate publish — fire requests and navigate to dashboard
     const finalText = waLink
       ? `${postText}\n\n${waLink}`
       : postText
-    const publishResults = []
 
-    const promises = selectedGroups.map(async (group) => {
+    setPublishing(false)
+
+    const groupsCopy = [...selectedGroups]
+    const groupCount = groupsCopy.length
+
+    // Navigate immediately — let user continue browsing
+    window.dispatchEvent(new CustomEvent('postit-publish-start', { detail: { count: groupCount } }))
+    navigate('/dashboard')
+
+    // Fire publish in background
+    const publishResults = []
+    const promises = groupsCopy.map(async (group) => {
       try {
         const groupUrl = group.url || `https://www.facebook.com/groups/${group.externalId}`
-        const res = await publishService.publish(
+        await publishService.publish(
           groupUrl,
           finalText,
           postImages,
@@ -197,28 +214,182 @@ export default function CreatePost() {
           postLocation,
           campaignTitle
         )
-        publishResults.push({
-          group: group.name,
-          success: true,
-          postUrl: res.data?.postUrl || res.data?.savedPost?.postUrl || null,
-        })
+        publishResults.push({ group: group.name, success: true })
       } catch (err) {
-        const msg = err.response?.data?.error || err.message
-        publishResults.push({
-          group: group.name,
-          success: false,
-          error: msg,
-        })
+        publishResults.push({ group: group.name, success: false })
       }
     })
 
-    await Promise.all(promises)
-    setResults(publishResults)
-    setPublishing(false)
-    forceRefresh()
-    if (publishResults.length > 0 && publishResults.every(r => r.success)) {
-      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
+    Promise.all(promises).then(() => {
+      forceRefresh()
+      const allSuccess = publishResults.length > 0 && publishResults.every(r => r.success)
+      // Dispatch custom event for dashboard to pick up
+      window.dispatchEvent(new CustomEvent('postit-publish-done', {
+        detail: { allSuccess, total: publishResults.length, failed: publishResults.filter(r => !r.success).length }
+      }))
+    })
+  }
+
+  // ─── Save as Draft ──────────────────────────────────────
+  const [savingDraft, setSavingDraft] = useState(false)
+  const [confirmAction, setConfirmAction] = useState(null)
+
+  const handleSaveAsDraft = () => {
+    if (!postText.trim()) {
+      setError('יש לכתוב טקסט לפחות כדי לשמור כטיוטה')
+      return
     }
+    setConfirmAction({
+      title: 'שמירה כטיוטה',
+      message: 'האם אתה בטוח שברצונך לשמור את הקמפיין כטיוטה?',
+      action: async () => {
+        setSavingDraft(true)
+        setError(null)
+        try {
+          const waLink = whatsappNumber.trim()
+            ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}${whatsappMessage ? '?text=' + encodeURIComponent(whatsappMessage) : ''}`
+            : ''
+          const campaignText = waLink ? `${postText}\n\n${waLink}` : postText
+          await groupsService.createCampaign({
+            title: campaignTitle || null,
+            text: campaignText,
+            groupIds: selectedGroups.map(g => g.id),
+            anonymous: isAnonymous,
+            location: postLocation,
+            scheduleMode: 'draft',
+            campaignType: 'ONE_TIME',
+            recurringDays,
+            dayTimes,
+            recurringStartDate,
+            recurringEndDate: recurringEndDate || null,
+          }, postImages)
+          forceRefresh()
+          navigate('/dashboard', { state: { toast: 'נשמר כטיוטה ✓' } })
+        } catch (err) {
+          setError(err.response?.data?.error || 'שגיאה בשמירה')
+        } finally {
+          setSavingDraft(false)
+        }
+      }
+    })
+  }
+
+  const handleExitWizard = () => {
+    // If already published/scheduled successfully, just go back
+    if (results && results.some(r => r.success)) {
+      navigate('/dashboard')
+      return
+    }
+    if (postText.trim() || selectedGroups.length > 0) {
+      setConfirmAction({
+        title: 'יציאה מיצירת קמפיין',
+        message: 'האם אתה בטוח שברצונך לצאת? השינויים שלך לא יישמרו.',
+        action: () => navigate('/dashboard'),
+      })
+    } else {
+      navigate('/dashboard')
+    }
+  }
+
+  // ─── Restore / Continue from draft ─────────────────────
+  const [showRestore, setShowRestore] = useState(false)
+  const [recentDrafts, setRecentDrafts] = useState([])
+  const [recentHistory, setRecentHistory] = useState([])
+  const [loadingRecent, setLoadingRecent] = useState(false)
+  const [showMoreHistory, setShowMoreHistory] = useState(false)
+
+  const loadRecentCampaigns = async () => {
+    setLoadingRecent(true)
+    try {
+      const res = await groupsService.getRecentCampaigns()
+      if (res.data.success) {
+        setRecentDrafts(res.data.drafts || [])
+        setRecentHistory(res.data.history || [])
+      }
+    } catch { /* silent */ }
+    finally { setLoadingRecent(false) }
+  }
+
+  const handleRestore = (campaign) => {
+    // Strip WhatsApp link from content if present
+    const content = campaign.content?.replace(/\n\nhttps:\/\/wa\.me\/[^\s]*/g, '') || ''
+    setPostText(content)
+    setCampaignTitle(campaign.title || '')
+    setIsAnonymous(campaign.isAnonymous || false)
+    setPostLocation(campaign.location || '')
+    setShowLocationInput(!!campaign.location)
+
+    // Restore groups
+    if (campaign.groups?.length) {
+      setSelectedGroups(campaign.groups.map(g => ({
+        id: g.externalId || g.id,
+        name: g.name,
+        url: g.url,
+        pictureUrl: g.pictureUrl,
+        externalId: g.externalId || g.id,
+      })))
+    }
+
+    // Restore schedule
+    if (campaign.scheduleMode === 'recurring') {
+      setScheduleMode('recurring')
+      setRecurringDays(campaign.recurringDays || [])
+      if (campaign.dayTimes) setDayTimes(campaign.dayTimes)
+      if (campaign.recurringStart) setRecurringStartDate(new Date(campaign.recurringStart).toISOString().split('T')[0])
+      if (campaign.recurringEnd) setRecurringEndDate(new Date(campaign.recurringEnd).toISOString().split('T')[0])
+    } else if (campaign.scheduleMode === 'scheduled') {
+      setScheduleMode('scheduled')
+    }
+
+    setShowRestore(false)
+    setCurrentStep(0)
+  }
+
+  const handleContinueDraft = (draft) => {
+    // Restore all data
+    const content = draft.content?.replace(/\n\nhttps:\/\/wa\.me\/[^\s]*/g, '') || ''
+    setPostText(content)
+    setCampaignTitle(draft.title || '')
+    setIsAnonymous(draft.isAnonymous || false)
+    setPostLocation(draft.location || '')
+    setShowLocationInput(!!draft.location)
+
+    // Restore groups
+    if (draft.groups?.length) {
+      setSelectedGroups(draft.groups.map(g => ({
+        id: g.externalId || g.id,
+        name: g.name,
+        url: g.url,
+        pictureUrl: g.pictureUrl,
+        externalId: g.externalId || g.id,
+      })))
+    }
+
+    // Restore schedule
+    if (draft.scheduleMode === 'recurring') {
+      setScheduleMode('recurring')
+      setRecurringDays(draft.recurringDays || [])
+      if (draft.dayTimes) setDayTimes(draft.dayTimes)
+      if (draft.recurringStart) setRecurringStartDate(new Date(draft.recurringStart).toISOString().split('T')[0])
+      if (draft.recurringEnd) setRecurringEndDate(new Date(draft.recurringEnd).toISOString().split('T')[0])
+    } else if (draft.scheduleMode === 'scheduled') {
+      setScheduleMode('scheduled')
+    }
+
+    setShowRestore(false)
+
+    // Jump to the last step the user was working on
+    setTimeout(() => {
+      if (draft.scheduleMode && draft.scheduleMode !== 'now' && (draft.recurringDays?.length > 0 || draft.scheduleMode === 'scheduled')) {
+        setCurrentStep(3) // Was on review
+      } else if (draft.groupCount > 0) {
+        setCurrentStep(2) // Was on schedule
+      } else if (content.trim()) {
+        setCurrentStep(1) // Was on groups
+      } else {
+        setCurrentStep(0) // Was on content
+      }
+    }, 100)
   }
 
   const filteredGroups = groups.filter(g =>
@@ -321,9 +492,19 @@ export default function CreatePost() {
     <div className="create-post-page">
       {/* Top Bar */}
       <header className="cp-topbar">
+        {postText.trim() && !results && (
+          <button
+            type="button"
+            className="cp-topbar-draft"
+            onClick={handleSaveAsDraft}
+            disabled={savingDraft}
+          >
+            {savingDraft ? '⏳' : '💾'} {savingDraft ? 'שומר...' : 'שמור כטיוטה'}
+          </button>
+        )}
         <div className="cp-topbar-spacer" />
         <h1 className="cp-title">קמפיין חדש</h1>
-        <button className="cp-back" onClick={() => navigate('/dashboard')}>
+        <button className="cp-back" onClick={handleExitWizard}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
           </svg>
@@ -372,7 +553,7 @@ export default function CreatePost() {
                     await handlePublish()
                   } catch {
                     setReconnecting(false)
-                    window.alert('החיבור לא הושלם — נסה שוב')
+                    window.alert('החיבור לא הושלם, נסה שוב')
                   }
                 }}
               >
@@ -405,6 +586,66 @@ export default function CreatePost() {
           </div>
 
           <div className="cp-wizard">
+          {/* Restore / Continue buttons */}
+          {!results && currentStep === 0 && !showRestore && (
+            <div className="cp-restore-bar">
+              {loadingRecent ? (
+                <span className="cp-restore-loading-inline">⏳ טוען...</span>
+              ) : (
+                <>
+                  {recentDrafts.length > 0 && (
+                    <button type="button" className="cp-restore-btn" onClick={() => setShowRestore('drafts')}>
+                      📝 המשך מאיפה שעצרתי ({recentDrafts.length})
+                    </button>
+                  )}
+                  {recentHistory.length > 0 && (
+                    <button type="button" className="cp-restore-btn cp-restore-history" onClick={() => setShowRestore('history')}>
+                      🔄 שחזור מהיסטוריה
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Restore panel */}
+          {showRestore && (
+            <div className="cp-restore-panel">
+              <div className="cp-restore-header">
+                <h3>{showRestore === 'drafts' ? '📝 טיוטות שנשמרו' : '🔄 שחזור מקמפיינים קודמים'}</h3>
+                <button type="button" className="cp-restore-close" onClick={() => setShowRestore(false)}>✕</button>
+              </div>
+              {loadingRecent ? (
+                <div className="cp-restore-loading">טוען...</div>
+              ) : (
+                <div className="cp-restore-list">
+                  {(showRestore === 'drafts' ? recentDrafts : (showMoreHistory ? recentHistory : recentHistory.slice(0, 3))).map(item => (
+                    <div key={item.id} className="cp-restore-item" onClick={() => showRestore === 'drafts' ? handleContinueDraft(item) : handleRestore(item)}>
+                      <div className="cp-restore-item-content">
+                        <strong>{item.title || item.content?.slice(0, 40) || 'ללא כותרת'}</strong>
+                        {item.title && <p>{item.content?.slice(0, 60)}...</p>}
+                      </div>
+                      <div className="cp-restore-item-meta">
+                        <span>{item.groupCount > 0 ? `${item.groupCount} קבוצות` : ''}</span>
+                        <span>{new Date(item.updatedAt || item.createdAt).toLocaleDateString('he-IL')}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {showRestore === 'history' && recentHistory.length > 3 && !showMoreHistory && (
+                    <button type="button" className="cp-restore-more" onClick={() => setShowMoreHistory(true)}>
+                      הצג עוד ({recentHistory.length - 3})
+                    </button>
+                  )}
+                  {(showRestore === 'drafts' ? recentDrafts : recentHistory).length === 0 && (
+                    <div className="cp-restore-empty">
+                      {showRestore === 'drafts' ? 'אין טיוטות שמורות' : 'אין היסטוריה'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Stepper */}
           <div className="cp-stepper">
             {steps.map((step, idx) => (
@@ -466,7 +707,7 @@ export default function CreatePost() {
 
                   {waLinking && (
                     <div className="cp-whatsapp-wrap">
-                      <p className="cp-whatsapp-hint">קשר מספר וואטסאפ פעם אחת — יישמר לכל הפוסטים הבאים</p>
+                      <p className="cp-whatsapp-hint">קשר מספר וואטסאפ פעם אחת, יישמר לכל הפוסטים הבאים</p>
                       <div className="cp-whatsapp-input">
                         <span className="cp-whatsapp-prefix">wa.me/</span>
                         <input
@@ -579,6 +820,17 @@ export default function CreatePost() {
                     {selectedGroups.length > 0 && <span className="cp-badge">{selectedGroups.length} נבחרו</span>}
                   </div>
 
+                  {selectedGroups.length > 0 && (
+                    <div className="cp-selected-groups-chips">
+                      {selectedGroups.map(g => (
+                        <span key={g.id} className="cp-selected-chip">
+                          <span>{g.name}</span>
+                          <button type="button" onClick={() => toggleGroup(g)}>✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   {loadingGroups ? (
                     <div className="cp-loading">טוען קבוצות...</div>
                   ) : groups.length === 0 ? (
@@ -690,7 +942,7 @@ export default function CreatePost() {
 
                     {scheduleMode === 'recurring' && (
                       <div className="schedule-fields">
-                        <p className="schedule-desc">בחר ימים והגדר שעות לכל יום — הפוסט יפורסם באופן קבוע</p>
+                        <p className="schedule-desc">בחר ימים והגדר שעות לכל יום, הפוסט יפורסם באופן קבוע</p>
 
                         <div className="schedule-section">
                           <label className="schedule-section-label">באילו ימים?</label>
@@ -889,22 +1141,9 @@ export default function CreatePost() {
 
           {/* Navigation buttons */}
           <div className="cp-wizard-nav">
-            {currentStep > 0 && (
-              <button type="button" className="cp-nav-btn cp-nav-back" onClick={goBack}>
-                → הקודם
-              </button>
-            )}
-            <div className="cp-nav-spacer" />
-            <button
-              type="button"
-              className="cp-preview-btn-mobile"
-              onClick={() => setShowMobilePreview(true)}
-            >
-              👁️ תצוגה מקדימה
-            </button>
             {currentStep < steps.length - 1 ? (
               <button type="button" className="cp-nav-btn cp-nav-next" onClick={goNext}>
-                הבא ←
+                ← הבא
               </button>
             ) : (
               <button
@@ -923,13 +1162,29 @@ export default function CreatePost() {
                 }
               </button>
             )}
+
+            <button
+              type="button"
+              className="cp-preview-btn-mobile"
+              onClick={() => setShowMobilePreview(true)}
+            >
+              👁️ תצוגה מקדימה
+            </button>
+
+            <div className="cp-nav-spacer" />
+
+            {currentStep > 0 && (
+              <button type="button" className="cp-nav-btn cp-nav-back" onClick={goBack}>
+                הקודם →
+              </button>
+            )}
           </div>
         </div>
         </div>
 
         {showMobilePreview && (
           <div className="fbp-modal-overlay" onClick={() => setShowMobilePreview(false)}>
-            <div className="fbp-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="fbp-modal-content" onClick={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}>
               <button className="fbp-modal-close" onClick={() => setShowMobilePreview(false)}>✕</button>
               <FacebookPreview
                 text={postText}
@@ -944,6 +1199,16 @@ export default function CreatePost() {
         )}
       </>
       )}
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={confirmAction?.title || ''}
+        message={confirmAction?.message || ''}
+        confirmText="כן"
+        cancelText="ביטול"
+        onConfirm={() => { const action = confirmAction?.action; setConfirmAction(null); action?.() }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   )
 }

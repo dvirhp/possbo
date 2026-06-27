@@ -9,21 +9,22 @@ const api = axios.create({
 });
 
 export const authAPI = {
-  register: async (email, password, name, gender, phone) => {
+  register: async (email, password, name, gender, phone, captchaToken) => {
     const res = await http.post("/auth/register", {
       email,
       password,
       name,
       gender,
       phone,
+      captchaToken,
     });
     if (res.data.accessToken) {
       setAccessToken(res.data.accessToken);
     }
     return res;
   },
-  login: async (email, password) => {
-    const res = await http.post("/auth/login", { email, password });
+  login: async (email, password, captchaToken) => {
+    const res = await http.post("/auth/login", { email, password, captchaToken });
     if (res.data.accessToken) {
       setAccessToken(res.data.accessToken);
     }
@@ -47,6 +48,12 @@ export const authAPI = {
     return res;
   },
   updateProfile: (data) => http.patch("/auth/profile", data),
+  requestPasswordCode: (data) => http.post("/auth/password/request-code", data),
+  changePassword: (data) => http.patch("/auth/password", data),
+  forgotPassword: (data) => http.post("/auth/forgot-password", data),
+  resetPassword: (data) => http.post("/auth/reset-password", data),
+  verifyEmail: (data) => http.post("/auth/verify-email", data),
+  resendCode: (data) => http.post("/auth/resend-code", data),
   updateWhatsapp: (data) => http.patch("/auth/whatsapp", data),
   disconnectFacebook: () => http.post("/auth/disconnect-facebook"),
 };
