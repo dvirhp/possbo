@@ -3,6 +3,7 @@ import {
   processPublicationJobs,
   generateScheduledJobs,
 } from "./publication-scheduler.js";
+import { runDailyGroupMetadataRefresh } from "./group-metadata-refresh.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("scheduler");
@@ -14,6 +15,8 @@ const INTERVALS = {
   GENERATE_JOBS: 5 * 60 * 1000,
   // Keep-alive check every 3 days
   SESSION_KEEPALIVE: 3 * 24 * 60 * 60 * 1000,
+  // Refresh group metadata once a day
+  GROUP_METADATA: 24 * 60 * 60 * 1000,
 };
 
 let timers = [];
@@ -54,6 +57,16 @@ export function startScheduler() {
     }
   }, INTERVALS.SESSION_KEEPALIVE);
   timers.push(keepAlive);
+
+  // Group metadata refresh once a day
+  const groupMeta = setInterval(async () => {
+    try {
+      await runDailyGroupMetadataRefresh();
+    } catch (error) {
+      log.error("Error in group metadata refresh", error);
+    }
+  }, INTERVALS.GROUP_METADATA);
+  timers.push(groupMeta);
 
   // Run job generator immediately on startup to catch any missed schedules
   setTimeout(async () => {

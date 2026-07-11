@@ -1,11 +1,14 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
 import { authAPI } from '../services/api'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import DashboardOverview from '../components/DashboardOverview'
 import '../styles/dashboard.css'
+import '../styles/overview.css'
 
 const TABS = [
   { id: 'campaigns', icon: '📅', label: 'קמפיינים' },
@@ -43,11 +46,18 @@ export default function Dashboard() {
     setStats, updateGroups, refreshing,
   } = useAppData()
 
-  const [activeTab, setActiveTab] = useState(location.state?.tab || 'campaigns')
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'overview')
   const [search, setSearch] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [viewMode, setViewMode] = useState('grid') // 'grid' | 'list'
+  const [viewMode, setViewMode] = useState('list') // 'grid' | 'list'
+
+  // Sync activeTab with location state changes (from Sidebar navigation)
+  useEffect(() => {
+    if (location.state?.tab) {
+      setActiveTab(location.state.tab)
+    }
+  }, [location.state?.tab])
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all')
@@ -117,6 +127,8 @@ export default function Dashboard() {
 
   const [mainConfirm, setMainConfirm] = useState(null)
   const [sessionRequired, setSessionRequired] = useState(false)
+  const [overviewDetail, setOverviewDetail] = useState(null)
+  const [overviewEditMode, setOverviewEditMode] = useState(false)
 
   const handleBootstrap = async () => {
     setBootstrapping(true)
@@ -131,12 +143,10 @@ export default function Dashboard() {
     }
   }
 
-  const [syncBanner, setSyncBanner] = useState(null) // {type:'syncing'|'done'|'error', msg}
-
   const handleRefreshGroups = async () => {
     setRefreshingGroups(true)
     setSessionRequired(false)
-    setSyncBanner({ type: 'syncing', msg: 'מסנכרן קבוצות מפייסבוק... אפשר להמשיך לגלוש באתר' })
+    window.dispatchEvent(new CustomEvent('postit-sync-start', { detail: { msg: 'מסנכרן קבוצות מפייסבוק... אפשר להמשיך לגלוש באתר' } }))
     try {
       const res = await groupsService.scrapeMyGroups()
       if (res.data.success && res.data.groups) {
@@ -145,17 +155,27 @@ export default function Dashboard() {
           name: g.name,
           image: g.image || null,
           url: g.url || `https://www.facebook.com/groups/${g.id}`,
+          memberCount: g.memberCount || null,
+          privacyType: g.privacyType || null,
         })))
-        setSyncBanner({ type: 'done', msg: `✅ סונכרנו ${res.data.groups.length} קבוצות בהצלחה!` })
-        setTimeout(() => setSyncBanner(null), 5000)
+        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: true, msg: `✅ סונכרנו ${res.data.groups.length} קבוצות בהצלחה!` } }))
+        // Refresh metadata silently in background
+        groupsService.refreshGroupsMetadata().then(metaRes => {
+          if (metaRes.data?.success) {
+            groupsService.getSavedGroups().then(savedRes => {
+              if (savedRes.data?.groups) updateGroups(savedRes.data.groups)
+            }).catch(() => {})
+          }
+        }).catch(() => {})
       }
     } catch (err) {
       if (err.response?.status === 428) {
         setSessionRequired(true)
-        setSyncBanner(null)
+        // Update user state so the FB session banner appears
+        setUser(prev => prev ? { ...prev, fbSessionValid: false } : prev)
+        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: false, msg: '⚠️ חיבור הפייסבוק פג תוקף — יש להתחבר מחדש' } }))
       } else {
-        setSyncBanner({ type: 'error', msg: '⚠️ שגיאה בסנכרון הקבוצות' })
-        setTimeout(() => setSyncBanner(null), 5000)
+        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: false, msg: '⚠️ שגיאה בסנכרון הקבוצות' } }))
       }
     } finally {
       setRefreshingGroups(false)
@@ -331,7 +351,7 @@ export default function Dashboard() {
       <aside className={`dash-sidebar ${sidebarOpen ? 'open' : 'collapsed'} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-top">
           <Link to="/dashboard" className="sidebar-logo" onClick={() => setMobileMenuOpen(false)}>
-            <div className="sidebar-logo-mark">P</div>
+            <img src="/logo.svg" alt="PostIt" className="sidebar-logo-img" />
             {sidebarOpen && <span className="sidebar-logo-text">PostIt</span>}
           </Link>
         </div>
@@ -423,25 +443,8 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Sync banner */}
-              {syncBanner && (
-                <div className={`sync-banner sync-banner-${syncBanner.type}`}>
-                  {syncBanner.type === 'syncing' && (
-                    <div className="sync-logos">
-                      <span className="sync-logo-fb">f</span>
-                      <span className="sync-arrows">⇄</span>
-                      <span className="sync-logo-postit">📌</span>
-                    </div>
-                  )}
-                  <span>{syncBanner.msg}</span>
-                  {syncBanner.type !== 'syncing' && (
-                    <button onClick={() => setSyncBanner(null)}>✕</button>
-                  )}
-                </div>
-              )}
-
               {/* KPIs — always visible except stats/settings */}
-              {activeTab !== 'settings' && activeTab !== 'stats' && (
+              {activeTab !== 'settings' && activeTab !== 'stats' && activeTab !== 'overview' && (
                 <section className="kpi-row">
                   <div className={`kpi-card kpi-clickable ${activeTab === 'campaigns' ? 'kpi-active' : ''}`} onClick={() => setActiveTab('campaigns')}>
                     <div className="kpi-card-icon kpi-indigo">
@@ -480,7 +483,7 @@ export default function Dashboard() {
               )}
 
               {/* ─── FILTER BAR ─── */}
-              {activeTab !== 'settings' && activeTab !== 'stats' && (
+              {activeTab !== 'settings' && activeTab !== 'stats' && activeTab !== 'overview' && (
                 <div className="filter-bar">
                   <div className="filter-bar-search">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -629,8 +632,18 @@ export default function Dashboard() {
                     </select>
                   </div>
 
+                  {/* Groups refresh button */}
+                  {activeTab === 'groups' && (
+                    <button onClick={handleRefreshGroups} disabled={refreshingGroups} className="refresh-groups-btn">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={refreshingGroups ? 'spin' : ''}>
+                        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                      </svg>
+                      {refreshingGroups ? 'מסנכרן...' : 'רענן קבוצות'}
+                    </button>
+                  )}
+
                   {/* View toggle */}
-                  {(activeTab === 'campaigns' || activeTab === 'posts') && (
+                  {(activeTab === 'campaigns' || activeTab === 'posts' || activeTab === 'groups') && (
                     <div className="view-toggle-bar">
                       <button className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')} title="תצוגת ריבועים">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
@@ -788,8 +801,9 @@ export default function Dashboard() {
 
               {/* Panel */}
               <div className="dash-panel">
+                {activeTab === 'overview' && <DashboardOverview campaigns={campaigns} groups={groups} posts={posts} jobs={jobs} stats={stats} user={user} onUpdate={forceRefresh} onViewCampaign={(c, edit) => { setOverviewDetail(c); setOverviewEditMode(!!edit) }} />}
                 {activeTab === 'campaigns' && <CampaignsPanel campaigns={filteredCampaigns} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} />}
-                {activeTab === 'groups' && <GroupsPanel groups={filteredGroups} navigate={navigate} onRefresh={handleRefreshGroups} refreshing={refreshingGroups} sessionRequired={sessionRequired} />}
+                {activeTab === 'groups' && <GroupsPanel groups={filteredGroups} navigate={navigate} sessionRequired={sessionRequired} viewMode={viewMode} />}
                 {activeTab === 'posts' && <PostsPanel posts={filteredPosts} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} />}
                 {activeTab === 'stats' && (
                   <StatsPanel stats={stats} dateFrom={dateFrom} dateTo={dateTo}
@@ -824,6 +838,49 @@ export default function Dashboard() {
       onConfirm={() => { mainConfirm?.action(); setMainConfirm(null) }}
       onCancel={() => setMainConfirm(null)}
     />
+    {overviewDetail && (
+      <CampaignDetailModal
+        campaign={overviewDetail}
+        onClose={() => { setOverviewDetail(null); setOverviewEditMode(false) }}
+        groups={groups}
+        initialEditing={overviewEditMode}
+        onSave={async (data, imgs) => {
+          try {
+            await groupsService.updateCampaign(overviewDetail.id, data, imgs)
+            setOverviewDetail(null)
+            setOverviewEditMode(false)
+            forceRefresh()
+          } catch {}
+        }}
+        onPause={async () => {
+          try {
+            await groupsService.togglePause(overviewDetail.id)
+            setOverviewDetail(null)
+            forceRefresh()
+          } catch {}
+        }}
+        onDuplicate={async () => {
+          try {
+            await groupsService.duplicateCampaign(overviewDetail.id)
+            setOverviewDetail(null)
+            forceRefresh()
+          } catch {}
+        }}
+        onDelete={() => {
+          setOverviewDetail(null)
+          setMainConfirm({
+            title: 'מחיקת קמפיין',
+            message: 'האם אתה בטוח שברצונך למחוק? פעולה זו לא ניתנת לביטול.',
+            action: async () => {
+              try {
+                await groupsService.deleteCampaign(overviewDetail.id)
+                forceRefresh()
+              } catch {}
+            }
+          })
+        }}
+      />
+    )}
     </>
   )
 }
@@ -1123,8 +1180,13 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
   )
 }
 
-function GroupsPanel({ groups, navigate, onRefresh, refreshing, sessionRequired }) {
+function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
   const [detailGroup, setDetailGroup] = useState(null)
+  const [visibleCount, setVisibleCount] = useState(15)
+
+  const visibleGroups = groups.slice(0, visibleCount)
+  const hasMore = groups.length > visibleCount
+
   if (sessionRequired) return (
     <div className="empty-state">
       <div className="empty-icon-wrap">
@@ -1145,67 +1207,141 @@ function GroupsPanel({ groups, navigate, onRefresh, refreshing, sessionRequired 
         </svg>
       </div>
       <h3>אין קבוצות שמורות</h3>
-      <p>סנכרן את הקבוצות שלך מפייסבוק כדי להתחיל</p>
-      <button onClick={onRefresh} disabled={refreshing} className="empty-btn">
-        {refreshing ? '🔄 מסנכרן...' : '🔄 סנכרן קבוצות מפייסבוק'}
-      </button>
+      <p>סנכרן את הקבוצות שלך מפייסבוק באמצעות כפתור "רענן קבוצות" למעלה</p>
     </div>
   )
 
   return (
     <div>
-      <div className="groups-toolbar">
-        <button onClick={onRefresh} disabled={refreshing} className="refresh-groups-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={refreshing ? 'spin' : ''}>
-            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-          </svg>
-          {refreshing ? 'מסנכרן קבוצות...' : 'רענן קבוצות'}
-        </button>
-      </div>
-      <div className="groups-grid">
-        {groups.map(group => (
-          <div key={group.id} className="group-card" onClick={() => setDetailGroup(group)}>
-            <div className="group-card-thumb">
-              {group.image
-                ? <img src={group.image} alt="" />
-                : <div className="group-card-fallback">👥</div>}
-            </div>
-            <div className="group-card-info">
-              <h4>{group.name}</h4>
-              {group.memberCount && <span>{group.memberCount.toLocaleString()} חברים</span>}
-            </div>
-            <svg className="group-card-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-          </div>
-        ))}
-      </div>
 
-      {detailGroup && (
-        <div className="modal-overlay" onClick={() => setDetailGroup(null)}>
-          <div className="modal-content detail-modal" onClick={e => e.stopPropagation()}>
-            <div className="detail-modal-header">
-              <button className="modal-close" onClick={() => setDetailGroup(null)}>✕</button>
+      {viewMode === 'list' ? (
+        /* ═══ Row/List View ═══ */
+        <div className="groups-list">
+          <div className="groups-list-header">
+            <span className="gl-col gl-col-name">קבוצה</span>
+            <span className="gl-col gl-col-members">חברים</span>
+            <span className="gl-col gl-col-posts">משרדות מתוזמנות</span>
+            <span className="gl-col gl-col-scheduled">פוסטים מתוזמנים</span>
+            <span className="gl-col gl-col-action"></span>
+          </div>
+          {visibleGroups.map(group => (
+            <div key={group.id} className="groups-list-row" onClick={() => setDetailGroup(group)}>
+              <div className="gl-col gl-col-name">
+                <div className="gl-thumb">
+                  {group.image
+                    ? <img src={group.image} alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
+                    : null}
+                  <div className="gl-thumb-fallback" style={group.image ? { display: 'none' } : undefined}>👥</div>
+                </div>
+                <div className="gl-name-wrap">
+                  <h4>{group.name}</h4>
+                  <span className="gl-privacy">{group.privacyType === 'private' ? 'קבוצה פרטית' : 'קבוצה ציבורית'}</span>
+                </div>
+              </div>
+              <div className="gl-col gl-col-members">
+                <span className="gl-stat-value">{group.memberCount ? (group.memberCount >= 1000 ? (group.memberCount / 1000).toFixed(1) + 'K' : group.memberCount.toLocaleString()) : '—'}</span>
+              </div>
+              <div className="gl-col gl-col-posts">
+                <span className="gl-stat-value">{group.postsCount || 0}</span>
+              </div>
+              <div className="gl-col gl-col-scheduled">
+                <span className="gl-stat-value">{group.scheduledCount || 0}</span>
+              </div>
+              <div className="gl-col gl-col-action">
+                <button className="gl-open-btn" onClick={(e) => { e.stopPropagation(); setDetailGroup(group) }}>
+                  פתח
+                </button>
+                <svg className="gl-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </div>
             </div>
-            <div className="detail-body">
-              <div className="group-detail-top">
-                {detailGroup.image && <img src={detailGroup.image} alt="" className="group-detail-img" />}
-                <div>
-                  <h3 className="detail-title">{detailGroup.name}</h3>
-                  <div className="group-detail-meta">
-                    {detailGroup.memberCount && <span>👥 {detailGroup.memberCount.toLocaleString()} חברים</span>}
-                    {detailGroup.privacyType && <span>{detailGroup.privacyType === 'private' ? '🔒 פרטית' : '🌐 ציבורית'}</span>}
+          ))}
+        </div>
+      ) : (
+        /* ═══ Grid/Cube View ═══ */
+        <div className="groups-grid-view">
+          {visibleGroups.map(group => (
+            <div key={group.id} className="group-grid-card" onClick={() => setDetailGroup(group)}>
+              <div className="group-grid-thumb">
+                {group.image
+                  ? <img src={group.image} alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
+                  : null}
+                <div className="group-grid-fallback" style={group.image ? { display: 'none' } : undefined}>👥</div>
+              </div>
+              <div className="group-grid-body">
+                <h4>{group.name}</h4>
+                <span className="group-grid-privacy">{group.privacyType === 'private' ? '🔒 פרטית' : '🌐 ציבורית'}</span>
+                <div className="group-grid-stats">
+                  <div className="group-grid-stat">
+                    <span className="group-grid-stat-val">{group.memberCount ? (group.memberCount >= 1000 ? (group.memberCount / 1000).toFixed(1) + 'K' : group.memberCount) : '—'}</span>
+                    <span className="group-grid-stat-label">חברים</span>
+                  </div>
+                  <div className="group-grid-stat">
+                    <span className="group-grid-stat-val">{group.postsCount || 0}</span>
+                    <span className="group-grid-stat-label">פוסטים</span>
+                  </div>
+                  <div className="group-grid-stat">
+                    <span className="group-grid-stat-val">{group.scheduledCount || 0}</span>
+                    <span className="group-grid-stat-label">מתוזמנים</span>
                   </div>
                 </div>
               </div>
-              <div className="group-detail-actions">
-                <a href={detailGroup.url} target="_blank" rel="noopener noreferrer" className="group-detail-link">
-                  🔗 פתח בפייסבוק
-                </a>
-                <button className="group-detail-btn" onClick={() => { setDetailGroup(null); navigate('/create-post', { state: { group: detailGroup } }) }}>
-                  🚀 פרסם בקבוצה זו
-                </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Load more button */}
+      {hasMore && (
+        <div className="groups-load-more">
+          <button className="groups-load-more-btn" onClick={() => setVisibleCount(prev => prev + 15)}>
+            טען עוד ↓
+          </button>
+        </div>
+      )}
+
+      {/* ═══ Group Detail Modal ═══ */}
+      {detailGroup && (
+        <div className="modal-overlay" onClick={() => setDetailGroup(null)}>
+          <div className="modal-content group-detail-modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setDetailGroup(null)}>✕</button>
+            {/* Hero */}
+            <div className="gd-hero">
+              {detailGroup.image && <img src={detailGroup.image} alt="" className="gd-hero-img" onError={e => e.target.style.display = 'none'} />}
+              <div className="gd-hero-overlay">
+                <div className="gd-hero-thumb">
+                  {detailGroup.image
+                    ? <img src={detailGroup.image} alt="" onError={e => e.target.style.display = 'none'} />
+                    : <span>👥</span>}
+                </div>
+                <h3 className="gd-hero-title">{detailGroup.name}</h3>
+                <span className="gd-hero-privacy">{detailGroup.privacyType === 'private' ? '🔒 קבוצה פרטית' : '🌐 קבוצה ציבורית'}</span>
               </div>
+            </div>
+            {/* Stats */}
+            <div className="gd-stats">
+              <div className="gd-stat">
+                <span className="gd-stat-val">{detailGroup.memberCount ? detailGroup.memberCount.toLocaleString() : '—'}</span>
+                <span className="gd-stat-label">חברים</span>
+              </div>
+              <div className="gd-stat">
+                <span className="gd-stat-val">{detailGroup.postsCount || 0}</span>
+                <span className="gd-stat-label">פוסטים</span>
+              </div>
+              <div className="gd-stat">
+                <span className="gd-stat-val">{detailGroup.scheduledCount || 0}</span>
+                <span className="gd-stat-label">מתוזמנים</span>
+              </div>
+            </div>
+            {/* Actions */}
+            <div className="gd-actions">
+              <button className="gd-action-btn gd-action-publish" onClick={() => { setDetailGroup(null); navigate('/create-post', { state: { group: detailGroup } }) }}>
+                🚀 פרסם בקבוצה
+              </button>
+              <a href={detailGroup.url} target="_blank" rel="noopener noreferrer" className="gd-action-btn gd-action-link">
+                🔗 פתח בפייסבוק
+              </a>
             </div>
           </div>
         </div>
@@ -1375,67 +1511,177 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
 }
 
 function StatsPanel({ stats, dateFrom, dateTo, setDateFrom, setDateTo, onFilter }) {
-  if (!stats) return (
-    <div className="empty-state">
-      <div className="empty-icon-wrap">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
-        </svg>
-      </div>
-      <h3>אין נתונים</h3>
-    </div>
-  )
+  const [exposure, setExposure] = useState(null)
+  const [period, setPeriod] = useState('month') // day, week, month, custom
+  const [loading, setLoading] = useState(true)
 
-  const maxCount = stats.groupStats?.length > 0
-    ? Math.max(...stats.groupStats.map(g => g.count))
-    : 1
+  const loadExposure = useCallback(async (from, to) => {
+    setLoading(true)
+    try {
+      const params = {}
+      if (from) params.from = from
+      if (to) params.to = to
+      const res = await groupsService.getExposure(params)
+      if (res.data?.exposure) setExposure(res.data.exposure)
+    } catch { /* ignore */ }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    const now = new Date()
+    let from
+    if (period === 'day') {
+      from = new Date(now); from.setHours(0, 0, 0, 0)
+    } else if (period === 'week') {
+      from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    } else if (period === 'month') {
+      from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    } else if (period === 'custom' && dateFrom) {
+      from = new Date(dateFrom)
+    }
+    const to = (period === 'custom' && dateTo) ? dateTo : now.toISOString()
+    loadExposure(from?.toISOString?.() || from, to)
+  }, [period, dateFrom, dateTo, loadExposure])
+
+  const formatNumber = (n) => {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
+    return n?.toLocaleString?.() || '0'
+  }
+
+  const chartData = useMemo(() => {
+    if (!exposure?.data) return []
+    return exposure.data.map(d => ({
+      date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }),
+      exposure: d.exposure,
+      posts: d.posts,
+    }))
+  }, [exposure])
 
   return (
     <div className="stats-layout">
-      <div className="stats-filter-bar">
-        <div className="filter-item">
-          <label>מתאריך</label>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-        </div>
-        <div className="filter-item">
-          <label>עד תאריך</label>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-        </div>
-        <button className="filter-btn" onClick={onFilter}>סנן</button>
+      {/* Period filter */}
+      <div className="stats-period-bar">
+        {[
+          { id: 'day', label: 'היום' },
+          { id: 'week', label: 'שבוע' },
+          { id: 'month', label: 'חודש' },
+          { id: 'custom', label: 'מותאם' },
+        ].map(p => (
+          <button key={p.id} className={`period-btn ${period === p.id ? 'active' : ''}`} onClick={() => setPeriod(p.id)}>
+            {p.label}
+          </button>
+        ))}
       </div>
 
+      {period === 'custom' && (
+        <div className="stats-filter-bar">
+          <div className="filter-item">
+            <label>מתאריך</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          </div>
+          <div className="filter-item">
+            <label>עד תאריך</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {/* KPI Cards */}
       <div className="stats-kpis">
         <div className="stat-box">
-          <span className="stat-box-val">{stats.publishedCount}</span>
-          <span className="stat-box-label">סה״כ פרסומים</span>
+          <span className="stat-box-val">{formatNumber(exposure?.currentTotal || 0)}</span>
+          <span className="stat-box-label">חשיפה בתקופה</span>
+          {exposure?.changePercent !== undefined && (
+            <span className={`stat-box-trend ${exposure.changePercent >= 0 ? 'trend-up' : 'trend-down'}`}>
+              {exposure.changePercent >= 0 ? '↑' : '↓'} {Math.abs(exposure.changePercent)}%
+            </span>
+          )}
         </div>
         <div className="stat-box">
-          <span className="stat-box-val">{stats.groupsCount}</span>
+          <span className="stat-box-val">{exposure?.currentPosts || 0}</span>
+          <span className="stat-box-label">פוסטים בתקופה</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-box-val">{formatNumber(exposure?.totalPotentialReach || 0)}</span>
+          <span className="stat-box-label">חשיפה מקסימלית</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-box-val">{stats?.groupsCount || 0}</span>
           <span className="stat-box-label">קבוצות פעילות</span>
-        </div>
-        <div className="stat-box">
-          <span className="stat-box-val">{stats.scheduledCount}</span>
-          <span className="stat-box-label">ממתינים לפרסום</span>
         </div>
       </div>
 
-      {stats.groupStats?.length > 0 && (
+      {/* Exposure Chart */}
+      {chartData.length > 0 && (
         <div className="stats-chart-card">
-          <h4>פרסומים לפי קבוצה</h4>
-          <div className="bar-chart">
-            {stats.groupStats.slice(0, 8).map(g => (
-              <div key={g.id} className="bar-row">
-                <span className="bar-label" title={g.name}>
-                  {g.name.length > 20 ? g.name.slice(0, 20) + '…' : g.name}
-                </span>
-                <div className="bar-track">
-                  <div className="bar-fill" style={{ width: `${(g.count / maxCount) * 100}%` }} />
+          <h4>חשיפה לאורך זמן</h4>
+          <div className="stats-chart-container">
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="exposureGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#818cf8" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
+                <Tooltip
+                  contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
+                  formatter={(val) => [formatNumber(val), 'חשיפה']}
+                />
+                <Area type="monotone" dataKey="exposure" stroke="#818cf8" strokeWidth={2} fill="url(#exposureGradient)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Top Groups Table */}
+      {exposure?.topGroups?.length > 0 && (
+        <div className="stats-chart-card">
+          <h4>🏆 קבוצות מובילות בחשיפה</h4>
+          <div className="top-groups-table">
+            {exposure.topGroups.map((g, i) => (
+              <div key={g.id} className={`top-group-row ${i === 0 ? 'top-group-gold' : i === 1 ? 'top-group-silver' : ''}`}>
+                <span className="top-group-rank">{i + 1}</span>
+                <div className="top-group-info">
+                  <span className="top-group-name">{g.name}</span>
+                  {g.privacyType && <span className="top-group-privacy">{g.privacyType === 'private' ? '🔒' : '🌐'}</span>}
                 </div>
-                <span className="bar-value">{g.count}</span>
+                <span className="top-group-members">{formatNumber(g.memberCount)} חברים</span>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {/* Old stats: publications by group */}
+      {stats?.groupStats?.length > 0 && (
+        <div className="stats-chart-card">
+          <h4>פרסומים לפי קבוצה</h4>
+          <div className="bar-chart">
+            {stats.groupStats.slice(0, 8).map(g => {
+              const maxCount = Math.max(...stats.groupStats.map(x => x.count))
+              return (
+                <div key={g.id} className="bar-row">
+                  <span className="bar-label" title={g.name}>
+                    {g.name.length > 20 ? g.name.slice(0, 20) + '…' : g.name}
+                  </span>
+                  <div className="bar-track">
+                    <div className="bar-fill" style={{ width: `${(g.count / maxCount) * 100}%` }} />
+                  </div>
+                  <span className="bar-value">{g.count}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {loading && !exposure && (
+        <div className="empty-state"><p>טוען נתונים...</p></div>
       )}
     </div>
   )
@@ -1656,27 +1902,46 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
 
   return (
     <div className="settings-page">
-      <div className="settings-page-header">
-        <h2>⚙️ הגדרות</h2>
-        <p>ניהול החשבון, חיבורים ומראה</p>
+      {/* ═══ Profile Hero (Centered Avatar + Name) ═══ */}
+      <div className="settings-hero">
+        <div className="settings-avatar-wrap">
+          <div className="settings-avatar">
+            {user?.profileImage || user?.avatarUrl
+              ? <img src={user.profileImage || user.avatarUrl} alt="" />
+              : <span>{user?.name?.[0] || '?'}</span>}
+          </div>
+          <label className="settings-avatar-upload" title="העלה תמונה">
+            <input type="file" accept="image/*" hidden onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              try {
+                const res = await authAPI.uploadAvatar(file)
+                if (res.data.success) {
+                  setUser(prev => ({ ...prev, profileImage: res.data.profileImage }))
+                }
+              } catch { /* ignore */ }
+            }} />
+            📷
+          </label>
+        </div>
+        <h2 className="settings-hero-name">{user?.name || 'משתמש'}</h2>
+        <p className="settings-hero-email">{user?.email || ''}</p>
       </div>
 
-      <div className="settings-sections">
-        {/* ═══ Profile Section ═══ */}
-        <section className="settings-section">
-          <div className="settings-section-header">
-            <div className="settings-section-icon">👤</div>
-            <div>
-              <h3>פרטי משתמש</h3>
-              <p>שם, אימייל וסיסמה</p>
-            </div>
+      {/* ═══ Cards Grid ═══ */}
+      <div className="settings-grid">
+        {/* ─── Profile Card ─── */}
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div className="settings-card-icon">👤</div>
+            <h3>פרטי משתמש</h3>
             {!editing && (
               <button className="settings-edit-btn" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }}>
                 ✏️ ערוך
               </button>
             )}
           </div>
-          <div className="settings-section-body">
+          <div className="settings-card-body">
             {editing ? (
               <>
                 <div className="settings-field">
@@ -1754,16 +2019,13 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
           </div>
         </section>
 
-        {/* ═══ Connections Section ═══ */}
-        <section className="settings-section">
-          <div className="settings-section-header">
-            <div className="settings-section-icon">🔗</div>
-            <div>
-              <h3>חיבורים</h3>
-              <p>פייסבוק, וואטסאפ ושירותים חיצוניים</p>
-            </div>
+        {/* ─── Connections Card ─── */}
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div className="settings-card-icon">🔗</div>
+            <h3>חיבורים</h3>
           </div>
-          <div className="settings-section-body">
+          <div className="settings-card-body">
             {/* Facebook */}
             <div className={`settings-connection-item ${!user?.fbSessionValid ? 'connection-disconnected' : ''}`}>
               <div className="settings-connection-info">
@@ -1892,16 +2154,13 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
           </div>
         </section>
 
-        {/* ═══ Appearance Section ═══ */}
-        <section className="settings-section">
-          <div className="settings-section-header">
-            <div className="settings-section-icon">🎨</div>
-            <div>
-              <h3>מראה</h3>
-              <p>ערכת נושא ותצוגה</p>
-            </div>
+        {/* ─── Appearance Card ─── */}
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div className="settings-card-icon">🎨</div>
+            <h3>מראה</h3>
           </div>
-          <div className="settings-section-body">
+          <div className="settings-card-body">
             <div className="settings-theme-row">
               <span>ערכת נושא</span>
               <div className="theme-toggle">
@@ -1922,19 +2181,20 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
           </div>
         </section>
 
-        {/* ═══ Account Section ═══ */}
-        <section className="settings-section settings-section-danger">
-          <div className="settings-section-body">
+        {/* ─── Danger Zone Card ─── */}
+        <section className="settings-card settings-card-danger">
+          <div className="settings-card-body">
             <button className="settings-logout-btn" onClick={handleLogout}>
               🚪 התנתק מהמערכת
             </button>
           </div>
         </section>
-
-        <div className="settings-privacy-link">
-          <Link to="/privacy">מדיניות פרטיות ותנאי שימוש</Link>
-        </div>
       </div>
+
+      <div className="settings-privacy-link">
+        <Link to="/privacy">מדיניות פרטיות ותנאי שימוש</Link>
+      </div>
+
       <ConfirmDialog
         open={!!confirmAction}
         title={confirmAction?.title}
@@ -2272,9 +2532,9 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
 
 const API_HOST = 'http://localhost:5001'
 
-function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, onDelete, groups, loading, onSave }) {
+function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, onDelete, groups, loading, onSave, initialEditing }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(!!initialEditing)
   const [lightboxIdx, setLightboxIdx] = useState(null)
   const menuRef = useRef(null)
 

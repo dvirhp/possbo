@@ -1,5 +1,8 @@
 import express from "express";
 import bcrypt from "bcrypt";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
 import { PrismaClient } from "@prisma/client";
 import { encrypt, decrypt } from "../utils/encryption.js";
 import {
@@ -15,6 +18,8 @@ const router = express.Router();
 const prisma = new PrismaClient();
 const log = createLogger("auth");
 const SALT_ROUNDS = 12;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 
 // In-memory store for pending email verifications (code → data)
 // Format: { email: { code, data, expiresAt } }
@@ -366,6 +371,113 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
+// Verify Facebook connection is still valid
+router.post("/verify-facebook", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { facebookAccessToken: true, facebookStorageState: true, fbSessionValid: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // If no FB token and no storage state — not connected at all
+    if (!user.facebookAccessToken && !user.facebookStorageState) {
+      if (user.fbSessionValid) {
+        await prisma.user.update({
+          where: { id: req.user.id },
+          data: { fbSessionValid: false },
+        });
+      }
+      return res.json({ fbSessionValid: false, reason: "not_connected" });
+    }
+
+    // Check Graph API token validity
+    let tokenValid = false;
+    if (user.facebookAccessToken) {
+      try {
+        const fbRes = await fetch(
+          `https://graph.facebook.com/me?fields=id&access_token=${user.facebookAccessToken}`
+        );
+        const fbData = await fbRes.json();
+        tokenValid = !fbData.error;
+      } catch {
+        tokenValid = false;
+      }
+    }
+
+    // Check storage state — verify cookies haven't expired
+    let hasStorageState = !!user.facebookStorageState;
+    let cookiesExpired = false;
+
+    if (hasStorageState) {
+      try {
+        const decrypted = decrypt(user.facebookStorageState);
+        const state = JSON.parse(decrypted);
+        const cookies = state.cookies || [];
+        // Check critical FB cookies (c_user, xs) for expiry
+        const now = Date.now() / 1000;
+        const criticalCookies = cookies.filter(c => c.name === "c_user" || c.name === "xs");
+        if (criticalCookies.length === 0) {
+          cookiesExpired = true;
+        } else {
+          for (const cookie of criticalCookies) {
+            if (cookie.expires && cookie.expires > 0 && cookie.expires < now) {
+              cookiesExpired = true;
+              break;
+            }
+          }
+        }
+      } catch {
+        // Can't decrypt or parse — treat as expired
+        cookiesExpired = true;
+      }
+    }
+
+    // Session is valid only if storage state exists AND cookies haven't expired
+    const fbSessionValid = hasStorageState && !cookiesExpired;
+
+    // Update DB if status changed
+    if (user.fbSessionValid !== fbSessionValid) {
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { fbSessionValid },
+      });
+
+      // Create notification if session became invalid
+      if (!fbSessionValid) {
+        // Clear storage state if cookies expired
+        if (cookiesExpired) {
+          await prisma.user.update({
+            where: { id: req.user.id },
+            data: { facebookStorageState: null },
+          }).catch(() => {});
+        }
+
+        await prisma.notification.create({
+          data: {
+            userId: req.user.id,
+            type: "SESSION_EXPIRED",
+            title: "חיבור הפייסבוק פג תוקף",
+            message: "החיבור לפייסבוק שלך אינו תקין. אנא התחבר מחדש כדי שפוסטים מתוזמנים ימשיכו לפעול.",
+          },
+        }).catch(() => {});
+      }
+    }
+
+    res.json({ fbSessionValid, tokenValid, hasStorageState, cookiesExpired });
+  } catch (error) {
+    log.error("Facebook verification failed", error);
+    res.status(500).json({ error: "Verification failed" });
+  }
+});
+
 // Get current user (requires valid access token via middleware)
 router.get("/me", async (req, res) => {
   if (!req.user) {
@@ -565,6 +677,42 @@ router.patch("/profile", async (req, res) => {
     success: true,
     user: { id: updated.id, email: updated.email, name: updated.name },
   });
+});
+
+// Upload avatar
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".jpg";
+    cb(null, `avatar-${req.user.id}-${Date.now()}${ext}`);
+  },
+});
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = /\.(jpg|jpeg|png|gif|webp)$/i;
+    if (allowed.test(path.extname(file.originalname))) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files allowed"));
+    }
+  },
+});
+
+router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  const profileImage = `/uploads/${req.file.filename}`;
+  await prisma.user.update({
+    where: { id: req.user.id },
+    data: { profileImage },
+  });
+  res.json({ success: true, profileImage });
 });
 
 // Disconnect Facebook session

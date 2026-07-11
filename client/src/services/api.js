@@ -56,6 +56,12 @@ export const authAPI = {
   resendCode: (data) => http.post("/auth/resend-code", data),
   updateWhatsapp: (data) => http.patch("/auth/whatsapp", data),
   disconnectFacebook: () => http.post("/auth/disconnect-facebook"),
+  verifyFacebook: () => http.post("/auth/verify-facebook"),
+  uploadAvatar: (file) => {
+    const formData = new FormData();
+    formData.append("avatar", file);
+    return http.post("/auth/avatar", formData, { headers: { "Content-Type": "multipart/form-data" } });
+  },
 };
 
 export const groupsAPI = {

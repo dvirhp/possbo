@@ -1062,4 +1062,170 @@ router.get(
   }),
 );
 
+// ─── Exposure stats ──────────────────────────────────────
+
+router.get(
+  "/exposure",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const { from, to, period } = req.query;
+
+    // Default: last 30 days
+    const endDate = to ? new Date(to) : new Date();
+    const startDate = from
+      ? new Date(from)
+      : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Get daily exposure data
+    const exposureData = await prisma.dailyExposure.findMany({
+      where: {
+        userId,
+        date: { gte: startDate, lte: endDate },
+      },
+      orderBy: { date: "asc" },
+    });
+
+    // Get previous period for comparison
+    const periodLength = endDate.getTime() - startDate.getTime();
+    const prevStart = new Date(startDate.getTime() - periodLength);
+    const prevEnd = new Date(startDate.getTime() - 1);
+
+    const prevExposureData = await prisma.dailyExposure.findMany({
+      where: {
+        userId,
+        date: { gte: prevStart, lte: prevEnd },
+      },
+    });
+
+    const currentTotal = exposureData.reduce((sum, d) => sum + d.exposureCount, 0);
+    const prevTotal = prevExposureData.reduce((sum, d) => sum + d.exposureCount, 0);
+    const currentPosts = exposureData.reduce((sum, d) => sum + d.postsPublished, 0);
+    const prevPosts = prevExposureData.reduce((sum, d) => sum + d.postsPublished, 0);
+
+    const changePercent = prevTotal > 0
+      ? Math.round(((currentTotal - prevTotal) / prevTotal) * 100)
+      : currentTotal > 0 ? 100 : 0;
+
+    // Top groups by member count
+    const topGroups = await prisma.facebookGroup.findMany({
+      where: { userId, memberCount: { not: null } },
+      orderBy: { memberCount: "desc" },
+      take: 7,
+      select: { groupId: true, groupName: true, memberCount: true, groupImage: true, privacyType: true },
+    });
+
+    // Total potential reach (sum of all unique groups' members)
+    const totalReach = await prisma.facebookGroup.aggregate({
+      where: { userId, memberCount: { not: null } },
+      _sum: { memberCount: true },
+    });
+
+    res.json({
+      success: true,
+      exposure: {
+        data: exposureData.map(d => ({
+          date: d.date,
+          exposure: d.exposureCount,
+          posts: d.postsPublished,
+        })),
+        currentTotal,
+        prevTotal,
+        changePercent,
+        currentPosts,
+        prevPosts,
+        totalPotentialReach: totalReach._sum.memberCount || 0,
+        topGroups: topGroups.map((g, i) => ({
+          id: g.groupId,
+          name: g.groupName,
+          memberCount: g.memberCount,
+          image: g.groupImage,
+          privacyType: g.privacyType,
+          rank: i + 1,
+        })),
+      },
+    });
+  }),
+);
+
+// ─── Dashboard KPI stats with period comparison ──────────
+
+router.get(
+  "/dashboard-kpis",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const { from, to } = req.query;
+
+    const endDate = to ? new Date(to + 'T23:59:59') : new Date();
+    const startDate = from ? new Date(from) : new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Previous period (same length before startDate)
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    // Current period: always query live data
+    // For posts/published/exposure: sum across the period
+
+    // Always query live data - snapshots are for comparison only
+    const [currentGroups, currentScheduled, currentPublishedCount, currentPostsCount, currentExposureAgg] = await Promise.all([
+      prisma.facebookGroup.count({ where: { userId } }),
+      prisma.post.count({ where: { userId, status: "ACTIVE", campaignType: { in: ["RECURRING", "SCHEDULED"] } } }),
+      prisma.publicationHistory.count({ where: { userId, status: "SUCCESS", publishedAt: { gte: startDate, lte: endDate } } }),
+      prisma.post.count({ where: { userId } }),
+      prisma.dailyExposure.aggregate({ where: { userId, date: { gte: startDate, lte: endDate } }, _sum: { exposureCount: true } }),
+    ]);
+
+    const currentPosts = currentPostsCount;
+    const currentPublished = currentPublishedCount;
+    const currentExposure = currentExposureAgg._sum.exposureCount || 0;
+
+    // Previous period
+    const [prevGroupsSnapshot, prevPublishedCount, prevPostsCount, prevExposureAgg] = await Promise.all([
+      prisma.dailyStats.findFirst({ where: { userId, date: { lte: prevEnd } }, orderBy: { date: 'desc' }, select: { groupsCount: true, postsCount: true } }),
+      prisma.publicationHistory.count({ where: { userId, status: "SUCCESS", publishedAt: { gte: prevStart, lte: prevEnd } } }),
+      prisma.post.count({ where: { userId, createdAt: { lte: prevEnd } } }),
+      prisma.dailyExposure.aggregate({ where: { userId, date: { gte: prevStart, lte: prevEnd } }, _sum: { exposureCount: true } }),
+    ]);
+
+    const prevGroupsCount = prevGroupsSnapshot?.groupsCount || currentGroups;
+    const prevPosts = prevGroupsSnapshot?.postsCount || prevPostsCount;
+    const prevPublished = prevPublishedCount;
+    const prevExposure = prevExposureAgg._sum.exposureCount || 0;
+
+    const calcChange = (current, prev) => {
+      if (!prev || prev === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - prev) / prev) * 100);
+    };
+
+    // Save today's snapshot (upsert)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStats = {
+      groupsCount: currentGroups,
+      postsCount: currentPosts,
+      scheduledCount: currentScheduled,
+      publishedCount: currentPublished,
+      exposureCount: currentExposure,
+    };
+    await prisma.dailyStats.upsert({
+      where: { userId_date: { userId, date: today } },
+      update: todayStats,
+      create: { userId, date: today, ...todayStats },
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      kpis: {
+        groups: { value: currentGroups, change: calcChange(currentGroups, prevGroupsCount) },
+        posts: { value: currentPosts, change: calcChange(currentPosts, prevPosts) },
+        scheduled: { value: currentScheduled, change: 0 },
+        published: { value: currentPublished, change: calcChange(currentPublished, prevPublished) },
+        exposure: { value: currentExposure, change: calcChange(currentExposure, prevExposure) },
+      },
+    });
+  }),
+);
+
 export default router;

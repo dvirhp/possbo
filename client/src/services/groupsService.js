@@ -16,7 +16,8 @@ function buildFormData(data, images) {
 
 export const groupsService = {
   getSavedGroups: () => api.get("/groups/saved"),
-  scrapeMyGroups: () => api.get("/groups/scrape-my-groups"),
+  scrapeMyGroups: () => api.get("/groups/scrape-my-groups", { timeout: 120000 }),
+  refreshGroupsMetadata: () => api.post("/groups/refresh-metadata", {}, { timeout: 600000 }),
   getGroupPosts: (groupId) => api.get(`/groups/${groupId}/posts`),
   bootstrapSession: () =>
     api.post("/groups/session/bootstrap", {}, { timeout: 360000 }),
@@ -54,4 +55,6 @@ export const groupsService = {
   markNotificationsRead: () => api.patch("/scheduler/notifications/read"),
   getSessionStatus: () => api.get("/scheduler/session-status"),
   getStats: (params) => api.get("/scheduler/stats", { params }),
+  getExposure: (params) => api.get("/scheduler/exposure", { params }),
+  getDashboardKpis: (params) => api.get("/scheduler/dashboard-kpis", { params }),
 };

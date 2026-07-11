@@ -117,7 +117,7 @@ export default function Register() {
         <div className="auth-card">
           <button className="auth-back-btn" onClick={() => setVerificationStep(false)}>←</button>
           <div className="auth-header">
-            <div className="auth-logo">📌 PostIt</div>
+            <div className="auth-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /> PostIt</div>
             <h2>אימות אימייל</h2>
             <p>שלחנו קוד בן 6 ספרות ל-<strong>{email}</strong></p>
           </div>
@@ -153,7 +153,7 @@ export default function Register() {
       <div className="auth-card">
         <Link to="/" className="auth-back-btn">←</Link>
         <div className="auth-header">
-          <Link to="/" className="auth-logo">📌 PostIt</Link>
+          <Link to="/" className="auth-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /> PostIt</Link>
           <h2>הרשמה</h2>
           <p>צור חשבון חדש והתחל לפרסם</p>
         </div>

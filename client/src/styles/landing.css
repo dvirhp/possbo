@@ -26,6 +26,15 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-logo-img {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
 }
 
 .nav-buttons {

@@ -75,7 +75,7 @@ export default function ForgotPassword() {
       <div className="auth-card">
         <Link to="/login" className="auth-back-btn">←</Link>
         <div className="auth-header">
-          <div className="auth-logo">📌 PostIt</div>
+          <div className="auth-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /> PostIt</div>
           <h2>{step === 1 ? 'שכחת סיסמה?' : 'איפוס סיסמה'}</h2>
           <p>{step === 1 ? 'הזן את האימייל שלך ונשלח לך קוד' : `הזן את הקוד שנשלח ל-${email}`}</p>
         </div>
