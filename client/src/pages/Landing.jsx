@@ -16,7 +16,7 @@ export default function Landing() {
   return (
     <div className="landing-page">
       <nav className="landing-nav">
-        <div className="nav-logo">📌 PostIt</div>
+        <div className="nav-logo"><img src="/logo.svg" alt="PostIt" className="nav-logo-img" /> PostIt</div>
         <div className="nav-buttons">
           <Link to="/login" className="nav-btn nav-btn-login">התחברות</Link>
           <Link to="/register" className="nav-btn nav-btn-register">הרשמה</Link>

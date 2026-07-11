@@ -66,7 +66,7 @@ export default function Login() {
       <div className="auth-card">
         <Link to="/" className="auth-back-btn">←</Link>
         <div className="auth-header">
-          <Link to="/" className="auth-logo">📌 PostIt</Link>
+          <Link to="/" className="auth-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /> PostIt</Link>
           <h2>התחברות</h2>
           <p>התחבר לחשבון שלך</p>
         </div>

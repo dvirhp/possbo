@@ -5,9 +5,9 @@ import { groupsService } from '../services/groupsService'
 const DataContext = createContext(null)
 
 // Cache TTL - data older than this will trigger a background refresh
-const CACHE_TTL = 60_000 // 60 seconds
+const CACHE_TTL = 30_000 // 30 seconds
 // Background polling interval (how often to check for stale data)
-const POLL_INTERVAL = 45_000 // 45 seconds
+const POLL_INTERVAL = 20_000 // 20 seconds
 
 export function DataProvider({ children }) {
   // Auth state
@@ -41,6 +41,12 @@ export function DataProvider({ children }) {
       if (meRes?.data) {
         setUser(meRes.data)
         setAuthChecked(true)
+        // Verify Facebook connection in background after login
+        authAPI.verifyFacebook().then(verifyRes => {
+          if (verifyRes?.data && typeof verifyRes.data.fbSessionValid === 'boolean') {
+            setUser(prev => prev ? { ...prev, fbSessionValid: verifyRes.data.fbSessionValid } : prev)
+          }
+        }).catch(() => {})
         return true
       }
     } catch { /* ignore */ }
@@ -167,8 +173,10 @@ export function DataProvider({ children }) {
     }
   }, [fetchAll])
 
-  // Force refresh (pull-to-refresh / manual)
+  // Force refresh (pull-to-refresh / manual) - bypasses in-progress guard
   const forceRefresh = useCallback(() => {
+    fetchInProgressRef.current = false
+    lastFetchRef.current = {}
     return fetchAll(false)
   }, [fetchAll])
 

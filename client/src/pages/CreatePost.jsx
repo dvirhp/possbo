@@ -831,6 +831,16 @@ export default function CreatePost() {
                     </div>
                   )}
 
+                  {selectedGroups.length > 0 && (
+                    <div className="cp-exposure-counter">
+                      <span className="cp-exposure-icon">👁</span>
+                      <span className="cp-exposure-number">
+                        {selectedGroups.reduce((sum, g) => sum + (g.memberCount || 0), 0).toLocaleString()}
+                      </span>
+                      <span className="cp-exposure-label">חשיפה פוטנציאלית</span>
+                    </div>
+                  )}
+
                   {loadingGroups ? (
                     <div className="cp-loading">טוען קבוצות...</div>
                   ) : groups.length === 0 ? (

@@ -10,9 +10,11 @@ import {
   captureGroupScreenshot,
   scrapeMyGroups,
   publishToGroup,
+  scrapeGroupsMetadata,
 } from "../utils/facebook-automation.js";
 import { savePost } from "../utils/posts-storage.js";
 import { createLogger } from "../utils/logger.js";
+import { refreshGroupsMetadataForUser } from "../jobs/group-metadata-refresh.js";
 import {
   isAllowedUrl,
   isValidGroupName,
@@ -45,6 +47,40 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const log = createLogger("groups");
+
+const groupImagesDir = path.join(uploadsDir, "groups");
+
+/**
+ * Download a Facebook group image and save locally.
+ * Returns the local path (e.g. /uploads/groups/abc123.jpg) or null on failure.
+ */
+async function downloadGroupImage(fbImageUrl, groupId) {
+  if (!fbImageUrl || !fbImageUrl.startsWith("http")) return null;
+
+  try {
+    if (!fs.existsSync(groupImagesDir)) {
+      fs.mkdirSync(groupImagesDir, { recursive: true });
+    }
+
+    const response = await fetch(fbImageUrl, { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) return null;
+
+    const contentType = response.headers.get("content-type") || "";
+    const ext = contentType.includes("png") ? ".png"
+      : contentType.includes("webp") ? ".webp"
+      : ".jpg";
+
+    const filename = `${groupId.replace(/[^a-zA-Z0-9_-]/g, "_")}${ext}`;
+    const filePath = path.join(groupImagesDir, filename);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(filePath, buffer);
+
+    return `/uploads/groups/${filename}`;
+  } catch {
+    return null;
+  }
+}
 
 // Middleware to check authentication
 const requireAuth = (req, res, next) => {
@@ -267,10 +303,10 @@ router.get(
           });
         }
         // Delete the FacebookGroup record
-        await prisma.facebookGroup.delete({ where: { id: g.id } });
+        await prisma.facebookGroup.deleteMany({ where: { id: g.id } });
       }
 
-      // Upsert groups that exist in the new list
+      // Upsert groups that exist in the new list (save FB image URL for now)
       for (const g of groups) {
         if (g.id && g.name) {
           await prisma.facebookGroup.upsert({
@@ -293,6 +329,26 @@ router.get(
             },
           });
         }
+      }
+
+      // Download images in background (don't block the response)
+      const groupsToDownload = groups.filter(g => g.image && g.image.includes("fbcdn.net"));
+      if (groupsToDownload.length > 0) {
+        log.info(`Downloading ${groupsToDownload.length} group images in background...`);
+        (async () => {
+          for (const g of groupsToDownload) {
+            try {
+              const localPath = await downloadGroupImage(g.image, g.id);
+              if (localPath) {
+                await prisma.facebookGroup.updateMany({
+                  where: { userId, groupId: g.id },
+                  data: { groupImage: localPath },
+                });
+              }
+            } catch { /* skip */ }
+          }
+          log.info("Group images download complete");
+        })();
       }
     }
 
@@ -344,6 +400,17 @@ router.get(
       privacyType: g.privacyType || null,
     }));
     res.json({ success: true, groups: formatted });
+  }),
+);
+
+// Refresh group metadata (member count + privacy type)
+router.post(
+  "/refresh-metadata",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const result = await refreshGroupsMetadataForUser(userId);
+    res.json({ success: true, ...result });
   }),
 );
 

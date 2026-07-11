@@ -288,6 +288,26 @@ export async function processPublicationJobs() {
           jobId: job.id,
           userDailyTotal: todayCount + i + 1,
         });
+
+        // Track exposure - add group's member count to daily exposure
+        const groupMemberCount = group.memberCount || 0;
+        if (groupMemberCount > 0) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          await prisma.dailyExposure.upsert({
+            where: { userId_date: { userId: user.id, date: today } },
+            update: {
+              exposureCount: { increment: groupMemberCount },
+              postsPublished: { increment: 1 },
+            },
+            create: {
+              userId: user.id,
+              date: today,
+              exposureCount: groupMemberCount,
+              postsPublished: 1,
+            },
+          }).catch((e) => log.debug("Exposure tracking error", e.message));
+        }
       } catch (error) {
         const errorMsg = error.message || "Unknown error";
         const newAttempts = job.attempts + 1;

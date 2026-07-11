@@ -124,7 +124,19 @@ export async function bootstrapFacebookSession(userId) {
     let loggedIn = false;
 
     while (Date.now() - startedAt < maxWaitMs) {
-      await page.waitForTimeout(3000);
+      try {
+        await page.waitForTimeout(3000);
+      } catch {
+        // Browser/page was closed by the user — check cookies before giving up
+        try {
+          if (await hasFacebookLoginCookies(context)) {
+            loggedIn = true;
+          }
+        } catch {
+          // Context also closed
+        }
+        break;
+      }
 
       try {
         if (await hasFacebookLoginCookies(context)) {
@@ -158,7 +170,14 @@ export async function bootstrapFacebookSession(userId) {
     }
 
     // Save storage state
-    const storageState = await context.storageState();
+    let storageState;
+    try {
+      storageState = await context.storageState();
+    } catch {
+      // Browser already closed — can't save state
+      log.warn("Browser closed before storage state could be saved");
+      throw new Error("FACEBOOK_SESSION_NOT_COMPLETED");
+    }
 
     if (userId) {
       // Save to DB per user (encrypted)
@@ -204,14 +223,32 @@ export async function scrapeMyGroups(userId) {
 
     // Go to user's groups page
     log.debug("Navigating to your groups page...");
-    await page.goto("https://www.facebook.com/groups/joins/", {
+    await page.goto("https://www.facebook.com/groups/joins/?nav_source=tab&ordering=viewer_added", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(5000);
 
-    // Check if logged in
+    // Check if logged in - both URL-based and content-based detection
     if (/login|checkpoint/i.test(page.url())) {
+      throw new Error("FACEBOOK_SESSION_REQUIRED");
+    }
+
+    // Also check page content for login form (FB sometimes shows login on the same URL)
+    const isLoginPage = await page.evaluate(() => {
+      const text = document.body.innerText || "";
+      return /שכחת את החשבון|Forgot account|Log in|Sign in|התחברות|הירשם/i.test(text)
+        && document.querySelector('input[name="email"], input[name="pass"]') !== null;
+    });
+    if (isLoginPage) {
+      log.warn("Facebook session expired — login page detected");
+      // Mark session as invalid in DB
+      if (userId) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { fbSessionValid: false, facebookStorageState: null },
+        }).catch(() => {});
+      }
       throw new Error("FACEBOOK_SESSION_REQUIRED");
     }
 
@@ -224,11 +261,11 @@ export async function scrapeMyGroups(userId) {
         () => document.body.scrollHeight,
       );
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(1200);
+      await page.waitForTimeout(1500);
 
       if (currentHeight === previousHeight) {
         noChangeCount++;
-        if (noChangeCount >= 3) {
+        if (noChangeCount >= 4) {
           log.debug(`Reached bottom after ${i + 1} scrolls`);
           break;
         }
@@ -447,91 +484,8 @@ export async function scrapeMyGroups(userId) {
 
     log.info(`Total groups found: ${groups.length}`);
 
-    // Second pass: visit each group page to get member count if missing
-    const groupsNeedingInfo = groups.filter((g) => !g.memberCount);
-    if (groupsNeedingInfo.length > 0) {
-      log.info(
-        `Fetching member count for ${groupsNeedingInfo.length} groups...`,
-      );
-      for (const group of groupsNeedingInfo) {
-        try {
-          await page.goto(group.url, {
-            waitUntil: "domcontentloaded",
-            timeout: 15000,
-          });
-          await page.waitForTimeout(2000);
-          const info = await page.evaluate(() => {
-            let memberCount = null;
-            let privacyType = null;
-            const bodyText = document.body.innerText || "";
-
-            // Look for member count patterns in the group header area
-            // Facebook typically shows "X members" or "X חברים" in group headers
-            const memberPatterns = [
-              /([\d,.]+)\s*(?:M|מיליון)\s*(?:members|חברי[ם]?|total members|סה"כ חברים)/i,
-              /([\d,.]+)\s*(?:K|אלף)\s*(?:members|חברי[ם]?|total members|סה"כ חברים)/i,
-              /([\d,.]+)\s*(?:members|חברי[ם]?|total members|סה"כ חברים)/i,
-              /(?:members|חברי[ם]?|total members|סה"כ חברים)\s*[·•:\s]*([\d,.]+)\s*(?:K|k|M|m|אלף|מיליון)?/i,
-            ];
-
-            // Focus on spans and links near the top of the page
-            const headerElements = document.querySelectorAll(
-              'a[href*="members"], span',
-            );
-            for (const el of headerElements) {
-              const text = el.textContent?.trim() || "";
-              if (text.length > 200) continue;
-              for (const pattern of memberPatterns) {
-                const m = text.match(pattern);
-                if (m) {
-                  let num = m[1].replace(/,/g, "");
-                  if (/M|m|מיליון/i.test(text)) num = parseFloat(num) * 1000000;
-                  else if (/K|k|אלף/i.test(text)) num = parseFloat(num) * 1000;
-                  const parsed = Math.round(Number(num));
-                  if (parsed > 0) {
-                    memberCount = parsed;
-                    break;
-                  }
-                }
-              }
-              if (memberCount) break;
-            }
-
-            // Fallback: search full page text
-            if (!memberCount) {
-              for (const pattern of memberPatterns) {
-                const m = bodyText.match(pattern);
-                if (m) {
-                  let num = m[1].replace(/,/g, "");
-                  if (/M|m|מיליון/i.test(m[0])) num = parseFloat(num) * 1000000;
-                  else if (/K|k|אלף/i.test(m[0])) num = parseFloat(num) * 1000;
-                  const parsed = Math.round(Number(num));
-                  if (parsed > 0) {
-                    memberCount = parsed;
-                    break;
-                  }
-                }
-              }
-            }
-
-            // Privacy from page text
-            if (/private group|קבוצה פרטית|סגורה/i.test(bodyText)) {
-              privacyType = "private";
-            } else if (/public group|קבוצה ציבורית|פתוחה/i.test(bodyText)) {
-              privacyType = "public";
-            }
-
-            return { memberCount, privacyType };
-          });
-
-          if (info.memberCount) group.memberCount = info.memberCount;
-          if (info.privacyType && !group.privacyType)
-            group.privacyType = info.privacyType;
-        } catch (err) {
-          log.debug(`Could not fetch info for ${group.name}: ${err.message}`);
-        }
-      }
-    }
+    // NOTE: Member count / privacy type enrichment is handled separately
+    // by the refreshGroupsMetadata job (runs in background, not blocking sync)
 
     // Save updated storage state back to DB
     const updatedState = await context.storageState();
@@ -1134,6 +1088,180 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       screenshot: screenshot.toString("base64"),
       postUrl,
     };
+  } finally {
+    await browser.close();
+  }
+}
+
+// ─── Scrape group metadata (member count + privacy) ───────
+
+/**
+ * Visit each group page and extract member count and privacy type.
+ * Uses the header area text which shows e.g. "Private group · 88.7K members"
+ * @param {string} userId - user whose session to use
+ * @param {Array<{groupId: string, groupUrl: string}>} groups - groups to scrape
+ * @returns {Array<{groupId: string, memberCount: number|null, privacyType: string|null}>}
+ */
+export async function scrapeGroupsMetadata(userId, groups) {
+  const storageState = await getStorageState(userId);
+
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+  });
+
+  const results = [];
+
+  try {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+      userAgent: USER_AGENT,
+      storageState,
+    });
+    const page = await context.newPage();
+
+    // Verify we're logged in
+    await page.goto("https://www.facebook.com/", {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    await page.waitForTimeout(2000);
+    if (!(await hasFacebookLoginCookies(context))) {
+      throw new Error("FACEBOOK_SESSION_REQUIRED");
+    }
+
+    for (const group of groups) {
+      try {
+        const url = group.groupUrl || `https://www.facebook.com/groups/${group.groupId}/`;
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+        await page.waitForTimeout(2500);
+
+        const metadata = await page.evaluate(() => {
+          let memberCount = null;
+          let privacyType = null;
+
+          // Look for the header info line: "Private group · 88.7K members" or "קבוצה פרטית · 88.7K חברים"
+          // This is typically in a span or div near the top of the page
+          const allSpans = document.querySelectorAll("span, a");
+
+          // Pattern: "{number}{.number}{K|M} members" or "{number}{,number} members"
+          const memberPatterns = [
+            // "88.7K members", "1.2M members", "88.7K חברים"
+            /([\d,.]+)\s*K\s*(?:members|חברי[ם]?)/i,
+            /([\d,.]+)\s*M\s*(?:members|חברי[ם]?)/i,
+            // Hebrew with אלף/מיליון: "88.7 אלף חברים", "1.2 מיליון חברים"
+            /([\d,.]+)\s*(?:אלף)\s*(?:חברי[ם]?|members)/i,
+            /([\d,.]+)\s*(?:מיליון)\s*(?:חברי[ם]?|members)/i,
+            // "88,700 members", "1,234 חברים"
+            /([\d,]+)\s*(?:members|חברי[ם]?)/i,
+            // Reversed: "חברים: 88,700" or "members · 88.7K"
+            /(?:members|חברי[ם]?)\s*[·•:]\s*([\d,.]+)\s*(?:K|M|אלף|מיליון)?/i,
+          ];
+
+          for (const el of allSpans) {
+            const text = el.textContent?.trim() || "";
+            if (text.length < 3 || text.length > 100) continue;
+
+            // Check for member count
+            if (!memberCount) {
+              for (const pattern of memberPatterns) {
+                const m = text.match(pattern);
+                if (m) {
+                  let num = m[1].replace(/,/g, "");
+                  const fullMatch = m[0].toLowerCase();
+                  if (/\bm\b|מיליון/i.test(fullMatch)) {
+                    num = parseFloat(num) * 1000000;
+                  } else if (/\bk\b|אלף/i.test(fullMatch)) {
+                    num = parseFloat(num) * 1000;
+                  }
+                  const parsed = Math.round(Number(num));
+                  if (parsed > 0) {
+                    memberCount = parsed;
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Check for privacy type
+            if (!privacyType) {
+              if (/private group|קבוצה פרטית|קבוצה סגורה|פרטית/i.test(text)) {
+                privacyType = "private";
+              } else if (/public group|קבוצה ציבורית|קבוצה פתוחה|ציבורית/i.test(text)) {
+                privacyType = "public";
+              }
+            }
+
+            if (memberCount && privacyType) break;
+          }
+
+          // Fallback: search full body text if nothing found yet
+          if (!memberCount || !privacyType) {
+            const bodyText = document.body.innerText?.substring(0, 3000) || "";
+
+            if (!memberCount) {
+              // Look for the pattern in general body text (first 3000 chars = header area)
+              const bodyPatterns = [
+                /([\d,.]+)\s*K\s*(?:members|חברי[ם]?)/i,
+                /([\d,.]+)\s*M\s*(?:members|חברי[ם]?)/i,
+                /([\d,.]+)\s*(?:אלף)\s*(?:חברי[ם]?|members)/i,
+                /([\d,.]+)\s*(?:מיליון)\s*(?:חברי[ם]?|members)/i,
+                /([\d,]+)\s*(?:members|חברי[ם]?)/i,
+              ];
+              for (const pattern of bodyPatterns) {
+                const m = bodyText.match(pattern);
+                if (m) {
+                  let num = m[1].replace(/,/g, "");
+                  if (/M|מיליון/i.test(m[0])) num = parseFloat(num) * 1000000;
+                  else if (/K|אלף/i.test(m[0])) num = parseFloat(num) * 1000;
+                  const parsed = Math.round(Number(num));
+                  if (parsed > 0) {
+                    memberCount = parsed;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!privacyType) {
+              if (/private group|קבוצה פרטית|סגורה/i.test(bodyText)) {
+                privacyType = "private";
+              } else if (/public group|קבוצה ציבורית|פתוחה/i.test(bodyText)) {
+                privacyType = "public";
+              }
+            }
+          }
+
+          return { memberCount, privacyType };
+        });
+
+        results.push({
+          groupId: group.groupId,
+          memberCount: metadata.memberCount,
+          privacyType: metadata.privacyType,
+        });
+
+        log.debug("Group metadata scraped", {
+          groupId: group.groupId,
+          memberCount: metadata.memberCount,
+          privacyType: metadata.privacyType,
+        });
+      } catch (err) {
+        log.debug(`Failed to scrape metadata for group ${group.groupId}: ${err.message}`);
+        results.push({ groupId: group.groupId, memberCount: null, privacyType: null });
+      }
+
+      // Rate limit between group visits
+      await page.waitForTimeout(1500);
+    }
+
+    // Save updated storage state
+    const updatedState = await context.storageState();
+    if (userId) {
+      await saveUserStorageState(userId, updatedState);
+    }
+
+    return results;
   } finally {
     await browser.close();
   }
