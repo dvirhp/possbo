@@ -33,7 +33,7 @@ describe("groupsService", () => {
 
       await groupsService.scrapeMyGroups();
 
-      expect(mockGet).toHaveBeenCalledWith("/groups/scrape-my-groups");
+      expect(mockGet).toHaveBeenCalledWith("/groups/scrape-my-groups", { timeout: 120000 });
     });
 
     it("should return the response data", async () => {

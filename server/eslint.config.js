@@ -15,6 +15,7 @@ export default [
         URL: "readonly",
         URLSearchParams: "readonly",
         fetch: "readonly",
+        AbortController: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
         setInterval: "readonly",

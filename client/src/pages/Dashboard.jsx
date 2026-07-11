@@ -850,21 +850,21 @@ export default function Dashboard() {
             setOverviewDetail(null)
             setOverviewEditMode(false)
             forceRefresh()
-          } catch {}
+          } catch { /* ignore */ }
         }}
         onPause={async () => {
           try {
             await groupsService.togglePause(overviewDetail.id)
             setOverviewDetail(null)
             forceRefresh()
-          } catch {}
+          } catch { /* ignore */ }
         }}
         onDuplicate={async () => {
           try {
             await groupsService.duplicateCampaign(overviewDetail.id)
             setOverviewDetail(null)
             forceRefresh()
-          } catch {}
+          } catch { /* ignore */ }
         }}
         onDelete={() => {
           setOverviewDetail(null)
@@ -875,7 +875,7 @@ export default function Dashboard() {
               try {
                 await groupsService.deleteCampaign(overviewDetail.id)
                 forceRefresh()
-              } catch {}
+              } catch { /* ignore */ }
             }
           })
         }}
