@@ -40,6 +40,7 @@ vi.mock('../../services/groupsService.js', () => ({
     getSavedGroups: vi.fn().mockResolvedValue({ data: { success: true, groups: [] } }),
     getPublicationHistory: vi.fn().mockResolvedValue({ data: { success: true, history: [] } }),
     getStats: vi.fn().mockResolvedValue({ data: { success: true, stats: {} } }),
+    getDashboardKpis: vi.fn().mockResolvedValue({ data: { kpis: {} } }),
   },
 }));
 
