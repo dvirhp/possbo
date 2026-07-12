@@ -518,19 +518,20 @@
   position: absolute;
   top: 14px;
   right: 14px;
-  background: var(--bg-elevated, #2a2f3a);
-  border: 1px solid var(--border, rgba(255,255,255,0.06));
-  color: var(--indigo, #818cf8);
-  padding: 6px 14px;
-  border-radius: 20px;
+  background: none;
+  border: none;
+  color: var(--text-muted, #6b7684);
+  padding: 8px;
+  border-radius: 50%;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   transition: 0.2s;
 }
 
 .auth-header .back-button:hover {
-  background: var(--indigo-soft, rgba(129,140,248,0.12));
+  color: var(--text-primary, #e8ecf0);
+  background: var(--bg-elevated, rgba(255,255,255,0.06));
 }
 
 /* ─── Responsive ─── */

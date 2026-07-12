@@ -5,6 +5,11 @@ import multer from "multer";
 import { PrismaClient } from "@prisma/client";
 import { asyncHandler } from "../utils/async-handler.js";
 import { imageFileFilter, MAX_FILE_SIZE } from "../utils/security.js";
+import {
+  refreshSinglePublicationMetrics,
+  scrapeUserPublicationMetrics,
+  savePublicationMetrics,
+} from "../utils/metrics-scraper.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
@@ -198,6 +203,7 @@ router.get(
     // Override any legacy FAILED statuses and include screenshot info
     const cleaned = history.map((h) => ({
       ...h,
+      postUrl: h.externalPostUrl || null,
       post: h.post
         ? {
             ...h.post,
@@ -332,8 +338,10 @@ router.post(
     }
 
     // Allow saving without groups (draft only)
-    if (!groupIds?.length && scheduleMode && scheduleMode !== 'draft') {
-      return res.status(400).json({ error: "groupIds are required for scheduled campaigns" });
+    if (!groupIds?.length && scheduleMode && scheduleMode !== "draft") {
+      return res
+        .status(400)
+        .json({ error: "groupIds are required for scheduled campaigns" });
     }
 
     // Determine scheduled datetime
@@ -446,18 +454,40 @@ router.post(
 
     // Create PostGroup + Schedule + Job for each group
     const results = [];
-    for (const groupId of (groupIds || [])) {
+    for (const groupId of groupIds || []) {
       // Find the Group record (groupId here is the facebook group slug)
       let group = await prisma.group.findFirst({
         where: { url: { contains: groupId } },
       });
       if (!group) {
+        // Look up memberCount/privacyType from FacebookGroup
+        const fbGroup = await prisma.facebookGroup.findFirst({
+          where: { userId, groupId },
+          select: { memberCount: true, privacyType: true, groupName: true },
+        });
         group = await prisma.group.create({
           data: {
-            name: groupId,
+            name: fbGroup?.groupName || groupId,
             url: `https://www.facebook.com/groups/${groupId}`,
+            memberCount: fbGroup?.memberCount || null,
+            privacyType: fbGroup?.privacyType || null,
           },
         });
+      } else if (!group.memberCount) {
+        // Sync memberCount from FacebookGroup if missing
+        const fbGroup = await prisma.facebookGroup.findFirst({
+          where: { userId, groupId },
+          select: { memberCount: true, privacyType: true },
+        });
+        if (fbGroup?.memberCount) {
+          group = await prisma.group.update({
+            where: { id: group.id },
+            data: {
+              memberCount: fbGroup.memberCount,
+              privacyType: fbGroup.privacyType || group.privacyType,
+            },
+          });
+        }
       }
 
       const postGroup = await prisma.postGroup.create({
@@ -519,7 +549,9 @@ router.get(
         media: { orderBy: { orderIndex: "asc" } },
         postGroups: {
           include: {
-            group: { select: { id: true, name: true, url: true, pictureUrl: true } },
+            group: {
+              select: { id: true, name: true, url: true, pictureUrl: true },
+            },
             schedules: { where: { isActive: true }, take: 1 },
           },
         },
@@ -535,7 +567,9 @@ router.get(
         media: { orderBy: { orderIndex: "asc" } },
         postGroups: {
           include: {
-            group: { select: { id: true, name: true, url: true, pictureUrl: true } },
+            group: {
+              select: { id: true, name: true, url: true, pictureUrl: true },
+            },
             schedules: { where: { isActive: true }, take: 1 },
           },
         },
@@ -549,18 +583,24 @@ router.get(
       title: p.title,
       content: p.content,
       imageUrl: p.media?.[0]?.url || p.imageUrl || null,
-      images: p.media?.map(m => m.url) || [],
+      images: p.media?.map((m) => m.url) || [],
       status: p.status,
       isAnonymous: p.isAnonymous,
       location: p.location,
-      groups: p.postGroups?.map(pg => ({
-        id: pg.group?.id,
-        name: pg.group?.name,
-        url: pg.group?.url,
-        pictureUrl: pg.group?.pictureUrl,
-        externalId: pg.group?.url?.split('/groups/')?.[1]?.replace(/\/$/, '') || pg.group?.id,
-      })).filter(g => g.name) || [],
-      groupNames: p.postGroups?.map(pg => pg.group?.name).filter(Boolean) || [],
+      groups:
+        p.postGroups
+          ?.map((pg) => ({
+            id: pg.group?.id,
+            name: pg.group?.name,
+            url: pg.group?.url,
+            pictureUrl: pg.group?.pictureUrl,
+            externalId:
+              pg.group?.url?.split("/groups/")?.[1]?.replace(/\/$/, "") ||
+              pg.group?.id,
+          }))
+          .filter((g) => g.name) || [],
+      groupNames:
+        p.postGroups?.map((pg) => pg.group?.name).filter(Boolean) || [],
       groupCount: p.postGroups?.length || 0,
       campaignType: p.campaignType,
       recurringDays: p.recurringDays || [],
@@ -569,9 +609,12 @@ router.get(
       dayTimes: p.dayTimes || null,
       recurringStart: p.recurringStart,
       recurringEnd: p.recurringEnd,
-      scheduleMode: p.campaignType === 'RECURRING' ? 'recurring'
-        : p.postGroups?.some(pg => pg.schedules?.length > 0) ? 'scheduled'
-        : 'now',
+      scheduleMode:
+        p.campaignType === "RECURRING"
+          ? "recurring"
+          : p.postGroups?.some((pg) => pg.schedules?.length > 0)
+            ? "scheduled"
+            : "now",
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     });
@@ -598,11 +641,28 @@ router.get(
         media: { orderBy: { orderIndex: "asc" } },
         postGroups: {
           include: {
-            group: { select: { id: true, name: true } },
-            schedules: { where: { isActive: true }, take: 1 },
+            group: {
+              select: {
+                id: true,
+                name: true,
+                memberCount: true,
+                pictureUrl: true,
+              },
+            },
+            schedules: {
+              where: { isActive: true },
+              take: 1,
+              select: { nextRunAt: true },
+            },
             jobs: {
               where: { status: { in: ["PENDING", "RUNNING"] } },
               take: 1,
+              select: { scheduledAt: true },
+            },
+            publicationHistory: {
+              orderBy: { publishedAt: "desc" },
+              take: 1,
+              select: { externalPostUrl: true, status: true },
             },
           },
         },
@@ -616,13 +676,16 @@ router.get(
         (pg) => pg.schedules.length > 0,
       );
       const hasPendingJob = post.postGroups.some((pg) => pg.jobs.length > 0);
+      const hasPublished = post.postGroups.some(
+        (pg) => pg.publicationHistory?.[0]?.status === "SUCCESS",
+      );
 
       let displayStatus;
       if (post.isPaused) displayStatus = "paused";
       else if (post.status === "DRAFT") displayStatus = "draft";
-      else if (post.campaignType === "RECURRING" && hasActiveSchedule)
-        displayStatus = "recurring";
-      else if (hasPendingJob) displayStatus = "scheduled";
+      else if (post.campaignType === "RECURRING") displayStatus = "recurring";
+      else if (hasPendingJob || hasActiveSchedule) displayStatus = "scheduled";
+      else if (hasPublished) displayStatus = "published";
       else if (post.status === "ACTIVE") displayStatus = "active";
       else displayStatus = "one-time";
 
@@ -647,13 +710,112 @@ router.get(
         groups: post.postGroups.map((pg) => ({
           id: pg.group?.id,
           name: pg.group?.name,
+          memberCount: pg.group?.memberCount || 0,
+          image: pg.group?.pictureUrl || null,
         })),
+        totalExposure: post.postGroups.reduce(
+          (sum, pg) => sum + (pg.group?.memberCount || 0),
+          0,
+        ),
+        publishedCount: post.postGroups.filter(
+          (pg) => pg.publicationHistory?.[0]?.status === "SUCCESS",
+        ).length,
         createdAt: post.createdAt,
         updatedAt: post.updatedAt,
+        scheduledAt:
+          post.postGroups
+            .map(
+              (pg) => pg.jobs?.[0]?.scheduledAt || pg.schedules?.[0]?.nextRunAt,
+            )
+            .filter(Boolean)
+            .sort((a, b) => new Date(a) - new Date(b))[0] || null,
+        postUrl:
+          post.postGroups
+            .map((pg) => pg.publicationHistory?.[0]?.externalPostUrl)
+            .find((u) => u) || null,
       };
     });
 
     res.json({ success: true, campaigns });
+  }),
+);
+
+// ─── Get single campaign with publication history ────────
+
+router.get(
+  "/campaigns/:postId",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    const post = await prisma.post.findFirst({
+      where: { id: postId, userId },
+      include: {
+        media: { orderBy: { orderIndex: "asc" } },
+        postGroups: {
+          include: {
+            group: {
+              select: {
+                id: true,
+                name: true,
+                memberCount: true,
+                pictureUrl: true,
+              },
+            },
+            publicationHistory: {
+              orderBy: { publishedAt: "desc" },
+              select: {
+                id: true,
+                status: true,
+                publishedAt: true,
+                externalPostUrl: true,
+                groupId: true,
+                metrics: {
+                  orderBy: { collectedAt: "desc" },
+                  take: 1,
+                  select: { likesCount: true, commentsCount: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    // Build publication history grouped by group
+    const publicationHistory = post.postGroups.flatMap((pg) =>
+      pg.publicationHistory.map((h) => ({
+        id: h.id,
+        groupId: pg.group?.id,
+        groupName: pg.group?.name || "",
+        groupImage: pg.group?.pictureUrl || null,
+        status: h.status,
+        publishedAt: h.publishedAt,
+        postUrl: h.externalPostUrl || null,
+        likes: h.metrics?.[0]?.likesCount || 0,
+        comments: h.metrics?.[0]?.commentsCount || 0,
+      })),
+    );
+
+    const campaign = {
+      id: post.id,
+      title: post.title,
+      content: post.content,
+      images:
+        post.media?.map((m) => m.url) || (post.imageUrl ? [post.imageUrl] : []),
+      groups: post.postGroups.map((pg) => ({
+        id: pg.group?.id,
+        name: pg.group?.name,
+        memberCount: pg.group?.memberCount || 0,
+        image: pg.group?.pictureUrl || null,
+      })),
+      publicationHistory,
+    };
+
+    res.json({ success: true, campaign });
   }),
 );
 
@@ -1077,54 +1239,66 @@ router.get(
       ? new Date(from)
       : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Get daily exposure data
-    const exposureData = await prisma.dailyExposure.findMany({
-      where: {
-        userId,
-        date: { gte: startDate, lte: endDate },
-      },
-      orderBy: { date: "asc" },
-    });
-
-    // Get previous period for comparison
+    // Run all queries in parallel
     const periodLength = endDate.getTime() - startDate.getTime();
     const prevStart = new Date(startDate.getTime() - periodLength);
     const prevEnd = new Date(startDate.getTime() - 1);
 
-    const prevExposureData = await prisma.dailyExposure.findMany({
-      where: {
-        userId,
-        date: { gte: prevStart, lte: prevEnd },
-      },
-    });
+    const [exposureData, prevExposureData, topGroups, totalReach] =
+      await Promise.all([
+        prisma.dailyExposure.findMany({
+          where: { userId, date: { gte: startDate, lte: endDate } },
+          orderBy: { date: "asc" },
+        }),
+        prisma.dailyExposure.findMany({
+          where: { userId, date: { gte: prevStart, lte: prevEnd } },
+        }),
+        prisma.facebookGroup.findMany({
+          where: { userId, memberCount: { not: null } },
+          orderBy: { memberCount: "desc" },
+          take: 7,
+          select: {
+            groupId: true,
+            groupName: true,
+            memberCount: true,
+            groupImage: true,
+            privacyType: true,
+          },
+        }),
+        prisma.facebookGroup.aggregate({
+          where: { userId, memberCount: { not: null } },
+          _sum: { memberCount: true },
+        }),
+      ]);
 
-    const currentTotal = exposureData.reduce((sum, d) => sum + d.exposureCount, 0);
-    const prevTotal = prevExposureData.reduce((sum, d) => sum + d.exposureCount, 0);
-    const currentPosts = exposureData.reduce((sum, d) => sum + d.postsPublished, 0);
-    const prevPosts = prevExposureData.reduce((sum, d) => sum + d.postsPublished, 0);
+    const currentTotal = exposureData.reduce(
+      (sum, d) => sum + d.exposureCount,
+      0,
+    );
+    const prevTotal = prevExposureData.reduce(
+      (sum, d) => sum + d.exposureCount,
+      0,
+    );
+    const currentPosts = exposureData.reduce(
+      (sum, d) => sum + d.postsPublished,
+      0,
+    );
+    const prevPosts = prevExposureData.reduce(
+      (sum, d) => sum + d.postsPublished,
+      0,
+    );
 
-    const changePercent = prevTotal > 0
-      ? Math.round(((currentTotal - prevTotal) / prevTotal) * 100)
-      : currentTotal > 0 ? 100 : 0;
-
-    // Top groups by member count
-    const topGroups = await prisma.facebookGroup.findMany({
-      where: { userId, memberCount: { not: null } },
-      orderBy: { memberCount: "desc" },
-      take: 7,
-      select: { groupId: true, groupName: true, memberCount: true, groupImage: true, privacyType: true },
-    });
-
-    // Total potential reach (sum of all unique groups' members)
-    const totalReach = await prisma.facebookGroup.aggregate({
-      where: { userId, memberCount: { not: null } },
-      _sum: { memberCount: true },
-    });
+    const changePercent =
+      prevTotal > 0
+        ? Math.round(((currentTotal - prevTotal) / prevTotal) * 100)
+        : currentTotal > 0
+          ? 100
+          : 0;
 
     res.json({
       success: true,
       exposure: {
-        data: exposureData.map(d => ({
+        data: exposureData.map((d) => ({
           date: d.date,
           exposure: d.exposureCount,
           posts: d.postsPublished,
@@ -1157,8 +1331,10 @@ router.get(
     const userId = req.user.id;
     const { from, to } = req.query;
 
-    const endDate = to ? new Date(to + 'T23:59:59') : new Date();
-    const startDate = from ? new Date(from) : new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to + "T23:59:59") : new Date();
+    const startDate = from
+      ? new Date(from)
+      : new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     // Previous period (same length before startDate)
     const periodMs = endDate.getTime() - startDate.getTime();
@@ -1169,30 +1345,105 @@ router.get(
     // For posts/published/exposure: sum across the period
 
     // Always query live data - snapshots are for comparison only
-    const [currentGroups, currentScheduled, currentPublishedCount, currentPostsCount, currentExposureAgg] = await Promise.all([
+    const [
+      currentGroups,
+      currentScheduled,
+      currentPublishedCount,
+      currentPostsCount,
+      currentExposureAgg,
+      currentLikesAgg,
+      currentCommentsAgg,
+    ] = await Promise.all([
       prisma.facebookGroup.count({ where: { userId } }),
-      prisma.post.count({ where: { userId, status: "ACTIVE", campaignType: { in: ["RECURRING", "SCHEDULED"] } } }),
-      prisma.publicationHistory.count({ where: { userId, status: "SUCCESS", publishedAt: { gte: startDate, lte: endDate } } }),
+      prisma.post.count({
+        where: {
+          userId,
+          status: "ACTIVE",
+          campaignType: { in: ["RECURRING", "SCHEDULED"] },
+        },
+      }),
+      prisma.publicationHistory.count({
+        where: {
+          userId,
+          status: "SUCCESS",
+          publishedAt: { gte: startDate, lte: endDate },
+        },
+      }),
       prisma.post.count({ where: { userId } }),
-      prisma.dailyExposure.aggregate({ where: { userId, date: { gte: startDate, lte: endDate } }, _sum: { exposureCount: true } }),
+      prisma.dailyExposure.aggregate({
+        where: { userId, date: { gte: startDate, lte: endDate } },
+        _sum: { exposureCount: true },
+      }),
+      prisma.publicationMetric.aggregate({
+        where: {
+          publicationHistory: { userId, status: "SUCCESS" },
+          collectedAt: { gte: startDate, lte: endDate },
+        },
+        _sum: { likesCount: true },
+      }),
+      prisma.publicationMetric.aggregate({
+        where: {
+          publicationHistory: { userId, status: "SUCCESS" },
+          collectedAt: { gte: startDate, lte: endDate },
+        },
+        _sum: { commentsCount: true },
+      }),
     ]);
 
     const currentPosts = currentPostsCount;
     const currentPublished = currentPublishedCount;
     const currentExposure = currentExposureAgg._sum.exposureCount || 0;
+    const currentLikes = currentLikesAgg._sum.likesCount || 0;
+    const currentComments = currentCommentsAgg._sum.commentsCount || 0;
 
     // Previous period
-    const [prevGroupsSnapshot, prevPublishedCount, prevPostsCount, prevExposureAgg] = await Promise.all([
-      prisma.dailyStats.findFirst({ where: { userId, date: { lte: prevEnd } }, orderBy: { date: 'desc' }, select: { groupsCount: true, postsCount: true } }),
-      prisma.publicationHistory.count({ where: { userId, status: "SUCCESS", publishedAt: { gte: prevStart, lte: prevEnd } } }),
+    const [
+      prevGroupsSnapshot,
+      prevPublishedCount,
+      prevPostsCount,
+      prevExposureAgg,
+      prevLikesAgg,
+      prevCommentsAgg,
+    ] = await Promise.all([
+      prisma.dailyStats.findFirst({
+        where: { userId, date: { lte: prevEnd } },
+        orderBy: { date: "desc" },
+        select: { groupsCount: true, postsCount: true },
+      }),
+      prisma.publicationHistory.count({
+        where: {
+          userId,
+          status: "SUCCESS",
+          publishedAt: { gte: prevStart, lte: prevEnd },
+        },
+      }),
       prisma.post.count({ where: { userId, createdAt: { lte: prevEnd } } }),
-      prisma.dailyExposure.aggregate({ where: { userId, date: { gte: prevStart, lte: prevEnd } }, _sum: { exposureCount: true } }),
+      prisma.dailyExposure.aggregate({
+        where: { userId, date: { gte: prevStart, lte: prevEnd } },
+        _sum: { exposureCount: true },
+      }),
+      prisma.publicationMetric.aggregate({
+        where: {
+          publicationHistory: { userId, status: "SUCCESS" },
+          collectedAt: { gte: prevStart, lte: prevEnd },
+        },
+        _sum: { likesCount: true },
+      }),
+      prisma.publicationMetric.aggregate({
+        where: {
+          publicationHistory: { userId, status: "SUCCESS" },
+          collectedAt: { gte: prevStart, lte: prevEnd },
+        },
+        _sum: { commentsCount: true },
+      }),
     ]);
 
     const prevGroupsCount = prevGroupsSnapshot?.groupsCount || currentGroups;
     const prevPosts = prevGroupsSnapshot?.postsCount || prevPostsCount;
     const prevPublished = prevPublishedCount;
     const prevExposure = prevExposureAgg._sum.exposureCount || 0;
+    const prevLikes = prevLikesAgg._sum.likesCount || 0;
+    const prevComments = prevCommentsAgg._sum.commentsCount || 0;
 
     const calcChange = (current, prev) => {
       if (!prev || prev === 0) return current > 0 ? 100 : 0;
@@ -1209,22 +1460,188 @@ router.get(
       publishedCount: currentPublished,
       exposureCount: currentExposure,
     };
-    await prisma.dailyStats.upsert({
-      where: { userId_date: { userId, date: today } },
-      update: todayStats,
-      create: { userId, date: today, ...todayStats },
-    }).catch(() => {});
+    await prisma.dailyStats
+      .upsert({
+        where: { userId_date: { userId, date: today } },
+        update: todayStats,
+        create: { userId, date: today, ...todayStats },
+      })
+      .catch(() => {});
 
     res.json({
       success: true,
       kpis: {
-        groups: { value: currentGroups, change: calcChange(currentGroups, prevGroupsCount) },
-        posts: { value: currentPosts, change: calcChange(currentPosts, prevPosts) },
+        groups: {
+          value: currentGroups,
+          change: calcChange(currentGroups, prevGroupsCount),
+        },
+        posts: {
+          value: currentPosts,
+          change: calcChange(currentPosts, prevPosts),
+        },
         scheduled: { value: currentScheduled, change: 0 },
-        published: { value: currentPublished, change: calcChange(currentPublished, prevPublished) },
-        exposure: { value: currentExposure, change: calcChange(currentExposure, prevExposure) },
+        published: {
+          value: currentPublished,
+          change: calcChange(currentPublished, prevPublished),
+        },
+        exposure: {
+          value: currentExposure,
+          change: calcChange(currentExposure, prevExposure),
+        },
+        likes: {
+          value: currentLikes,
+          change: calcChange(currentLikes, prevLikes),
+        },
+        comments: {
+          value: currentComments,
+          change: calcChange(currentComments, prevComments),
+        },
       },
     });
+  }),
+);
+
+// ─── Refresh metrics for a single publication ────────────
+
+router.post(
+  "/publications/:publicationId/refresh-metrics",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { publicationId } = req.params;
+    const userId = req.user.id;
+
+    // Verify publication belongs to user and has a URL
+    const pub = await prisma.publicationHistory.findFirst({
+      where: { id: publicationId, userId },
+      select: { id: true, externalPostUrl: true },
+    });
+
+    if (!pub) {
+      return res.status(404).json({ error: "Publication not found" });
+    }
+
+    if (!pub.externalPostUrl) {
+      return res
+        .status(400)
+        .json({ error: "Publication has no external URL to scrape" });
+    }
+
+    const metrics = await refreshSinglePublicationMetrics(
+      userId,
+      publicationId,
+    );
+
+    res.json({
+      success: true,
+      metrics: {
+        likes: metrics?.likes ?? 0,
+        comments: metrics?.comments ?? 0,
+      },
+    });
+  }),
+);
+
+// ─── Top posts by engagement (likes / comments) ─────────
+
+router.get(
+  "/top-posts",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const { sort = "likes", limit = "10", from, to } = req.query;
+
+    // Build date filter for publishedAt
+    const dateFilter = {};
+    if (from) dateFilter.gte = new Date(from);
+    if (to) dateFilter.lte = new Date(to + "T23:59:59");
+
+    // Get the latest metric per publication, then rank
+    const publications = await prisma.publicationHistory.findMany({
+      where: {
+        userId,
+        status: "SUCCESS",
+        metrics: { some: {} },
+        ...(from || to ? { publishedAt: dateFilter } : {}),
+      },
+      include: {
+        post: {
+          select: { id: true, title: true, content: true },
+        },
+        group: {
+          select: { id: true, name: true },
+        },
+        metrics: {
+          orderBy: { collectedAt: "desc" },
+          take: 1,
+          select: {
+            likesCount: true,
+            commentsCount: true,
+            collectedAt: true,
+          },
+        },
+      },
+    });
+
+    // Flatten to get latest metric per publication and sort
+    const withMetrics = publications
+      .map((pub) => {
+        const m = pub.metrics[0];
+        if (!m) return null;
+        return {
+          id: pub.id,
+          postId: pub.post?.id,
+          title: pub.post?.title || pub.post?.content?.slice(0, 60) || "",
+          groupName: pub.group?.name || "",
+          publishedAt: pub.publishedAt,
+          externalPostUrl: pub.externalPostUrl,
+          likes: m.likesCount,
+          comments: m.commentsCount,
+          collectedAt: m.collectedAt,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const field = sort === "comments" ? "comments" : "likes";
+        return b[field] - a[field];
+      })
+      .slice(0, parseInt(limit, 10) || 10);
+
+    res.json({ success: true, posts: withMetrics });
+  }),
+);
+
+// ─── Batch refresh metrics for recent publications ───────
+
+router.post(
+  "/refresh-all-metrics",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+
+    // Get publications from the last 30 days that have external URLs
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const publications = await prisma.publicationHistory.findMany({
+      where: {
+        userId,
+        status: "SUCCESS",
+        externalPostUrl: { not: null },
+        publishedAt: { gte: thirtyDaysAgo },
+      },
+      select: { id: true, externalPostUrl: true },
+    });
+
+    if (publications.length === 0) {
+      return res.json({ success: true, refreshed: 0 });
+    }
+
+    const results = await scrapeUserPublicationMetrics(userId, publications);
+
+    // Save all results
+    for (const r of results) {
+      await savePublicationMetrics(r.publicationId, r.likes, r.comments);
+    }
+
+    res.json({ success: true, refreshed: results.length });
   }),
 );
 

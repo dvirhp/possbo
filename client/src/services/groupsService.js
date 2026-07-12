@@ -16,8 +16,11 @@ function buildFormData(data, images) {
 
 export const groupsService = {
   getSavedGroups: () => api.get("/groups/saved"),
-  scrapeMyGroups: () => api.get("/groups/scrape-my-groups", { timeout: 120000 }),
-  refreshGroupsMetadata: () => api.post("/groups/refresh-metadata", {}, { timeout: 600000 }),
+  scrapeMyGroups: () =>
+    api.get("/groups/scrape-my-groups", { timeout: 120000 }),
+  refreshGroupsMetadata: () =>
+    api.post("/groups/refresh-metadata", {}, { timeout: 30000 }),
+  getRefreshMetadataStatus: () => api.get("/groups/refresh-metadata/status"),
   getGroupPosts: (groupId) => api.get(`/groups/${groupId}/posts`),
   bootstrapSession: () =>
     api.post("/groups/session/bootstrap", {}, { timeout: 360000 }),
@@ -56,5 +59,15 @@ export const groupsService = {
   getSessionStatus: () => api.get("/scheduler/session-status"),
   getStats: (params) => api.get("/scheduler/stats", { params }),
   getExposure: (params) => api.get("/scheduler/exposure", { params }),
-  getDashboardKpis: (params) => api.get("/scheduler/dashboard-kpis", { params }),
+  getDashboardKpis: (params) =>
+    api.get("/scheduler/dashboard-kpis", { params }),
+  refreshPublicationMetrics: (publicationId) =>
+    api.post(
+      `/scheduler/publications/${publicationId}/refresh-metrics`,
+      {},
+      { timeout: 60000 },
+    ),
+  getTopPosts: (params) => api.get("/scheduler/top-posts", { params }),
+  refreshAllMetrics: () =>
+    api.post("/scheduler/refresh-all-metrics", {}, { timeout: 300000 }),
 };

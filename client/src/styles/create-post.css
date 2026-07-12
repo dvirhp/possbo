@@ -34,12 +34,12 @@
 .cp-back {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: var(--bg-card, #23272f);
-  border: 1px solid var(--border, rgba(255,255,255,0.06));
-  border-radius: 8px;
-  color: var(--indigo, #818cf8);
+  justify-content: center;
+  padding: 8px;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted, #6b7684);
   font-size: 13px;
   font-weight: 600;
   font-family: inherit;
@@ -49,7 +49,8 @@
 }
 
 .cp-back:hover {
-  background: var(--indigo-soft, rgba(129,140,248,0.12));
+  color: var(--text-primary, #e8ecf0);
+  background: var(--bg-elevated, rgba(255,255,255,0.06));
 }
 
 .cp-title {
@@ -1642,9 +1643,7 @@
   }
 
   .cp-back {
-    padding: 6px 10px;
-    font-size: 12px;
-    gap: 4px;
+    padding: 6px;
   }
 
   .cp-title {

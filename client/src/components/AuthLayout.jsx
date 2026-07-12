@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import Sidebar from './Sidebar'
 import BottomNav from './BottomNav'
@@ -8,13 +8,14 @@ export default function AuthLayout({ children }) {
   const { user, authChecked } = useAppData()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState('dashboard')
 
   // Determine active tab from route
   useEffect(() => {
     const path = location.pathname
     if (path === '/dashboard') {
-      const tab = location.state?.tab || 'overview'
+      const tab = searchParams.get('tab') || 'overview'
       if (tab === 'overview') setActiveTab('dashboard')
       else if (tab === 'campaigns') setActiveTab('posts')
       else if (tab === 'groups') setActiveTab('groups')
@@ -28,7 +29,7 @@ export default function AuthLayout({ children }) {
     } else if (path.startsWith('/group/')) {
       setActiveTab('groups')
     }
-  }, [location])
+  }, [location, searchParams])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function AuthLayout({ children }) {
     return (
       <div className="app-layout">
         <div className="app-main" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="loader-pulse"><div/><div/><div/></div>
+          <img src="/logo.svg" alt="" className="loader-logo-pulse" />
         </div>
       </div>
     )

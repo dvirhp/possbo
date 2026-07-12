@@ -14,7 +14,11 @@ import {
 } from "../utils/facebook-automation.js";
 import { savePost } from "../utils/posts-storage.js";
 import { createLogger } from "../utils/logger.js";
-import { refreshGroupsMetadataForUser } from "../jobs/group-metadata-refresh.js";
+import {
+  refreshGroupsMetadataForUser,
+  isRefreshInProgress,
+  getRefreshProgress,
+} from "../jobs/group-metadata-refresh.js";
 import {
   isAllowedUrl,
   isValidGroupName,
@@ -70,9 +74,11 @@ async function downloadGroupImage(fbImageUrl, groupId) {
     if (!response.ok) return null;
 
     const contentType = response.headers.get("content-type") || "";
-    const ext = contentType.includes("png") ? ".png"
-      : contentType.includes("webp") ? ".webp"
-      : ".jpg";
+    const ext = contentType.includes("png")
+      ? ".png"
+      : contentType.includes("webp")
+        ? ".webp"
+        : ".jpg";
 
     const filename = `${groupId.replace(/[^a-zA-Z0-9_-]/g, "_")}${ext}`;
     const filePath = path.join(groupImagesDir, filename);
@@ -312,16 +318,19 @@ router.get(
       // Upsert groups that exist in the new list (save FB image URL for now)
       for (const g of groups) {
         if (g.id && g.name) {
+          // On update: only overwrite memberCount/privacyType if we have new values
+          const updateData = {
+            groupName: g.name,
+            groupImage: g.image || null,
+          };
+          if (g.memberCount) updateData.memberCount = g.memberCount;
+          if (g.privacyType) updateData.privacyType = g.privacyType;
+
           await prisma.facebookGroup.upsert({
             where: {
               userId_groupId: { userId, groupId: g.id },
             },
-            update: {
-              groupName: g.name,
-              groupImage: g.image || null,
-              memberCount: g.memberCount || null,
-              privacyType: g.privacyType || null,
-            },
+            update: updateData,
             create: {
               userId,
               groupId: g.id,
@@ -335,9 +344,13 @@ router.get(
       }
 
       // Download images in background (don't block the response)
-      const groupsToDownload = groups.filter(g => g.image && g.image.includes("fbcdn.net"));
+      const groupsToDownload = groups.filter(
+        (g) => g.image && g.image.includes("fbcdn.net"),
+      );
       if (groupsToDownload.length > 0) {
-        log.info(`Downloading ${groupsToDownload.length} group images in background...`);
+        log.info(
+          `Downloading ${groupsToDownload.length} group images in background...`,
+        );
         (async () => {
           for (const g of groupsToDownload) {
             try {
@@ -348,7 +361,9 @@ router.get(
                   data: { groupImage: localPath },
                 });
               }
-            } catch { /* skip */ }
+            } catch {
+              /* skip */
+            }
           }
           log.info("Group images download complete");
         })();
@@ -389,10 +404,51 @@ router.get(
   "/saved",
   requireAuth,
   asyncHandler(async (req, res) => {
+    const userId = req.user.id;
     const groups = await prisma.facebookGroup.findMany({
-      where: { userId: req.user.id },
+      where: { userId },
       orderBy: { createdAt: "desc" },
     });
+
+    // Get publication/scheduled counts per group
+    const groupUrls = groups.map(
+      (g) => `https://www.facebook.com/groups/${g.groupId}`,
+    );
+    const linkedGroups = await prisma.group.findMany({
+      where: { url: { in: groupUrls } },
+      select: {
+        url: true,
+        postGroups: {
+          where: { userId },
+          select: {
+            post: { select: { status: true, campaignType: true } },
+          },
+        },
+        publicationHistory: {
+          where: { userId, status: "SUCCESS" },
+          select: { id: true },
+        },
+      },
+    });
+
+    // Build lookup: groupId → { postsCount, scheduledCount }
+    const statsMap = {};
+    for (const lg of linkedGroups) {
+      // Extract groupId from URL
+      const match = lg.url?.match(/groups\/([^/]+)/);
+      if (!match) continue;
+      const gId = match[1];
+      const scheduled = lg.postGroups.filter(
+        (pg) =>
+          pg.post.status === "ACTIVE" &&
+          ["RECURRING", "SCHEDULED"].includes(pg.post.campaignType),
+      ).length;
+      statsMap[gId] = {
+        postsCount: lg.publicationHistory.length,
+        scheduledCount: scheduled,
+      };
+    }
+
     // Format to match the scrape response shape the client expects
     const formatted = groups.map((g) => ({
       id: g.groupId,
@@ -401,19 +457,75 @@ router.get(
       url: `https://www.facebook.com/groups/${g.groupId}`,
       memberCount: g.memberCount || null,
       privacyType: g.privacyType || null,
+      postsCount: statsMap[g.groupId]?.postsCount || 0,
+      scheduledCount: statsMap[g.groupId]?.scheduledCount || 0,
     }));
     res.json({ success: true, groups: formatted });
   }),
 );
 
-// Refresh group metadata (member count + privacy type)
+// Refresh group metadata (member count + privacy type) — runs in background
 router.post(
   "/refresh-metadata",
   requireAuth,
   asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const result = await refreshGroupsMetadataForUser(userId);
-    res.json({ success: true, ...result });
+
+    // If already running, return current progress
+    if (isRefreshInProgress(userId)) {
+      const progress = getRefreshProgress(userId);
+      return res.json({ success: true, status: "in_progress", progress });
+    }
+
+    // Start in background, return immediately
+    refreshGroupsMetadataForUser(userId).catch((err) => {
+      log.error("Background metadata refresh failed", {
+        userId,
+        error: err.message,
+      });
+    });
+
+    res.status(202).json({ success: true, status: "started" });
+  }),
+);
+
+// Get progress of metadata refresh
+router.get(
+  "/refresh-metadata/status",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const progress = getRefreshProgress(userId);
+    if (progress) {
+      res.json({ success: true, status: "in_progress", progress });
+    } else {
+      res.json({ success: true, status: "idle" });
+    }
+  }),
+);
+
+// Sync memberCount from FacebookGroup → Group table (one-time fix)
+router.post(
+  "/sync-member-counts",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const fbGroups = await prisma.facebookGroup.findMany({
+      where: { userId, memberCount: { not: null } },
+      select: { groupId: true, memberCount: true, privacyType: true },
+    });
+
+    let synced = 0;
+    for (const fg of fbGroups) {
+      const url = `https://www.facebook.com/groups/${fg.groupId}`;
+      const r = await prisma.group.updateMany({
+        where: { url },
+        data: { memberCount: fg.memberCount, privacyType: fg.privacyType },
+      });
+      if (r.count > 0) synced++;
+    }
+
+    res.json({ success: true, synced, total: fbGroups.length });
   }),
 );
 

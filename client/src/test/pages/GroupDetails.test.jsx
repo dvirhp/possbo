@@ -150,7 +150,7 @@ describe('GroupDetails page', () => {
 
     it('should render back button', async () => {
       await renderGroupDetails();
-      expect(screen.getByText(/חזרה/)).toBeInTheDocument();
+      expect(document.querySelector('.gd-back')).toBeInTheDocument();
     });
   });
 
@@ -304,8 +304,8 @@ describe('GroupDetails page', () => {
   describe('navigation', () => {
     it('should navigate to dashboard on back click', async () => {
       await renderGroupDetails();
-      const backBtns = screen.getAllByText(/חזרה/);
-      fireEvent.click(backBtns[0]);
+      const backBtn = document.querySelector('.gd-back');
+      fireEvent.click(backBtn);
       expect(mockNavigate).toHaveBeenCalledWith(-1);
     });
 

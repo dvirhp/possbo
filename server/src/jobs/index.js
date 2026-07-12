@@ -4,6 +4,10 @@ import {
   generateScheduledJobs,
 } from "./publication-scheduler.js";
 import { runDailyGroupMetadataRefresh } from "./group-metadata-refresh.js";
+import {
+  startMetricsScheduler,
+  stopMetricsScheduler,
+} from "./metrics-collector.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("scheduler");
@@ -78,10 +82,14 @@ export function startScheduler() {
     }
   }, 5000);
 
+  // Start metrics collection (2x daily: nightly + random daytime)
+  startMetricsScheduler();
+
   log.info("Background jobs started", {
     processJobs: `${INTERVALS.PROCESS_JOBS / 1000}s`,
     generateJobs: `${INTERVALS.GENERATE_JOBS / 1000}s`,
     keepAlive: `${INTERVALS.SESSION_KEEPALIVE / 86400000} days`,
+    metricsCollection: "2x daily (02:00 + random 08:00-20:00)",
   });
 }
 
@@ -92,4 +100,5 @@ export function stopScheduler() {
   log.info("Stopping background jobs");
   timers.forEach((t) => clearInterval(t));
   timers = [];
+  stopMetricsScheduler();
 }
