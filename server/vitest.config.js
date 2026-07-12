@@ -14,6 +14,7 @@ export default defineConfig({
         "src/jobs/**",
         "src/routes/scheduler.js",
         "src/utils/facebook-automation.js",
+        "src/utils/metrics-scraper.js",
         "src/utils/puppeteer.js",
       ],
       thresholds: {

@@ -33,6 +33,8 @@ export default defineConfig({
         "src/pages/PostDetails.jsx",
         "src/pages/MyGroups.jsx",
         "src/pages/CreatePost.jsx",
+        "src/pages/Dashboard.jsx",
+        "src/pages/ScheduledCalendar.jsx",
         "src/components/BottomNav.jsx",
         "src/components/BackButton.jsx",
       ],
