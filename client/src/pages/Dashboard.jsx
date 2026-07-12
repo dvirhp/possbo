@@ -1540,7 +1540,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
   useEffect(() => {
     const el = sentinelRef.current
     if (!el) return
-    const observer = new IntersectionObserver(([entry]) => {
+    const observer = new IntersectionObserver(([entry]) => { // eslint-disable-line no-undef
       if (entry.isIntersecting) setVisibleCount(prev => prev + 15)
     }, { rootMargin: '200px' })
     observer.observe(el)

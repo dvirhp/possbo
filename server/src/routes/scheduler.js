@@ -1231,7 +1231,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const { from, to, period } = req.query;
+    const { from, to } = req.query;
 
     // Default: last 30 days
     const endDate = to ? new Date(to) : new Date();

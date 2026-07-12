@@ -202,8 +202,6 @@ export default function ScheduledCalendar() {
     setSelectedDate(date)
   }
 
-  const backToMonth = () => setSelectedDate(null)
-
   const formatDayHeader = (date) => {
     if (!date) return ''
     const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']

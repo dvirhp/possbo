@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 import { chromium } from "playwright";
 import { PrismaClient } from "@prisma/client";
 import { decrypt } from "./encryption.js";
