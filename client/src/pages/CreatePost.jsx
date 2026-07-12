@@ -48,6 +48,14 @@ export default function CreatePost() {
   const [selectedGroups, setSelectedGroups] = useState(
     preSelectedGroup ? [preSelectedGroup] : []
   )
+
+  // Pre-select groups from republish data (e.g. editing a draft)
+  useEffect(() => {
+    if (republishData?.groupIds?.length && cachedGroups?.length && selectedGroups.length === 0) {
+      const matched = cachedGroups.filter(g => republishData.groupIds.includes(g.id))
+      if (matched.length) setSelectedGroups(matched)
+    }
+  }, [republishData, cachedGroups])
   const [loadingGroups, setLoadingGroups] = useState(!cachedGroups?.length)
   const [groupSearch, setGroupSearch] = useState('')
 
@@ -508,7 +516,6 @@ export default function CreatePost() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
           </svg>
-          <span>חזרה</span>
         </button>
       </header>
 
@@ -587,23 +594,17 @@ export default function CreatePost() {
 
           <div className="cp-wizard">
           {/* Restore / Continue buttons */}
-          {!results && currentStep === 0 && !showRestore && (
+          {!results && currentStep === 0 && !showRestore && (recentDrafts.length > 0 || recentHistory.length > 0) && (
             <div className="cp-restore-bar">
-              {loadingRecent ? (
-                <span className="cp-restore-loading-inline">⏳ טוען...</span>
-              ) : (
-                <>
-                  {recentDrafts.length > 0 && (
-                    <button type="button" className="cp-restore-btn" onClick={() => setShowRestore('drafts')}>
-                      📝 המשך מאיפה שעצרתי ({recentDrafts.length})
-                    </button>
-                  )}
-                  {recentHistory.length > 0 && (
-                    <button type="button" className="cp-restore-btn cp-restore-history" onClick={() => setShowRestore('history')}>
-                      🔄 שחזור מהיסטוריה
-                    </button>
-                  )}
-                </>
+              {recentDrafts.length > 0 && (
+                <button type="button" className="cp-restore-btn" onClick={() => setShowRestore('drafts')}>
+                  📝 המשך מאיפה שעצרתי ({recentDrafts.length})
+                </button>
+              )}
+              {recentHistory.length > 0 && (
+                <button type="button" className="cp-restore-btn cp-restore-history" onClick={() => setShowRestore('history')}>
+                  🔄 שחזור מהיסטוריה
+                </button>
               )}
             </div>
           )}
@@ -846,7 +847,7 @@ export default function CreatePost() {
                   ) : groups.length === 0 ? (
                     <div className="cp-no-groups">
                       <p>אין קבוצות שמורות</p>
-                      <Link to="/dashboard" state={{ tab: 'groups' }}>סנכרן קבוצות מפייסבוק</Link>
+                      <Link to="/dashboard?tab=groups">סנכרן קבוצות מפייסבוק</Link>
                     </div>
                   ) : (
                     <div className="cp-groups-panel" style={{ display: 'block' }}>

@@ -223,10 +223,13 @@ export async function scrapeMyGroups(userId) {
 
     // Go to user's groups page
     log.debug("Navigating to your groups page...");
-    await page.goto("https://www.facebook.com/groups/joins/?nav_source=tab&ordering=viewer_added", {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
+    await page.goto(
+      "https://www.facebook.com/groups/joins/?nav_source=tab&ordering=viewer_added",
+      {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      },
+    );
     await page.waitForTimeout(5000);
 
     // Check if logged in - both URL-based and content-based detection
@@ -237,17 +240,24 @@ export async function scrapeMyGroups(userId) {
     // Also check page content for login form (FB sometimes shows login on the same URL)
     const isLoginPage = await page.evaluate(() => {
       const text = document.body.innerText || "";
-      return /שכחת את החשבון|Forgot account|Log in|Sign in|התחברות|הירשם/i.test(text)
-        && document.querySelector('input[name="email"], input[name="pass"]') !== null;
+      return (
+        /שכחת את החשבון|Forgot account|Log in|Sign in|התחברות|הירשם/i.test(
+          text,
+        ) &&
+        document.querySelector('input[name="email"], input[name="pass"]') !==
+          null
+      );
     });
     if (isLoginPage) {
       log.warn("Facebook session expired — login page detected");
       // Mark session as invalid in DB
       if (userId) {
-        await prisma.user.update({
-          where: { id: userId },
-          data: { fbSessionValid: false, facebookStorageState: null },
-        }).catch(() => {});
+        await prisma.user
+          .update({
+            where: { id: userId },
+            data: { fbSessionValid: false, facebookStorageState: null },
+          })
+          .catch(() => {});
       }
       throw new Error("FACEBOOK_SESSION_REQUIRED");
     }
@@ -405,30 +415,48 @@ export async function scrapeMyGroups(userId) {
           // Hebrew: "1,234 חברים", "1.2 אלף חברים", "12K חברים"
           // Facebook compact: "12K", "1.2M", "1,234"
           const patterns = [
-            /(\d[\d,.]*)\s*(?:M|m|מיליון)\s*(?:members|חברי[ם]?|member)/i,
-            /(\d[\d,.]*)\s*(?:K|k|אלף)\s*(?:members|חברי[ם]?|member)/i,
-            /(\d[\d,.]*)\s*(?:members|חברי[ם]?|member)/i,
-            /(?:members|חברי[ם]?|member)\s*[:\s]*(\d[\d,.]*)\s*(?:M|m|מיליון)?/i,
-            /(?:members|חברי[ם]?|member)\s*[:\s]*(\d[\d,.]*)\s*(?:K|k|אלף)?/i,
+            {
+              re: /(\d[\d,.]*)\s*(?:M|m|מיליון)\s*(?:members?|חברי[ם]?|חברות)/i,
+              mult: 1000000,
+            },
+            {
+              re: /(\d[\d,.]*)\s*(?:K|k|אלף)\s*(?:members?|חברי[ם]?|חברות)/i,
+              mult: 1000,
+            },
+            { re: /(\d[\d,.]*)\s*(?:members?|חברי[ם]?|חברות)/i, mult: 1 },
+            {
+              re: /(?:members?|חברי[ם]?|חברות)\s*[:\s]*(\d[\d,.]*)\s*(?:M|m|מיליון)/i,
+              mult: 1000000,
+            },
+            {
+              re: /(?:members?|חברי[ם]?|חברות)\s*[:\s]*(\d[\d,.]*)\s*(?:K|k|אלף)/i,
+              mult: 1000,
+            },
+            { re: /(?:members?|חברי[ם]?|חברות)\s*[:\s]*(\d[\d,.]*)/i, mult: 1 },
             // Patterns without the word "members" - look for number + K/M near group context
-            /(\d[\d,.]*)\s*(?:M)\s/,
-            /(\d[\d,.]*)\s*(?:K)\s/,
+            { re: /(\d[\d,.]*)\s*(?:M)\s/, mult: 1000000 },
+            { re: /(\d[\d,.]*)\s*(?:K)\s/, mult: 1000 },
             // Hebrew: "חברים: 1,234" or just "1,234 חברים"
-            /(\d[\d,.]*)\s*חברי[ם]?/,
-            /חברי[ם]?\s*(\d[\d,.]*)/,
+            { re: /(\d[\d,.]*)\s*חברי[ם]?/, mult: 1 },
+            { re: /חברי[ם]?\s*(\d[\d,.]*)/, mult: 1 },
           ];
 
-          for (const pattern of patterns) {
-            const m = allText.match(pattern);
+          // Helper: normalize number string handling comma-as-decimal (e.g. "98,8" → 98.8)
+          const parseNum = (raw, mult) => {
+            let str = raw;
+            if (mult > 1 && /^\d+,\d{1,2}$/.test(str)) {
+              // Comma is decimal separator (e.g. "98,8K" means 98.8K)
+              str = str.replace(",", ".");
+            } else {
+              str = str.replace(/,/g, "");
+            }
+            return Math.round(parseFloat(str) * mult);
+          };
+
+          for (const { re, mult } of patterns) {
+            const m = allText.match(re);
             if (m) {
-              let num = m[1].replace(/,/g, "");
-              const matchedStr = m[0].toLowerCase();
-              if (/m|מיליון/.test(matchedStr)) {
-                num = parseFloat(num) * 1000000;
-              } else if (/k|אלף/.test(matchedStr)) {
-                num = parseFloat(num) * 1000;
-              }
-              const parsed = Math.round(Number(num));
+              const parsed = parseNum(m[1], mult);
               if (parsed > 0) {
                 memberCount = parsed;
                 break;
@@ -446,12 +474,10 @@ export async function scrapeMyGroups(userId) {
                   /([\d,.]+)\s*(?:K|k|M|m|אלף|מיליון)?/,
                 );
                 if (numMatch) {
-                  let num = numMatch[1].replace(/,/g, "");
-                  if (/M|m|מיליון/.test(spanText))
-                    num = parseFloat(num) * 1000000;
-                  else if (/K|k|אלף/.test(spanText))
-                    num = parseFloat(num) * 1000;
-                  const parsed = Math.round(Number(num));
+                  let mult = 1;
+                  if (/\dM|\dm|מיליון/i.test(spanText)) mult = 1000000;
+                  else if (/\dK|\dk|אלף/i.test(spanText)) mult = 1000;
+                  const parsed = parseNum(numMatch[1], mult);
                   if (parsed > 0) {
                     memberCount = parsed;
                     break;
@@ -1005,65 +1031,101 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       throw new Error("POST_BUTTON_NOT_FOUND");
     }
 
+    // Set up a listener for post creation responses BEFORE waiting
+    let postUrl = null;
+    const postIdPromise = new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve(null), 12000);
+      page.on("response", async (response) => {
+        try {
+          const url = response.url();
+          // Facebook GraphQL mutation responses contain the new post ID
+          if (
+            response.status() === 200 &&
+            (url.includes("/api/graphql") || url.includes("/graphql"))
+          ) {
+            const text = await response.text().catch(() => "");
+            // Look for story/post IDs in GraphQL responses
+            const storyMatch = text.match(/"story_id"\s*:\s*"(\d+)"/);
+            const postIdMatch = text.match(/"post_id"\s*:\s*"(\d+)"/);
+            const composerMatch = text.match(
+              /"id"\s*:\s*"(\d{10,})".*?"__typename"\s*:\s*"Story"/,
+            );
+            const foundId =
+              storyMatch?.[1] || postIdMatch?.[1] || composerMatch?.[1];
+            if (foundId) {
+              clearTimeout(timeout);
+              resolve(foundId);
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      });
+    });
+
     // Wait for the post to be submitted
     log.debug("Waiting for post to be submitted...");
     await page.waitForTimeout(6000);
 
-    // Try to find the URL of the newly published post
-    let postUrl = null;
-    try {
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.waitForTimeout(2000);
+    // Try to get the post ID from the GraphQL response
+    const postIdFromResponse = await postIdPromise;
+    const groupId = groupUrl.match(/groups\/([^/]+)/)?.[1] || "";
 
-      const groupId = groupUrl.match(/groups\/([^/]+)/)?.[1] || "";
-      const permalinkSelector = `a[href*="/groups/${groupId}/posts/"], a[href*="/groups/${groupId}/permalink/"]`;
-      const permalinks = page.locator(permalinkSelector);
-      const plCount = await permalinks.count();
-      log.debug("Found", plCount, "permalink links for this group");
-      if (plCount > 0) {
-        const href = await permalinks.first().getAttribute("href");
-        if (href) {
-          postUrl = href.startsWith("http")
-            ? href
-            : `https://www.facebook.com${href}`;
-        }
-      }
+    if (postIdFromResponse) {
+      postUrl = `https://www.facebook.com/groups/${groupId}/posts/${postIdFromResponse}`;
+      log.info("Post URL captured from GraphQL response:", postUrl);
+    }
 
-      if (!postUrl) {
-        const timeLinks = page.locator(
-          'a[role="link"][href*="/posts/"], a[role="link"][href*="/permalink/"]',
-        );
-        const tlCount = await timeLinks.count();
-        log.debug("Found", tlCount, "time/role links");
-        if (tlCount > 0) {
-          const href = await timeLinks.first().getAttribute("href");
-          if (href) {
-            postUrl = href.startsWith("http")
-              ? href
-              : `https://www.facebook.com${href}`;
-          }
-        }
-      }
+    // Fallback: navigate to group page and scrape
+    if (!postUrl) {
+      try {
+        const groupFeedUrl = groupUrl.replace(/\/$/, "");
+        await page.goto(groupFeedUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 15000,
+        });
+        await page.waitForTimeout(4000);
 
-      if (!postUrl) {
-        const allLinks = await page.evaluate(() => {
+        // Collect ALL links on page that could be post permalinks
+        const allPostLinks = await page.evaluate((gid) => {
           const links = Array.from(document.querySelectorAll("a[href]"));
           return links
-            .map((a) => a.href)
+            .map((a) => ({ href: a.href }))
             .filter(
-              (h) =>
-                h.includes("/posts/") ||
-                h.includes("/permalink/") ||
-                h.includes("story_fbid"),
-            );
-        });
-        log.debug("Found", allLinks.length, "post-like links via evaluate");
-        if (allLinks.length > 0) {
-          postUrl = allLinks[0];
+              (l) =>
+                l.href.includes("/posts/") ||
+                l.href.includes("/permalink/") ||
+                l.href.includes("story_fbid"),
+            )
+            .slice(0, 20);
+        }, groupId);
+        log.info("Fallback: post-like links found:", allPostLinks.length);
+
+        const groupLink = allPostLinks.find((l) =>
+          l.href.includes(`/groups/${groupId}/`),
+        );
+        if (groupLink) {
+          postUrl = groupLink.href;
+        } else if (allPostLinks.length > 0) {
+          postUrl = allPostLinks[0].href;
         }
+
+        // Ensure full URL and clean tracking params
+        if (postUrl && !postUrl.startsWith("http")) {
+          postUrl = `https://www.facebook.com${postUrl}`;
+        }
+        if (postUrl) {
+          try {
+            const u = new URL(postUrl);
+            u.search = "";
+            postUrl = u.toString();
+          } catch {
+            /* keep as-is */
+          }
+        }
+      } catch (e) {
+        log.debug("Fallback URL detection error (non-fatal):", e.message);
       }
-    } catch (e) {
-      log.debug("Post URL detection error (non-fatal):", e.message);
     }
 
     if (!postUrl) {
@@ -1111,6 +1173,7 @@ export async function scrapeGroupsMetadata(userId, groups) {
   });
 
   const results = [];
+  const CONCURRENCY = 3; // Number of parallel tabs
 
   try {
     const context = await browser.newContext({
@@ -1118,141 +1181,199 @@ export async function scrapeGroupsMetadata(userId, groups) {
       userAgent: USER_AGENT,
       storageState,
     });
-    const page = await context.newPage();
 
-    // Verify we're logged in
-    await page.goto("https://www.facebook.com/", {
+    // Verify we're logged in with a temp page
+    const checkPage = await context.newPage();
+    await checkPage.goto("https://www.facebook.com/", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
-    await page.waitForTimeout(2000);
+    await checkPage.waitForTimeout(2000);
     if (!(await hasFacebookLoginCookies(context))) {
+      await checkPage.close();
       throw new Error("FACEBOOK_SESSION_REQUIRED");
     }
+    await checkPage.close();
 
-    for (const group of groups) {
-      try {
-        const url = group.groupUrl || `https://www.facebook.com/groups/${group.groupId}/`;
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
-        await page.waitForTimeout(2500);
+    // Process groups in parallel batches
+    for (let i = 0; i < groups.length; i += CONCURRENCY) {
+      const batch = groups.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(
+        batch.map(async (group) => {
+          const page = await context.newPage();
+          try {
+            const url =
+              group.groupUrl ||
+              `https://www.facebook.com/groups/${group.groupId}/`;
+            await page.goto(url, {
+              waitUntil: "domcontentloaded",
+              timeout: 20000,
+            });
+            await page.waitForTimeout(2500);
 
-        const metadata = await page.evaluate(() => {
-          let memberCount = null;
-          let privacyType = null;
+            const metadata = await page.evaluate(() => {
+              let memberCount = null;
+              let privacyType = null;
 
-          // Look for the header info line: "Private group · 88.7K members" or "קבוצה פרטית · 88.7K חברים"
-          // This is typically in a span or div near the top of the page
-          const allSpans = document.querySelectorAll("span, a");
+              const allSpans = document.querySelectorAll("span, a");
 
-          // Pattern: "{number}{.number}{K|M} members" or "{number}{,number} members"
-          const memberPatterns = [
-            // "88.7K members", "1.2M members", "88.7K חברים"
-            /([\d,.]+)\s*K\s*(?:members|חברי[ם]?)/i,
-            /([\d,.]+)\s*M\s*(?:members|חברי[ם]?)/i,
-            // Hebrew with אלף/מיליון: "88.7 אלף חברים", "1.2 מיליון חברים"
-            /([\d,.]+)\s*(?:אלף)\s*(?:חברי[ם]?|members)/i,
-            /([\d,.]+)\s*(?:מיליון)\s*(?:חברי[ם]?|members)/i,
-            // "88,700 members", "1,234 חברים"
-            /([\d,]+)\s*(?:members|חברי[ם]?)/i,
-            // Reversed: "חברים: 88,700" or "members · 88.7K"
-            /(?:members|חברי[ם]?)\s*[·•:]\s*([\d,.]+)\s*(?:K|M|אלף|מיליון)?/i,
-          ];
-
-          for (const el of allSpans) {
-            const text = el.textContent?.trim() || "";
-            if (text.length < 3 || text.length > 100) continue;
-
-            // Check for member count
-            if (!memberCount) {
-              for (const pattern of memberPatterns) {
-                const m = text.match(pattern);
-                if (m) {
-                  let num = m[1].replace(/,/g, "");
-                  const fullMatch = m[0].toLowerCase();
-                  if (/\bm\b|מיליון/i.test(fullMatch)) {
-                    num = parseFloat(num) * 1000000;
-                  } else if (/\bk\b|אלף/i.test(fullMatch)) {
-                    num = parseFloat(num) * 1000;
-                  }
-                  const parsed = Math.round(Number(num));
-                  if (parsed > 0) {
-                    memberCount = parsed;
-                    break;
-                  }
-                }
-              }
-            }
-
-            // Check for privacy type
-            if (!privacyType) {
-              if (/private group|קבוצה פרטית|קבוצה סגורה|פרטית/i.test(text)) {
-                privacyType = "private";
-              } else if (/public group|קבוצה ציבורית|קבוצה פתוחה|ציבורית/i.test(text)) {
-                privacyType = "public";
-              }
-            }
-
-            if (memberCount && privacyType) break;
-          }
-
-          // Fallback: search full body text if nothing found yet
-          if (!memberCount || !privacyType) {
-            const bodyText = document.body.innerText?.substring(0, 3000) || "";
-
-            if (!memberCount) {
-              // Look for the pattern in general body text (first 3000 chars = header area)
-              const bodyPatterns = [
-                /([\d,.]+)\s*K\s*(?:members|חברי[ם]?)/i,
-                /([\d,.]+)\s*M\s*(?:members|חברי[ם]?)/i,
-                /([\d,.]+)\s*(?:אלף)\s*(?:חברי[ם]?|members)/i,
-                /([\d,.]+)\s*(?:מיליון)\s*(?:חברי[ם]?|members)/i,
-                /([\d,]+)\s*(?:members|חברי[ם]?)/i,
+              const memberPatterns = [
+                {
+                  re: /([\d,.]+)\s*K\s*(?:members?|חברי[ם]?|חברות)/i,
+                  mult: 1000,
+                },
+                {
+                  re: /([\d,.]+)\s*M\s*(?:members?|חברי[ם]?|חברות)/i,
+                  mult: 1000000,
+                },
+                {
+                  re: /([\d,.]+)\s*(?:אלף)\s*(?:חברי[ם]?|חברות|members?)/i,
+                  mult: 1000,
+                },
+                {
+                  re: /([\d,.]+)\s*(?:מיליון)\s*(?:חברי[ם]?|חברות|members?)/i,
+                  mult: 1000000,
+                },
+                { re: /([\d,.]+)\s*(?:members?|חברי[ם]?|חברות)/i, mult: 1 },
+                {
+                  re: /(?:members?|חברי[ם]?|חברות)\s*[·•:]\s*([\d,.]+)\s*K/i,
+                  mult: 1000,
+                },
+                {
+                  re: /(?:members?|חברי[ם]?|חברות)\s*[·•:]\s*([\d,.]+)\s*M/i,
+                  mult: 1000000,
+                },
+                {
+                  re: /(?:members?|חברי[ם]?|חברות)\s*[·•:]\s*([\d,.]+)/i,
+                  mult: 1,
+                },
               ];
-              for (const pattern of bodyPatterns) {
-                const m = bodyText.match(pattern);
-                if (m) {
-                  let num = m[1].replace(/,/g, "");
-                  if (/M|מיליון/i.test(m[0])) num = parseFloat(num) * 1000000;
-                  else if (/K|אלף/i.test(m[0])) num = parseFloat(num) * 1000;
-                  const parsed = Math.round(Number(num));
-                  if (parsed > 0) {
-                    memberCount = parsed;
-                    break;
+
+              // Handle comma-as-decimal (e.g. "98,8K" → 98.8)
+              const parseNum = (raw, mult) => {
+                let str = raw;
+                if (mult > 1 && /^\d+,\d{1,2}$/.test(str)) {
+                  str = str.replace(",", ".");
+                } else {
+                  str = str.replace(/,/g, "");
+                }
+                return Math.round(parseFloat(str) * mult);
+              };
+
+              for (const el of allSpans) {
+                const text = el.textContent?.trim() || "";
+                if (text.length < 3 || text.length > 100) continue;
+
+                if (!memberCount) {
+                  for (const { re, mult } of memberPatterns) {
+                    const m = text.match(re);
+                    if (m) {
+                      const parsed = parseNum(m[1], mult);
+                      if (parsed > 0) {
+                        memberCount = parsed;
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                if (!privacyType) {
+                  if (
+                    /private group|קבוצה פרטית|קבוצה סגורה|פרטית/i.test(text)
+                  ) {
+                    privacyType = "private";
+                  } else if (
+                    /public group|קבוצה ציבורית|קבוצה פתוחה|ציבורית/i.test(text)
+                  ) {
+                    privacyType = "public";
+                  }
+                }
+
+                if (memberCount && privacyType) break;
+              }
+
+              if (!memberCount || !privacyType) {
+                const bodyText =
+                  document.body.innerText?.substring(0, 3000) || "";
+
+                if (!memberCount) {
+                  const bodyPatterns = [
+                    {
+                      re: /([\d,.]+)\s*K\s*(?:members?|חברי[ם]?|חברות)/i,
+                      mult: 1000,
+                    },
+                    {
+                      re: /([\d,.]+)\s*M\s*(?:members?|חברי[ם]?|חברות)/i,
+                      mult: 1000000,
+                    },
+                    {
+                      re: /([\d,.]+)\s*(?:אלף)\s*(?:חברי[ם]?|חברות|members?)/i,
+                      mult: 1000,
+                    },
+                    {
+                      re: /([\d,.]+)\s*(?:מיליון)\s*(?:חברי[ם]?|חברות|members?)/i,
+                      mult: 1000000,
+                    },
+                    { re: /([\d,.]+)\s*(?:members?|חברי[ם]?|חברות)/i, mult: 1 },
+                  ];
+                  for (const { re, mult } of bodyPatterns) {
+                    const m = bodyText.match(re);
+                    if (m) {
+                      const parsed = parseNum(m[1], mult);
+                      if (parsed > 0) {
+                        memberCount = parsed;
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                if (!privacyType) {
+                  if (/private group|קבוצה פרטית|סגורה/i.test(bodyText)) {
+                    privacyType = "private";
+                  } else if (
+                    /public group|קבוצה ציבורית|פתוחה/i.test(bodyText)
+                  ) {
+                    privacyType = "public";
                   }
                 }
               }
-            }
 
-            if (!privacyType) {
-              if (/private group|קבוצה פרטית|סגורה/i.test(bodyText)) {
-                privacyType = "private";
-              } else if (/public group|קבוצה ציבורית|פתוחה/i.test(bodyText)) {
-                privacyType = "public";
-              }
-            }
+              return { memberCount, privacyType };
+            });
+
+            log.debug("Group metadata scraped", {
+              groupId: group.groupId,
+              memberCount: metadata.memberCount,
+              privacyType: metadata.privacyType,
+            });
+
+            return {
+              groupId: group.groupId,
+              memberCount: metadata.memberCount,
+              privacyType: metadata.privacyType,
+            };
+          } catch (err) {
+            log.debug(
+              `Failed to scrape metadata for group ${group.groupId}: ${err.message}`,
+            );
+            return {
+              groupId: group.groupId,
+              memberCount: null,
+              privacyType: null,
+            };
+          } finally {
+            await page.close();
           }
+        }),
+      );
 
-          return { memberCount, privacyType };
-        });
+      results.push(...batchResults);
 
-        results.push({
-          groupId: group.groupId,
-          memberCount: metadata.memberCount,
-          privacyType: metadata.privacyType,
-        });
-
-        log.debug("Group metadata scraped", {
-          groupId: group.groupId,
-          memberCount: metadata.memberCount,
-          privacyType: metadata.privacyType,
-        });
-      } catch (err) {
-        log.debug(`Failed to scrape metadata for group ${group.groupId}: ${err.message}`);
-        results.push({ groupId: group.groupId, memberCount: null, privacyType: null });
+      // Small delay between batches to avoid rate limiting
+      if (i + CONCURRENCY < groups.length) {
+        await new Promise((r) => setTimeout(r, 1000));
       }
-
-      // Rate limit between group visits
-      await page.waitForTimeout(1500);
     }
 
     // Save updated storage state

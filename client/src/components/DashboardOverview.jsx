@@ -222,37 +222,50 @@ function DateRangePicker({ initialFrom, initialTo, onApply, onCancel }) {
 
 function MiniCalendar({ campaigns, posts }) {
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [hoveredDay, setHoveredDay] = useState(null)
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
   const monthName = currentDate.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })
   const firstDay = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
 
-  const scheduledDates = useMemo(() => {
-    const set = new Set()
+  // Build a map: day number → { scheduled: [...], published: [...] }
+  const dayItemsMap = useMemo(() => {
+    const map = {}
     if (campaigns) {
-      campaigns.filter(c => c.status === 'ACTIVE' && (c.campaignType === 'RECURRING' || c.campaignType === 'SCHEDULED')).forEach(c => {
-        if (c.nextRunAt) {
-          const d = new Date(c.nextRunAt)
-          if (d.getMonth() === month && d.getFullYear() === year) set.add(d.getDate())
+      campaigns.forEach(c => {
+        if (c.scheduledAt && (c.status === 'scheduled' || c.status === 'recurring')) {
+          const d = new Date(c.scheduledAt)
+          if (d.getMonth() === month && d.getFullYear() === year) {
+            const day = d.getDate()
+            if (!map[day]) map[day] = { scheduled: [], published: [] }
+            map[day].scheduled.push({
+              title: c.title || c.content?.substring(0, 30) || 'קמפיין',
+              time: d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
+              groups: c.groupCount || 0,
+            })
+          }
         }
       })
     }
-    return set
-  }, [campaigns, month, year])
-
-  const publishedDates = useMemo(() => {
-    const set = new Set()
     if (posts) {
       posts.forEach(p => {
         const d = new Date(p.publishedAt || p.createdAt)
-        if (d.getMonth() === month && d.getFullYear() === year) set.add(d.getDate())
+        if (d.getMonth() === month && d.getFullYear() === year) {
+          const day = d.getDate()
+          if (!map[day]) map[day] = { scheduled: [], published: [] }
+          map[day].published.push({
+            title: p.post?.title || p.title || p.content?.substring(0, 30) || 'פוסט',
+            time: d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
+            group: p.group?.name || '',
+          })
+        }
       })
     }
-    return set
-  }, [posts, month, year])
+    return map
+  }, [campaigns, posts, month, year])
 
-  const scheduledCount = campaigns?.filter(c => c.status === 'ACTIVE' && (c.campaignType === 'RECURRING' || c.campaignType === 'SCHEDULED'))?.length || 0
+  const scheduledCount = campaigns?.filter(c => c.status === 'scheduled' || c.status === 'recurring')?.length || 0
   const publishedCount = posts?.length || 0
   const today = new Date()
   const isToday = (day) => day === today.getDate() && month === today.getMonth() && year === today.getFullYear()
@@ -279,13 +292,41 @@ function MiniCalendar({ campaigns, posts }) {
           <span key={d} className="ov2-calendar-weekday">{d}</span>
         ))}
         {days.map((day, i) => (
-          <span key={i} className={`ov2-calendar-day ${day ? '' : 'empty'} ${day && isToday(day) ? 'today' : ''}`}>
+          <span
+            key={i}
+            className={`ov2-calendar-day ${day ? '' : 'empty'} ${day && isToday(day) ? 'today' : ''} ${day && dayItemsMap[day] ? 'has-items' : ''}`}
+            onMouseEnter={() => day && dayItemsMap[day] && setHoveredDay(day)}
+            onMouseLeave={() => setHoveredDay(null)}
+          >
             {day || ''}
-            {day && (scheduledDates.has(day) || publishedDates.has(day)) && (
+            {day && dayItemsMap[day] && (
               <span className="ov2-calendar-dots">
-                {scheduledDates.has(day) && <span className="dot scheduled" />}
-                {publishedDates.has(day) && <span className="dot published" />}
+                {dayItemsMap[day].scheduled.length > 0 && <span className="dot scheduled" />}
+                {dayItemsMap[day].published.length > 0 && <span className="dot published" />}
               </span>
+            )}
+            {day && hoveredDay === day && dayItemsMap[day] && (
+              <div className="ov2-cal-tooltip">
+                <div className="ov2-cal-tooltip-date">{day} {currentDate.toLocaleDateString('he-IL', { month: 'long' })}</div>
+                {dayItemsMap[day].scheduled.map((item, idx) => (
+                  <div key={`s-${idx}`} className="ov2-cal-tooltip-item">
+                    <span className="dot scheduled" />
+                    <div className="ov2-cal-tooltip-info">
+                      <span className="ov2-cal-tooltip-title">{item.title}</span>
+                      <span className="ov2-cal-tooltip-meta">{item.time}{item.groups > 0 ? ` • ${item.groups} קבוצות` : ''}</span>
+                    </div>
+                  </div>
+                ))}
+                {dayItemsMap[day].published.map((item, idx) => (
+                  <div key={`p-${idx}`} className="ov2-cal-tooltip-item">
+                    <span className="dot published" />
+                    <div className="ov2-cal-tooltip-info">
+                      <span className="ov2-cal-tooltip-title">{item.title}</span>
+                      <span className="ov2-cal-tooltip-meta">{item.time}{item.group ? ` • ${item.group}` : ''}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </span>
         ))}
@@ -401,9 +442,10 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
     }
   }, [dataVersion, loadKpis])
 
-  const scheduledCount = campaigns?.filter(c => c.status === 'ACTIVE' && (c.campaignType === 'RECURRING' || c.campaignType === 'SCHEDULED'))?.length || 0
+  const scheduledCount = campaigns?.filter(c => c.status === 'scheduled' || c.status === 'recurring')?.length || 0
   const groupsCount = groups?.length || 0
   const postsCount = campaigns?.length || 0
+  const totalPublished = campaigns?.reduce((sum, c) => sum + (c.publishedCount || 0), 0) || 0
 
   // Filter posts by date range
   const filteredPosts = useMemo(() => {
@@ -416,7 +458,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
     })
   }, [posts, dateRange])
 
-  const publishedCount = filteredPosts.length
+  const publishedCount = totalPublished
 
   // Filter campaigns by date range for the table
   const filteredCampaigns = useMemo(() => {
@@ -429,20 +471,22 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
     })
   }, [campaigns, dateRange])
 
-  // Top performing posts - filtered by date range
+  // Top performing posts - based on campaigns with publications
   const topPosts = useMemo(() => {
-    if (!filteredPosts.length) return []
-    return [...filteredPosts]
-      .sort((a, b) => (b.reactions || 0) + (b.comments || 0) - (a.reactions || 0) - (a.comments || 0))
+    if (!campaigns?.length) return []
+    return [...campaigns]
+      .filter(c => (c.publishedCount || 0) > 0)
+      .sort((a, b) => (b.totalExposure || 0) - (a.totalExposure || 0))
       .slice(0, 5)
-      .map(p => ({
-        id: p.id,
-        title: p.title || p.content?.substring(0, 40) || 'ללא כותרת',
-        image: p.imageUrl || p.campaign?.imageUrl || null,
-        date: p.publishedAt || p.createdAt,
-        engagement: (p.reactions || 0) + (p.comments || 0),
+      .map(c => ({
+        id: c.id,
+        title: c.title || c.content?.substring(0, 40) || 'ללא כותרת',
+        image: c.imageUrl || null,
+        date: c.createdAt,
+        engagement: c.totalExposure || 0,
+        publishedCount: c.publishedCount || 0,
       }))
-  }, [filteredPosts])
+  }, [campaigns])
 
   // Period label for display
   const periodLabel = useMemo(() => {
@@ -456,11 +500,11 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
   }, [dateRange])
 
   const kpis = [
-    { id: 'groups', label: 'קבוצות', value: kpiData?.groups?.value ?? groupsCount, Icon: Users, color: 'kpi-orange', change: kpiData?.groups?.change, nav: { path: '/dashboard', state: { tab: 'groups' } } },
-    { id: 'posts', label: 'פוסטים', value: kpiData?.posts?.value ?? postsCount, Icon: Send, color: 'kpi-blue', change: kpiData?.posts?.change, nav: { path: '/dashboard', state: { tab: 'campaigns' } } },
-    { id: 'scheduled', label: 'מתוזמנים', value: kpiData?.scheduled?.value ?? scheduledCount, Icon: Clock3, color: 'kpi-green', change: kpiData?.scheduled?.change, nav: { path: '/scheduled' } },
-    { id: 'published', label: 'פורסמו', value: kpiData?.published?.value ?? publishedCount, Icon: CheckCircle2, color: 'kpi-red', change: kpiData?.published?.change, nav: { path: '/dashboard', state: { tab: 'posts' } } },
-    { id: 'exposure', label: 'חשיפה', value: formatNumber(kpiData?.exposure?.value ?? 0), Icon: Heart, color: 'kpi-pink', change: kpiData?.exposure?.change, nav: { path: '/dashboard', state: { tab: 'stats' } } },
+    { id: 'groups', label: 'קבוצות', value: kpiData?.groups?.value ?? groupsCount, Icon: Users, color: 'kpi-orange', change: kpiData?.groups?.change, nav: { path: '/dashboard?tab=groups' } },
+    { id: 'posts', label: 'קמפיינים', value: kpiData?.posts?.value ?? postsCount, Icon: Send, color: 'kpi-blue', change: kpiData?.posts?.change, nav: { path: '/dashboard?tab=campaigns' } },
+    { id: 'scheduled', label: 'קמפיינים מתוזמנים', value: kpiData?.scheduled?.value ?? scheduledCount, Icon: Clock3, color: 'kpi-green', change: kpiData?.scheduled?.change, nav: { path: '/dashboard?tab=campaigns&subTab=scheduled' } },
+    { id: 'published', label: 'פוסטים שפורסמו', value: kpiData?.published?.value ?? publishedCount, Icon: CheckCircle2, color: 'kpi-red', change: kpiData?.published?.change, nav: { path: '/dashboard?tab=campaigns&subTab=published' } },
+    { id: 'exposure', label: 'חשיפה', value: formatNumber(kpiData?.exposure?.value ?? 0), Icon: Heart, color: 'kpi-pink', change: kpiData?.exposure?.change, nav: { path: '/dashboard?tab=stats' } },
   ]
 
   return (
@@ -469,7 +513,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
       <div className="overview-header">
         <div>
           <h1 className="overview-title">דשבורד</h1>
-          <p className="overview-subtitle">ברוך הבא, {user?.name || 'משתמש'}! הנה מה שקורה עם הפוסטים שלך.</p>
+          <p className="overview-subtitle">ברוך הבא, {user?.name || 'משתמש'}! הנה מה שקורה עם הקמפיינים שלך.</p>
         </div>
         <div className="overview-header-actions">
           <div className="overview-date-wrap">
@@ -490,7 +534,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
             )}
           </div>
           <Link to="/create-post" className="overview-create-btn">
-            <span>+</span> צור פוסט
+            <span>+</span> צור קמפיין
           </Link>
         </div>
       </div>
@@ -500,7 +544,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
         {kpis.map((kpi) => {
           const Icon = kpi.Icon
           return (
-            <div key={kpi.id} className={`overview-kpi-card ${kpi.color}`} onClick={() => navigate(kpi.nav.path, kpi.nav.state ? { state: kpi.nav.state } : undefined)}>
+            <div key={kpi.id} className={`overview-kpi-card ${kpi.color}`} onClick={() => navigate(kpi.nav.path)}>
               <div className="overview-kpi-icon">
                 <Icon size={24} strokeWidth={1.8} />
               </div>
@@ -526,10 +570,10 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
         <div className="ov2-upcoming-card" style={{ padding: 0 }}>
           <div className="ov2-upcoming-header" style={{ padding: '20px 24px 0' }}>
             <div className="ov2-upcoming-title-row">
-              <h2>פוסטים אחרונים</h2>
+              <h2>קמפיינים אחרונים</h2>
               <span className="ov2-count-badge">{postsCount}</span>
             </div>
-            <Link to="/dashboard" state={{ tab: 'campaigns' }} className="ov2-card-link">צפה בכל הפוסטים</Link>
+            <Link to="/dashboard?tab=campaigns" className="ov2-card-link">צפה בכל הקמפיינים</Link>
           </div>
           <PostsDataTable campaigns={(filteredCampaigns || []).slice(0, 7)} onUpdate={onUpdate} onViewCampaign={onViewCampaign} />
         </div>
@@ -541,12 +585,12 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
           {/* Top Performing Posts */}
           <div className="ov2-top-posts-card">
             <div className="ov2-top-posts-header">
-              <h3>פוסטים מובילים</h3>
-              <Link to="/dashboard" state={{ tab: 'stats' }} className="ov2-card-link">צפה בנתונים</Link>
+              <h3>קמפיינים מובילים</h3>
+              <Link to="/dashboard?tab=stats" className="ov2-card-link">צפה בנתונים</Link>
             </div>
             <div className="ov2-top-posts-list">
               {topPosts.map((post) => (
-                <div key={post.id} className="ov2-top-post-row" onClick={() => navigate('/dashboard', { state: { tab: 'stats' } })}>
+                <div key={post.id} className="ov2-top-post-row" onClick={() => navigate('/dashboard?tab=campaigns')}>
                   <div className="ov2-top-post-thumb">
                     {post.image ? <img src={post.image} alt="" /> : <span>📝</span>}
                   </div>
@@ -556,7 +600,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
                   </div>
                   <div className="ov2-top-post-engagement">
                     <span className="ov2-engagement-value">{formatNumber(post.engagement)}</span>
-                    <span className="ov2-engagement-label">מעורבות</span>
+                    <span className="ov2-engagement-label">חשיפה</span>
                   </div>
                 </div>
               ))}
@@ -567,7 +611,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
       </div>
 
       {/* Engagement Overview */}
-      <div className="ov2-engagement-card" onClick={() => navigate('/dashboard', { state: { tab: 'stats' } })}>
+      <div className="ov2-engagement-card" onClick={() => navigate('/dashboard?tab=stats')}>
         <div className="ov2-engagement-header">
           <h3>סקירת מעורבות</h3>
           <div className="ov2-engagement-period">{periodLabel}</div>
@@ -576,7 +620,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
           <div className="ov2-engagement-stats">
             <div className="ov2-engagement-stat">
               <Eye size={16} className="ov2-stat-icon" />
-              <span className="ov2-stat-label">צפיות</span>
+              <span className="ov2-stat-label">חשיפה</span>
               <span className="ov2-stat-value">{formatNumber(exposure?.currentTotal || 0)}</span>
               {exposure?.changePercent != null && exposure.changePercent !== 0 && (
                 <span className={`ov2-stat-change ${exposure.changePercent >= 0 ? 'up' : 'down'}`}>
@@ -626,7 +670,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
             )}
           </div>
         </div>
-        <Link to="/dashboard" state={{ tab: 'stats' }} className="ov2-engagement-cta">
+        <Link to="/dashboard?tab=stats" className="ov2-engagement-cta">
           הצג את כל הנתונים
         </Link>
       </div>

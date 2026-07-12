@@ -443,6 +443,11 @@
   min-height: 32px;
 }
 .ov2-calendar-day.empty { visibility: hidden; }
+.ov2-calendar-day.has-items { cursor: pointer; }
+.ov2-calendar-day.has-items:hover:not(.today) {
+  background: var(--bg-elevated);
+  border-radius: 8px;
+}
 .ov2-calendar-day.today {
   background: #6366F1;
   color: white;
@@ -481,6 +486,64 @@
   font-size: 11px;
   color: var(--text-muted);
   font-weight: 500;
+}
+
+/* Calendar Tooltip */
+.ov2-cal-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  animation: tooltipFade 0.15s ease;
+}
+@keyframes tooltipFade {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.ov2-cal-tooltip-date {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.ov2-cal-tooltip-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+}
+.ov2-cal-tooltip-item .dot {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.ov2-cal-tooltip-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: right;
+}
+.ov2-cal-tooltip-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+.ov2-cal-tooltip-meta {
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 /* Top Performing Posts */

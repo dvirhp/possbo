@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 
-export default function BackButton({ label = '← חזרה' }) {
+export default function BackButton({ label = '←' }) {
   const navigate = useNavigate()
 
   return (

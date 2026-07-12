@@ -24,6 +24,7 @@ vi.mock("@prisma/client", () => ({
     },
     group: {
       findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     postGroup: {
       findMany: vi.fn().mockResolvedValue([]),

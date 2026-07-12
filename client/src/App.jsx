@@ -126,7 +126,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/dashboard" element={<AuthLayout><Dashboard /></AuthLayout>} />
-          <Route path="/my-groups" element={<Navigate to="/dashboard" state={{ tab: 'groups' }} replace />} />
+          <Route path="/my-groups" element={<Navigate to="/dashboard?tab=groups" replace />} />
           <Route path="/create-post" element={<AuthLayout><CreatePost /></AuthLayout>} />
           <Route path="/scheduled" element={<AuthLayout><ScheduledCalendar /></AuthLayout>} />
           <Route path="/group/:id" element={<AuthLayout><GroupDetails /></AuthLayout>} />

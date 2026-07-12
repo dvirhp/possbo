@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { useNavigate, Link, useLocation } from 'react-router-dom'
+import { useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
@@ -40,24 +40,30 @@ function NavIcon({ type }) {
 export default function Dashboard() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     user, setUser, authChecked, logout, ensureFresh, forceRefresh,
     campaigns, groups, jobs, posts, stats, dataReady,
     setStats, updateGroups, refreshing,
   } = useAppData()
 
-  const [activeTab, setActiveTab] = useState(location.state?.tab || 'overview')
+  const activeTab = searchParams.get('tab') || 'overview'
+  const setActiveTab = useCallback((tab) => {
+    setSearchParams({ tab }, { replace: true })
+  }, [setSearchParams])
+
+  // Sync subTab from URL (e.g. navigating from Overview KPIs)
+  useEffect(() => {
+    const sub = searchParams.get('subTab')
+    if (sub && (sub === 'all' || sub === 'scheduled' || sub === 'published')) {
+      setCampaignSubTab(sub)
+    }
+  }, [searchParams])
   const [search, setSearch] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [viewMode, setViewMode] = useState('list') // 'grid' | 'list'
-
-  // Sync activeTab with location state changes (from Sidebar navigation)
-  useEffect(() => {
-    if (location.state?.tab) {
-      setActiveTab(location.state.tab)
-    }
-  }, [location.state?.tab])
+  const [campaignSubTab, setCampaignSubTab] = useState(() => searchParams.get('subTab') || 'all') // 'all' | 'scheduled' | 'published'
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all')
@@ -72,7 +78,10 @@ export default function Dashboard() {
   const [refreshingGroups, setRefreshingGroups] = useState(false)
   const [filterSheetOpen, setFilterSheetOpen] = useState(false)
   const [bootstrapping, setBootstrapping] = useState(false)
+  const [dashDateRange, setDashDateRange] = useState({ from: '', to: '' })
+  const [showDashDatePicker, setShowDashDatePicker] = useState(false)
   const groupFilterRef = useRef(null)
+  const dashDateRef = useRef(null)
 
   // Close group filter dropdown on outside click
   useEffect(() => {
@@ -85,6 +94,18 @@ export default function Dashboard() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [groupFilterOpen])
+
+  // Close dash date picker on outside click
+  useEffect(() => {
+    if (!showDashDatePicker) return
+    const handler = (e) => {
+      if (dashDateRef.current && !dashDateRef.current.contains(e.target)) {
+        setShowDashDatePicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showDashDatePicker])
 
   // Redirect if not authed
   useEffect(() => {
@@ -158,15 +179,25 @@ export default function Dashboard() {
           memberCount: g.memberCount || null,
           privacyType: g.privacyType || null,
         })))
-        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: true, msg: `✅ סונכרנו ${res.data.groups.length} קבוצות בהצלחה!` } }))
-        // Refresh metadata silently in background
-        groupsService.refreshGroupsMetadata().then(metaRes => {
-          if (metaRes.data?.success) {
-            groupsService.getSavedGroups().then(savedRes => {
-              if (savedRes.data?.groups) updateGroups(savedRes.data.groups)
+        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: true, msg: `✅ סונכרנו ${res.data.groups.length} קבוצות בהצלחה! מעדכן מטא-דאטה ברקע...` } }))
+        // Trigger background metadata refresh (returns immediately with 202)
+        groupsService.refreshGroupsMetadata().catch(() => {})
+        // Poll for completion and refresh groups when done
+        const pollMetadata = () => {
+          setTimeout(() => {
+            groupsService.getRefreshMetadataStatus().then(statusRes => {
+              if (statusRes.data?.status === 'in_progress') {
+                pollMetadata() // Still running, poll again
+              } else {
+                // Done — reload groups with updated metadata
+                groupsService.getSavedGroups().then(savedRes => {
+                  if (savedRes.data?.groups) updateGroups(savedRes.data.groups)
+                }).catch(() => {})
+              }
             }).catch(() => {})
-          }
-        }).catch(() => {})
+          }, 15000)
+        }
+        pollMetadata()
       }
     } catch (err) {
       if (err.response?.status === 428) {
@@ -191,6 +222,8 @@ export default function Dashboard() {
     setGroupFilterSearch('')
     setSortBy(activeTab === 'groups' ? 'name' : 'date')
     setFilterSheetOpen(false)
+    const urlSubTab = searchParams.get('subTab')
+    setCampaignSubTab((urlSubTab === 'scheduled' || urlSubTab === 'published') ? urlSubTab : 'all')
   }, [activeTab])
 
   const hasActiveFilters = statusFilter !== 'all' || groupFilter !== 'all' || sortBy !== 'date'
@@ -221,6 +254,16 @@ export default function Dashboard() {
 
   const filteredCampaigns = useMemo(() => {
     let list = campaigns
+    if (dashDateRange.from) {
+      const from = new Date(dashDateRange.from)
+      from.setHours(0, 0, 0, 0)
+      list = list.filter(c => new Date(c.createdAt) >= from)
+    }
+    if (dashDateRange.to) {
+      const to = new Date(dashDateRange.to)
+      to.setHours(23, 59, 59, 999)
+      list = list.filter(c => new Date(c.createdAt) <= to)
+    }
     if (search) {
       const q = search.toLowerCase()
       list = list.filter(c =>
@@ -242,7 +285,7 @@ export default function Dashboard() {
       list = [...list].sort((a, b) => (a.title || a.content || '').localeCompare(b.title || b.content || ''))
     }
     return list
-  }, [campaigns, search, statusFilter, groupFilter, sortBy])
+  }, [campaigns, search, statusFilter, groupFilter, sortBy, dashDateRange])
 
   const filteredGroups = useMemo(() => {
     let list = groups
@@ -260,6 +303,16 @@ export default function Dashboard() {
 
   const filteredPosts = useMemo(() => {
     let list = posts
+    if (dashDateRange.from) {
+      const from = new Date(dashDateRange.from)
+      from.setHours(0, 0, 0, 0)
+      list = list.filter(p => new Date(p.publishedAt) >= from)
+    }
+    if (dashDateRange.to) {
+      const to = new Date(dashDateRange.to)
+      to.setHours(23, 59, 59, 999)
+      list = list.filter(p => new Date(p.publishedAt) <= to)
+    }
     if (search) {
       const q = search.toLowerCase()
       list = list.filter(p =>
@@ -277,7 +330,7 @@ export default function Dashboard() {
       list = [...list].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
     }
     return list
-  }, [posts, search, statusFilter, groupFilter, sortBy])
+  }, [posts, search, statusFilter, groupFilter, sortBy, dashDateRange])
 
   // Unique group names from posts for the group filter
   const postGroupNames = useMemo(() => {
@@ -336,10 +389,17 @@ export default function Dashboard() {
   }
 
   const kpiData = {
-    campaigns: campaigns.length,
-    published: posts.length,
+    campaigns: filteredCampaigns.length,
+    scheduled: filteredCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring').length,
+    published: filteredCampaigns.reduce((sum, c) => sum + (c.publishedCount || 0), 0),
     groups: groups.length,
   }
+
+  const campaignSubTabCounts = useMemo(() => ({
+    all: filteredCampaigns.length,
+    scheduled: filteredCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring').length,
+    published: filteredCampaigns.filter(c => c.status === 'published' || c.publishedCount > 0).length,
+  }), [filteredCampaigns])
 
   return (
     <>
@@ -429,7 +489,7 @@ export default function Dashboard() {
         <div className="dash-body">
           {(!authChecked || !dataReady) ? (
             <div className="dash-loader">
-              <div className="loader-pulse"><div/><div/><div/></div>
+              <img src="/logo.svg" alt="" className="loader-logo-pulse" />
             </div>
           ) : (
             <>
@@ -443,42 +503,93 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* KPIs — always visible except stats/settings */}
-              {activeTab !== 'settings' && activeTab !== 'stats' && activeTab !== 'overview' && (
+              {/* KPIs / Campaign Sub-tabs */}
+              {activeTab !== 'settings' && activeTab !== 'stats' && activeTab !== 'overview' && activeTab !== 'groups' && (
                 <section className="kpi-row">
-                  <div className={`kpi-card kpi-clickable ${activeTab === 'campaigns' ? 'kpi-active' : ''}`} onClick={() => setActiveTab('campaigns')}>
-                    <div className="kpi-card-icon kpi-indigo">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                      </svg>
-                    </div>
-                    <div className="kpi-card-data">
-                      <span className="kpi-card-number">{kpiData.campaigns}</span>
-                      <span className="kpi-card-label">קמפיינים מתוזמנים</span>
-                    </div>
-                  </div>
-                  <div className={`kpi-card kpi-clickable ${activeTab === 'posts' ? 'kpi-active' : ''}`} onClick={() => setActiveTab('posts')}>
-                    <div className="kpi-card-icon kpi-emerald">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                      </svg>
-                    </div>
-                    <div className="kpi-card-data">
-                      <span className="kpi-card-number">{kpiData.published}</span>
-                      <span className="kpi-card-label">פוסטים שפורסמו</span>
-                    </div>
-                  </div>
-                  <div className={`kpi-card kpi-clickable ${activeTab === 'groups' ? 'kpi-active' : ''}`} onClick={() => setActiveTab('groups')}>
-                    <div className="kpi-card-icon kpi-violet">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/>
-                      </svg>
-                    </div>
-                    <div className="kpi-card-data">
-                      <span className="kpi-card-number">{kpiData.groups}</span>
-                      <span className="kpi-card-label">קבוצות פייסבוק</span>
-                    </div>
-                  </div>
+                  {activeTab === 'campaigns' ? (
+                    <>
+                      <div className={`kpi-card kpi-clickable ${campaignSubTab === 'all' ? 'kpi-active' : ''}`} onClick={() => setCampaignSubTab('all')}>
+                        <div className="kpi-card-icon kpi-indigo">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                        </div>
+                        <div className="kpi-card-data">
+                          <span className="kpi-card-number">{campaignSubTabCounts.all}</span>
+                          <span className="kpi-card-label">כל הקמפיינים</span>
+                        </div>
+                      </div>
+                      <div className={`kpi-card kpi-clickable ${campaignSubTab === 'scheduled' ? 'kpi-active' : ''}`} onClick={() => setCampaignSubTab('scheduled')}>
+                        <div className="kpi-card-icon kpi-emerald">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                          </svg>
+                        </div>
+                        <div className="kpi-card-data">
+                          <span className="kpi-card-number">{campaignSubTabCounts.scheduled}</span>
+                          <span className="kpi-card-label">מתוזמנים</span>
+                        </div>
+                      </div>
+                      <div className={`kpi-card kpi-clickable ${campaignSubTab === 'published' ? 'kpi-active' : ''}`} onClick={() => setCampaignSubTab('published')}>
+                        <div className="kpi-card-icon kpi-violet">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                          </svg>
+                        </div>
+                        <div className="kpi-card-data">
+                          <span className="kpi-card-number">{campaignSubTabCounts.published}</span>
+                          <span className="kpi-card-label">קמפיינים שפורסמו</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className={`kpi-card kpi-clickable ${activeTab === 'groups' ? 'kpi-active' : ''}`} onClick={() => setActiveTab('groups')}>
+                        <div className="kpi-card-icon kpi-violet">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/>
+                          </svg>
+                        </div>
+                        <div className="kpi-card-data">
+                          <span className="kpi-card-number">{kpiData.groups}</span>
+                          <span className="kpi-card-label">קבוצות פייסבוק</span>
+                        </div>
+                      </div>
+                      <div className="kpi-card kpi-clickable" onClick={() => { setActiveTab('campaigns'); setCampaignSubTab('all'); }}>
+                        <div className="kpi-card-icon kpi-indigo">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                        </div>
+                        <div className="kpi-card-data">
+                          <span className="kpi-card-number">{kpiData.campaigns}</span>
+                          <span className="kpi-card-label">קמפיינים</span>
+                        </div>
+                      </div>
+                      <div className="kpi-card kpi-clickable" onClick={() => { setActiveTab('campaigns'); setCampaignSubTab('scheduled'); }}>
+                        <div className="kpi-card-icon kpi-emerald">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                          </svg>
+                        </div>
+                        <div className="kpi-card-data">
+                          <span className="kpi-card-number">{kpiData.scheduled}</span>
+                          <span className="kpi-card-label">קמפיינים מתוזמנים</span>
+                        </div>
+                      </div>
+                      <div className="kpi-card kpi-clickable" onClick={() => { setActiveTab('campaigns'); setCampaignSubTab('published'); }}>
+                        <div className="kpi-card-icon kpi-emerald">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                          </svg>
+                        </div>
+                        <div className="kpi-card-data">
+                          <span className="kpi-card-number">{kpiData.published}</span>
+                          <span className="kpi-card-label">פוסטים שפורסמו</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </section>
               )}
 
@@ -514,10 +625,32 @@ export default function Dashboard() {
 
                   {/* Desktop filter controls (hidden on mobile) */}
                   <div className="filter-bar-controls">
+                    {/* Date range picker */}
+                    {(activeTab === 'campaigns' || activeTab === 'posts') && (
+                      <div className="dash-date-wrap" ref={dashDateRef}>
+                        <button className="dash-date-btn" onClick={() => setShowDashDatePicker(!showDashDatePicker)}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                          {dashDateRange.from ? `${new Date(dashDateRange.from).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })} – ${new Date(dashDateRange.to).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}` : 'כל התקופות'}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        {showDashDatePicker && (
+                          <StatsDateRangePicker
+                            initialFrom={dashDateRange.from}
+                            initialTo={dashDateRange.to}
+                            onApply={(from, to) => { setDashDateRange({ from, to }); setShowDashDatePicker(false) }}
+                            onCancel={() => setShowDashDatePicker(false)}
+                          />
+                        )}
+                      </div>
+                    )}
+
                     {activeTab === 'campaigns' && (
                       <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
                         <option value="all">כל הסטטוסים ({campaigns.length})</option>
                         {campaignStatusCounts['active'] && <option value="active">פעיל ({campaignStatusCounts['active']})</option>}
+                        {campaignStatusCounts['published'] && <option value="published">פורסם ({campaignStatusCounts['published']})</option>}
                         {campaignStatusCounts['scheduled'] && <option value="scheduled">מתוזמן ({campaignStatusCounts['scheduled']})</option>}
                         {campaignStatusCounts['recurring'] && <option value="recurring">חוזר ({campaignStatusCounts['recurring']})</option>}
                         {campaignStatusCounts['paused'] && <option value="paused">מושהה ({campaignStatusCounts['paused']})</option>}
@@ -632,16 +765,6 @@ export default function Dashboard() {
                     </select>
                   </div>
 
-                  {/* Groups refresh button */}
-                  {activeTab === 'groups' && (
-                    <button onClick={handleRefreshGroups} disabled={refreshingGroups} className="refresh-groups-btn">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={refreshingGroups ? 'spin' : ''}>
-                        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                      </svg>
-                      {refreshingGroups ? 'מסנכרן...' : 'רענן קבוצות'}
-                    </button>
-                  )}
-
                   {/* View toggle */}
                   {(activeTab === 'campaigns' || activeTab === 'posts' || activeTab === 'groups') && (
                     <div className="view-toggle-bar">
@@ -652,6 +775,16 @@ export default function Dashboard() {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                       </button>
                     </div>
+                  )}
+
+                  {/* Groups refresh button */}
+                  {activeTab === 'groups' && (
+                    <button onClick={handleRefreshGroups} disabled={refreshingGroups} className="refresh-groups-btn">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={refreshingGroups ? 'spin' : ''}>
+                        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                      </svg>
+                      {refreshingGroups ? 'מסנכרן...' : 'רענן קבוצות'}
+                    </button>
                   )}
                 </div>
               )}
@@ -802,12 +935,11 @@ export default function Dashboard() {
               {/* Panel */}
               <div className="dash-panel">
                 {activeTab === 'overview' && <DashboardOverview campaigns={campaigns} groups={groups} posts={posts} jobs={jobs} stats={stats} user={user} onUpdate={forceRefresh} onViewCampaign={(c, edit) => { setOverviewDetail(c); setOverviewEditMode(!!edit) }} />}
-                {activeTab === 'campaigns' && <CampaignsPanel campaigns={filteredCampaigns} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} />}
+                {activeTab === 'campaigns' && <CampaignsPanel campaigns={filteredCampaigns} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} posts={filteredPosts} subTab={campaignSubTab} />}
                 {activeTab === 'groups' && <GroupsPanel groups={filteredGroups} navigate={navigate} sessionRequired={sessionRequired} viewMode={viewMode} />}
                 {activeTab === 'posts' && <PostsPanel posts={filteredPosts} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} />}
                 {activeTab === 'stats' && (
-                  <StatsPanel stats={stats} dateFrom={dateFrom} dateTo={dateTo}
-                    setDateFrom={setDateFrom} setDateTo={setDateTo} onFilter={loadStats} />
+                  <StatsPanel stats={stats} />
                 )}
                 {activeTab === 'settings' && <SettingsPanel user={user} logout={logout} setUser={setUser} navigate={navigate} handleBootstrap={handleBootstrap} bootstrapping={bootstrapping} />}
               </div>
@@ -887,7 +1019,7 @@ export default function Dashboard() {
 
 // ─── PANELS ─────────────────────────────────────────────
 
-function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
+function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts, subTab }) {
   const [tooltipId, setTooltipId] = useState(null)
   const [menuId, setMenuId] = useState(null)
   const [editCampaign, setEditCampaign] = useState(null)
@@ -895,6 +1027,8 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
   const [loading, setLoading] = useState(false)
   const [localCampaigns, setLocalCampaigns] = useState(campaigns)
   const [confirmAction, setConfirmAction] = useState(null)
+  const [sortKey, setSortKey] = useState(null)
+  const [sortDir, setSortDir] = useState('desc')
   const menuRef = useRef(null)
 
   useEffect(() => { setLocalCampaigns(campaigns) }, [campaigns])
@@ -913,6 +1047,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
     draft: 'טיוטה',
     recurring: 'חוזר',
     active: 'פעיל',
+    published: 'פורסם',
     'one-time': 'חד-פעמי',
   }
 
@@ -922,10 +1057,42 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
     draft: 'badge-draft',
     recurring: 'badge-recurring',
     active: 'badge-active',
+    published: 'badge-published',
     'one-time': 'badge-onetime',
   }
 
   const DAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
+
+  const subTabCampaigns = useMemo(() => {
+    if (subTab === 'scheduled') return localCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring')
+    if (subTab === 'published') return localCampaigns.filter(c => c.status === 'published' || c.publishedCount > 0)
+    return localCampaigns
+  }, [localCampaigns, subTab])
+
+  const handleCampaignSort = (key) => {
+    if (sortKey === key) setSortDir(prev => prev === 'desc' ? 'asc' : 'desc')
+    else { setSortKey(key); setSortDir('desc') }
+  }
+
+  const sortedCampaigns = useMemo(() => {
+    if (!sortKey) return subTabCampaigns
+    return [...subTabCampaigns].sort((a, b) => {
+      let valA, valB
+      switch (sortKey) {
+        case 'name': valA = a.title || a.content || ''; valB = b.title || b.content || ''; break
+        case 'groups': valA = a.groupCount || 0; valB = b.groupCount || 0; break
+        case 'status': valA = a.status || ''; valB = b.status || ''; break
+        case 'exposure': valA = a.totalExposure || 0; valB = b.totalExposure || 0; break
+        case 'date': valA = new Date(a.createdAt).getTime(); valB = new Date(b.createdAt).getTime(); break
+        default: return 0
+      }
+      if (typeof valA === 'string') {
+        const cmp = valA.localeCompare(valB, 'he')
+        return sortDir === 'asc' ? cmp : -cmp
+      }
+      return sortDir === 'asc' ? valA - valB : valB - valA
+    })
+  }, [subTabCampaigns, sortKey, sortDir])
 
   useEffect(() => {
     if (!menuId) return
@@ -1027,10 +1194,177 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
     </div>
   )
 
+  const formatExposure = (n) => {
+    if (!n) return '0'
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
+    return n.toLocaleString()
+  }
+
+  const formatScheduledDate = (campaign) => {
+    if ((campaign.status === 'scheduled' || campaign.status === 'recurring') && campaign.scheduledAt) {
+      const d = new Date(campaign.scheduledAt)
+      const now = new Date()
+      const diffMs = d - now
+      const diffH = Math.floor(diffMs / 3600000)
+      const diffD = Math.floor(diffMs / 86400000)
+      let relative = ''
+      if (diffMs < 0) relative = ''
+      else if (diffH < 1) relative = 'בעוד דקות'
+      else if (diffH < 24) relative = `בעוד ${diffH} שעות`
+      else if (diffD === 1) relative = 'מחר'
+      else relative = `בעוד ${diffD} ימים`
+      return {
+        label: d.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
+        relative,
+        isScheduled: true,
+      }
+    }
+    return {
+      label: new Date(campaign.createdAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' }),
+      relative: '',
+      isScheduled: false,
+    }
+  }
+
   return (
     <>
-    <div className={`campaigns-grid ${viewMode === 'list' ? 'campaigns-list-view' : ''}`}>
-      {localCampaigns.map(campaign => {
+    {!subTabCampaigns.length ? (
+      <div className="empty-state">
+        <p>{subTab === 'scheduled' ? 'אין קמפיינים מתוזמנים' : subTab === 'published' ? 'אין קמפיינים שפורסמו' : 'אין קמפיינים'}</p>
+        {subTab === 'all' && <Link to="/create-post" className="empty-btn">+ צור קמפיין ראשון</Link>}
+      </div>
+    ) :
+    viewMode === 'list' ? (
+      /* ═══ Table/List View ═══ */
+      <div className="cl-table">
+        <div className="cl-header">
+          <span className="cl-col cl-col-post cl-sortable" onClick={() => handleCampaignSort('name')}>
+            פוסט {sortKey === 'name' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+          </span>
+          <span className="cl-col cl-col-groups cl-sortable" onClick={() => handleCampaignSort('groups')}>
+            קבוצות {sortKey === 'groups' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+          </span>
+          <span className="cl-col cl-col-status cl-sortable" onClick={() => handleCampaignSort('status')}>
+            סטטוס {sortKey === 'status' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+          </span>
+          <span className="cl-col cl-col-exposure cl-sortable" onClick={() => handleCampaignSort('exposure')}>
+            חשיפה {sortKey === 'exposure' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+          </span>
+          <span className="cl-col cl-col-date cl-sortable" onClick={() => handleCampaignSort('date')}>
+            תאריך {sortKey === 'date' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+          </span>
+          <span className="cl-col cl-col-actions"></span>
+        </div>
+        {sortedCampaigns.map(campaign => {
+          const allImages = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
+          const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url
+          const thumbImages = allImages.slice(0, 4)
+          const extraImgs = allImages.length - 4
+          return (
+            <div key={campaign.id} className="cl-row" onClick={() => campaign.status === 'draft' ? navigate('/create-post', { state: { republish: { ...campaign, groupIds: campaign.groups?.map(g => g.id) } } }) : setDetailCampaign(campaign)}>
+              {/* Post */}
+              <div className="cl-col cl-col-post">
+                <div className={`cl-thumb cl-thumb-${Math.min(thumbImages.length, 4)}`}>
+                  {thumbImages.length > 0 ? (
+                    <>
+                      {thumbImages.map((img, i) => (
+                        <div key={i} className="cl-thumb-cell">
+                          <img src={resolveImg(img)} alt="" onError={e => e.target.style.display='none'} />
+                        </div>
+                      ))}
+                      {extraImgs > 0 && <div className="cl-thumb-plus">+{extraImgs}</div>}
+                    </>
+                  ) : <div className="cl-thumb-placeholder">📝</div>}
+                </div>
+                <div className="cl-post-info">
+                  <h4>{campaign.title || campaign.content?.slice(0, 40) || 'קמפיין'}</h4>
+                  {campaign.content && <span className="cl-post-subtitle">{campaign.content.length > 50 ? campaign.content.slice(0, 50) + '...' : campaign.content}</span>}
+                </div>
+              </div>
+              {/* Groups */}
+              <div className="cl-col cl-col-groups">
+                <div className="cl-group-avatars">
+                  {(campaign.groups || []).slice(0, 2).map((g, i) => (
+                    <div key={i} className="cl-group-avatar" title={g.name}>
+                      {g.image ? <img src={g.image} alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex') }} /> : null}
+                      <span style={g.image ? { display: 'none' } : {}}>{g.name?.[0] || '?'}</span>
+                    </div>
+                  ))}
+                  {(campaign.groupCount || 0) > 2 && <span className="cl-group-more">+{campaign.groupCount - 2}</span>}
+                </div>
+              </div>
+              {/* Status */}
+              <div className="cl-col cl-col-status">
+                <span className={`cl-status-badge ${STATUS_CLASSES[campaign.status] || 'badge-onetime'}`}>
+                  {STATUS_LABELS[campaign.status] || campaign.status}
+                </span>
+              </div>
+              {/* Exposure */}
+              <div className="cl-col cl-col-exposure">
+                <span className="cl-exposure-val">
+                  {formatExposure(campaign.totalExposure)}
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+              </div>
+              {/* Date */}
+              <div className="cl-col cl-col-date">
+                {(() => {
+                  const dateInfo = formatScheduledDate(campaign)
+                  return (
+                    <span className={`cl-date-val ${dateInfo.isScheduled ? 'cl-date-scheduled' : ''}`}>
+                      {dateInfo.isScheduled ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                      )}
+                      <span>
+                        {dateInfo.label}
+                        {dateInfo.relative && <span className="cl-date-relative">{dateInfo.relative}</span>}
+                      </span>
+                    </span>
+                  )
+                })()}
+              </div>
+              {/* Actions */}
+              <div className="cl-col cl-col-actions" onClick={e => e.stopPropagation()}>
+                <div className="actions-menu-wrap" ref={menuId === campaign.id ? menuRef : undefined}>
+                  <button className="actions-dots-btn" onClick={() => setMenuId(menuId === campaign.id ? null : campaign.id)}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                  </button>
+                  {menuId === campaign.id && (
+                    <div className="actions-dropdown">
+                      {campaign.publishedCount > 0 && (
+                        <button onClick={() => setDetailCampaign(campaign)}>היסטוריית פרסומים</button>
+                      )}
+                      {campaign.status !== 'draft' && (
+                        <button onClick={() => handleEdit(campaign)}>ערוך</button>
+                      )}
+                      {campaign.status !== 'draft' && (campaign.isPaused || campaign.status === 'one-time' ? (
+                        <button onClick={() => handleRestart(campaign)}>הפעל מחדש</button>
+                      ) : (
+                        <button onClick={() => handlePause(campaign)}>השהה</button>
+                      ))}
+                      <button onClick={() => handleDuplicate(campaign)}>שכפל</button>
+                      {campaign.status === 'draft' && (
+                        <button onClick={() => navigate('/create-post', { state: { republish: { ...campaign, groupIds: campaign.groups?.map(g => g.id) } } })}>פרסם עכשיו</button>
+                      )}
+                      {campaign.status === 'draft' && (
+                        <button onClick={() => { setMenuId(null); handleEdit(campaign) }}>ערוך</button>
+                      )}
+                      <button className="actions-danger" onClick={() => handleDelete(campaign)}>מחק</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    ) : (
+      /* ═══ Grid/Card View ═══ */
+      <div className="campaigns-grid">
+      {sortedCampaigns.map(campaign => {
         const allImages = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
         const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url
         const handleImgError = (e) => { e.target.style.display = 'none'; e.target.parentElement.classList.add('card-img-broken') }
@@ -1038,7 +1372,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
         const extraImgs = allImages.length - 3
         return (
         <div key={campaign.id} className="campaign-card">
-          <div className={`campaign-card-visual card-imgs-${Math.min(allImages.length, 3)}`} onClick={() => setDetailCampaign(campaign)}>
+          <div className={`campaign-card-visual card-imgs-${Math.min(allImages.length, 3)}`} onClick={() => campaign.status === 'draft' ? navigate('/create-post', { state: { republish: { ...campaign, groupIds: campaign.groups?.map(g => g.id) } } }) : setDetailCampaign(campaign)}>
             {cardImages.length > 0
               ? <>
                   {cardImages.map((img, i) => (
@@ -1063,7 +1397,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
 
           <div className="campaign-card-body">
             <div className="campaign-card-header">
-              <h4 className="campaign-card-title" onClick={() => setDetailCampaign(campaign)}>                {campaign.title || campaign.content?.slice(0, 40) || 'קמפיין'}
+              <h4 className="campaign-card-title" onClick={() => campaign.status === 'draft' ? navigate('/create-post', { state: { republish: { ...campaign, groupIds: campaign.groups?.map(g => g.id) } } }) : setDetailCampaign(campaign)}>                {campaign.title || campaign.content?.slice(0, 40) || 'קמפיין'}
               </h4>
               <div className="actions-menu-wrap" ref={menuId === campaign.id ? menuRef : undefined}>
                 <button className="actions-dots-btn" onClick={(e) => { e.stopPropagation(); setMenuId(menuId === campaign.id ? null : campaign.id) }}>
@@ -1093,9 +1427,15 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
                       שכפל
                     </button>
                     {campaign.status === 'draft' && (
-                      <button onClick={() => navigate('/create-post', { state: { republish: campaign } })}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                        המשך מאיפה שעצרתי
+                      <button onClick={() => navigate('/create-post', { state: { republish: { ...campaign, groupIds: campaign.groups?.map(g => g.id) } } })}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        פרסם עכשיו
+                      </button>
+                    )}
+                    {campaign.status === 'draft' && (
+                      <button onClick={() => { setMenuId(null); handleEdit(campaign) }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        ערוך
                       </button>
                     )}
                     <button className="actions-danger" onClick={() => handleDelete(campaign)}>
@@ -1107,27 +1447,35 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
               </div>
             </div>
 
-            <div className="campaign-card-meta">
-              <span
-                className="campaign-groups-count"
-                onClick={(e) => { e.stopPropagation(); setTooltipId(tooltipId === campaign.id ? null : campaign.id) }}
-                onMouseEnter={() => setTooltipId(campaign.id)}
-                onMouseLeave={() => setTooltipId(null)}
-              >
-                👥 {campaign.groupCount === 1 ? `פורסם ב: ${campaign.groupNames?.[0] || ''}` : `${campaign.groupCount} קבוצות`}
-                {tooltipId === campaign.id && campaign.groupNames?.length > 1 && (
-                  <div className="campaign-tooltip">
-                    {campaign.groupNames.map((name, i) => (
-                      <div key={i} className="tooltip-group-name">{name}</div>
-                    ))}
+            {/* Group avatars */}
+            <div className="campaign-card-groups">
+              <div className="campaign-card-avatars">
+                {(campaign.groups || []).slice(0, 3).map((g, i) => (
+                  <div key={i} className="campaign-card-avatar" title={g.name}>
+                    {g.image ? <img src={g.image} alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex') }} /> : null}
+                    <span style={g.image ? { display: 'none' } : {}}>{g.name?.[0] || '?'}</span>
                   </div>
-                )}
+                ))}
+                {(campaign.groupCount || 0) > 3 && <span className="campaign-card-avatar-more">+{campaign.groupCount - 3}</span>}
+              </div>
+              <span className="campaign-card-group-label">
+                {campaign.groupCount === 1 ? campaign.groupNames?.[0] || 'קבוצה אחת' : `${campaign.groupCount} קבוצות`}
               </span>
+            </div>
 
-              <span className="campaign-date">
-                {new Date(campaign.createdAt).toLocaleDateString('he-IL', {
-                  day: 'numeric', month: 'short', year: 'numeric'
-                })}
+            {/* Footer: exposure | date */}
+            <div className="campaign-card-footer">
+              <span className="campaign-card-exposure" title="חשיפה">
+                {formatExposure(campaign.totalExposure)}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </span>
+              <span className="campaign-card-date">
+                {(() => {
+                  const dateInfo = formatScheduledDate(campaign)
+                  return dateInfo.isScheduled
+                    ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> {dateInfo.label}</>
+                    : dateInfo.label
+                })()}
               </span>
             </div>
 
@@ -1146,6 +1494,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
         </div>
       )})}
     </div>
+    )}
 
     {editCampaign && (
       <EditCampaignModal
@@ -1183,9 +1532,52 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode }) {
 function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
   const [detailGroup, setDetailGroup] = useState(null)
   const [visibleCount, setVisibleCount] = useState(15)
+  const [sortKey, setSortKey] = useState(null) // 'name' | 'members' | 'posts' | 'scheduled'
+  const [sortDir, setSortDir] = useState('desc') // 'asc' | 'desc'
+  const sentinelRef = useRef(null)
 
-  const visibleGroups = groups.slice(0, visibleCount)
-  const hasMore = groups.length > visibleCount
+  // Infinite scroll
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(([entry]) => { // eslint-disable-line no-undef
+      if (entry.isIntersecting) setVisibleCount(prev => prev + 15)
+    }, { rootMargin: '200px' })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const handleSort = (key) => {
+    if (sortKey === key) {
+      setSortDir(prev => prev === 'desc' ? 'asc' : 'desc')
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+  }
+
+  const sortedGroups = useMemo(() => {
+    if (!sortKey) return groups
+    const sorted = [...groups].sort((a, b) => {
+      let valA, valB
+      switch (sortKey) {
+        case 'name': valA = a.name || ''; valB = b.name || ''; break
+        case 'members': valA = a.memberCount || 0; valB = b.memberCount || 0; break
+        case 'posts': valA = a.postsCount || 0; valB = b.postsCount || 0; break
+        case 'scheduled': valA = a.scheduledCount || 0; valB = b.scheduledCount || 0; break
+        default: return 0
+      }
+      if (sortKey === 'name') {
+        const cmp = valA.localeCompare(valB, 'he')
+        return sortDir === 'asc' ? cmp : -cmp
+      }
+      return sortDir === 'asc' ? valA - valB : valB - valA
+    })
+    return sorted
+  }, [groups, sortKey, sortDir])
+
+  const visibleGroups = sortedGroups.slice(0, visibleCount)
+  const hasMore = sortedGroups.length > visibleCount
 
   if (sessionRequired) return (
     <div className="empty-state">
@@ -1218,10 +1610,18 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
         /* ═══ Row/List View ═══ */
         <div className="groups-list">
           <div className="groups-list-header">
-            <span className="gl-col gl-col-name">קבוצה</span>
-            <span className="gl-col gl-col-members">חברים</span>
-            <span className="gl-col gl-col-posts">משרדות מתוזמנות</span>
-            <span className="gl-col gl-col-scheduled">פוסטים מתוזמנים</span>
+            <span className="gl-col gl-col-name gl-sortable" onClick={() => handleSort('name')}>
+              קבוצה {sortKey === 'name' && <span className="gl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+            </span>
+            <span className="gl-col gl-col-members gl-sortable" onClick={() => handleSort('members')}>
+              חברים {sortKey === 'members' && <span className="gl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+            </span>
+            <span className="gl-col gl-col-posts gl-sortable" onClick={() => handleSort('posts')}>
+              פוסטים שפורסמו {sortKey === 'posts' && <span className="gl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+            </span>
+            <span className="gl-col gl-col-scheduled gl-sortable" onClick={() => handleSort('scheduled')}>
+              פוסטים מתוזמנים {sortKey === 'scheduled' && <span className="gl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+            </span>
             <span className="gl-col gl-col-action"></span>
           </div>
           {visibleGroups.map(group => (
@@ -1248,9 +1648,6 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
                 <span className="gl-stat-value">{group.scheduledCount || 0}</span>
               </div>
               <div className="gl-col gl-col-action">
-                <button className="gl-open-btn" onClick={(e) => { e.stopPropagation(); setDetailGroup(group) }}>
-                  פתח
-                </button>
                 <svg className="gl-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="15 18 9 12 15 6"/>
                 </svg>
@@ -1292,14 +1689,8 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
         </div>
       )}
 
-      {/* Load more button */}
-      {hasMore && (
-        <div className="groups-load-more">
-          <button className="groups-load-more-btn" onClick={() => setVisibleCount(prev => prev + 15)}>
-            טען עוד ↓
-          </button>
-        </div>
-      )}
+      {/* Infinite scroll sentinel */}
+      {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
 
       {/* ═══ Group Detail Modal ═══ */}
       {detailGroup && (
@@ -1413,7 +1804,7 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
       </div>
       <h3>עדיין לא פרסמת</h3>
       <p>הפוסטים שלך יופיעו כאן אחרי הפרסום הראשון</p>
-      <Link to="/create-post" className="empty-btn">+ צור פוסט</Link>
+      <Link to="/create-post" className="empty-btn">+ צור קמפיין</Link>
     </div>
   )
 
@@ -1461,6 +1852,12 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
                 </button>
                 {menuId === item.id && (
                   <div className="actions-dropdown">
+                    {item.postUrl && (
+                      <button onClick={(e) => { e.stopPropagation(); setMenuId(null); window.open(item.postUrl, '_blank', 'noopener,noreferrer') }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        צפה בפוסט בפייסבוק
+                      </button>
+                    )}
                     <button onClick={() => handleRestart(item)}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                       הפעל מחדש
@@ -1510,38 +1907,180 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
   )
 }
 
-function StatsPanel({ stats, dateFrom, dateTo, setDateFrom, setDateTo, onFilter }) {
-  const [exposure, setExposure] = useState(null)
-  const [period, setPeriod] = useState('month') // day, week, month, custom
-  const [loading, setLoading] = useState(true)
+function StatsDateRangePicker({ initialFrom, initialTo, onApply, onCancel }) {
+  const toDS = (d) => d.toISOString().split('T')[0]
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = initialFrom ? new Date(initialFrom) : new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
+  const [rangeStart, setRangeStart] = useState(initialFrom || '')
+  const [rangeEnd, setRangeEnd] = useState(initialTo || '')
+  const [hoverDate, setHoverDate] = useState(null)
+  const [manualFrom, setManualFrom] = useState(initialFrom || '')
+  const [manualTo, setManualTo] = useState(initialTo || '')
+
+  const year = calMonth.getFullYear()
+  const month = calMonth.getMonth()
+  const monthName = calMonth.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const today = new Date()
+  const days = []
+  for (let i = 0; i < firstDay; i++) days.push(null)
+  for (let d = 1; d <= daysInMonth; d++) days.push(d)
+
+  const dayToStr = (day) => toDS(new Date(year, month, day))
+  const isInRange = (day) => {
+    if (!day) return false
+    const ds = dayToStr(day)
+    const end = rangeEnd || hoverDate || ''
+    if (!rangeStart) return false
+    if (!end) return ds === rangeStart
+    const min = rangeStart < end ? rangeStart : end
+    const max = rangeStart < end ? end : rangeStart
+    return ds >= min && ds <= max
+  }
+  const isStart = (day) => day && dayToStr(day) === rangeStart
+  const isEnd = (day) => day && dayToStr(day) === (rangeEnd || hoverDate)
+
+  const handleDayClick = (day) => {
+    const ds = dayToStr(day)
+    if (!rangeStart || rangeEnd) {
+      setRangeStart(ds); setRangeEnd(''); setManualFrom(ds); setManualTo('')
+    } else {
+      let from = rangeStart, to = ds
+      if (from > to) [from, to] = [to, from]
+      setRangeStart(from); setRangeEnd(to); setManualFrom(from); setManualTo(to)
+      onApply(from, to)
+    }
+  }
+
+  const handlePreset = (numDays) => {
+    const to = toDS(new Date())
+    const from = toDS(new Date(Date.now() - numDays * 24 * 60 * 60 * 1000))
+    onApply(from, to)
+  }
+  const handleTodayPreset = () => { const t = toDS(new Date()); onApply(t, t) }
+  const handleManualApply = () => {
+    if (manualFrom) {
+      const to = manualTo || toDS(new Date())
+      manualFrom > to ? onApply(to, manualFrom) : onApply(manualFrom, to)
+    }
+  }
+
+  return (
+    <div className="drp-dropdown">
+      <div className="drp-calendar">
+        <div className="drp-cal-nav">
+          <button onClick={() => setCalMonth(new Date(year, month - 1, 1))}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span>{monthName}</span>
+          <button onClick={() => setCalMonth(new Date(year, month + 1, 1))}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+        <div className="drp-cal-grid">
+          {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map(d => <span key={d} className="drp-weekday">{d}</span>)}
+          {days.map((day, i) => (
+            <span key={i}
+              className={`drp-day ${!day ? 'empty' : ''} ${day && isInRange(day) ? 'in-range' : ''} ${day && isStart(day) ? 'range-start' : ''} ${day && isEnd(day) ? 'range-end' : ''} ${day && dayToStr(day) === toDS(today) ? 'today' : ''}`}
+              onClick={() => day && handleDayClick(day)}
+              onMouseEnter={() => { if (rangeStart && !rangeEnd && day) setHoverDate(dayToStr(day)) }}
+            >{day || ''}</span>
+          ))}
+        </div>
+      </div>
+      <div className="drp-inputs">
+        <div className="drp-input-group"><label>מ-</label><input type="date" value={manualFrom} onChange={e => { setManualFrom(e.target.value); setRangeStart(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} /></div>
+        <div className="drp-input-group"><label>עד</label><input type="date" value={manualTo} onChange={e => { setManualTo(e.target.value); setRangeEnd(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} /></div>
+      </div>
+      <div className="drp-presets">
+        <button onClick={handleTodayPreset}>היום</button>
+        <button onClick={() => handlePreset(7)}>7 ימים</button>
+        <button onClick={() => handlePreset(30)}>30 ימים</button>
+      </div>
+      <div className="drp-actions">
+        <button className="drp-cancel" onClick={onCancel}>ביטול</button>
+        <button className="drp-apply" onClick={handleManualApply}>החל</button>
+      </div>
+    </div>
+  )
+}
+
+function StatsPanel({ stats }) {
+  const toDS = (d) => d.toISOString().split('T')[0]
+  const defaultRange = useMemo(() => {
+    const to = new Date()
+    const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000)
+    return { from: toDS(from), to: toDS(to) }
+  }, [])
+
+  const [dateRange, setDateRange] = useState(defaultRange)
+  const [showDatePicker, setShowDatePicker] = useState(false)
+
+  // Top posts state
+  const [topPosts, setTopPosts] = useState([])
+  const [topPostsSort, setTopPostsSort] = useState('likes')
+  const [topPostsLoading, setTopPostsLoading] = useState(true)
+  const [refreshingAll, setRefreshingAll] = useState(false)
+
+  // Cache helpers
+  const getCacheKey = useCallback((from, to) => `postit_stats_${from}_${to}`, [])
+  const getCached = useCallback((from, to) => {
+    try {
+      const raw = localStorage.getItem(getCacheKey(from, to))
+      if (!raw) return null
+      const cached = JSON.parse(raw)
+      if (Date.now() - cached.ts < 10 * 60 * 1000) return cached.data
+    } catch { /* ignore */ }
+    return null
+  }, [getCacheKey])
+  const setCache = useCallback((from, to, data) => {
+    try {
+      localStorage.setItem(getCacheKey(from, to), JSON.stringify({ data, ts: Date.now() }))
+    } catch { /* ignore */ }
+  }, [getCacheKey])
+
+  const [exposure, setExposure] = useState(() => getCached(defaultRange.from, defaultRange.to))
+  const [loading, setLoading] = useState(!exposure)
 
   const loadExposure = useCallback(async (from, to) => {
-    setLoading(true)
+    const cached = getCached(from, to)
+    if (cached) {
+      setExposure(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     try {
       const params = {}
       if (from) params.from = from
       if (to) params.to = to
-      const res = await groupsService.getExposure(params)
-      if (res.data?.exposure) setExposure(res.data.exposure)
+      const [exposureRes, topPostsRes] = await Promise.all([
+        groupsService.getExposure(params),
+        groupsService.getTopPosts({ sort: topPostsSort, limit: 10, from, to }),
+      ])
+      if (exposureRes.data?.exposure) {
+        setExposure(exposureRes.data.exposure)
+        setCache(from, to, exposureRes.data.exposure)
+      }
+      if (topPostsRes.data?.posts) setTopPosts(topPostsRes.data.posts)
     } catch { /* ignore */ }
     setLoading(false)
-  }, [])
+    setTopPostsLoading(false)
+  }, [getCached, setCache, topPostsSort])
 
   useEffect(() => {
-    const now = new Date()
-    let from
-    if (period === 'day') {
-      from = new Date(now); from.setHours(0, 0, 0, 0)
-    } else if (period === 'week') {
-      from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    } else if (period === 'month') {
-      from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    } else if (period === 'custom' && dateFrom) {
-      from = new Date(dateFrom)
-    }
-    const to = (period === 'custom' && dateTo) ? dateTo : now.toISOString()
-    loadExposure(from?.toISOString?.() || from, to)
-  }, [period, dateFrom, dateTo, loadExposure])
+    setTopPostsLoading(true)
+    loadExposure(dateRange.from, dateRange.to)
+  }, [dateRange, loadExposure])
+
+  const formatDateRangeLabel = (from, to) => {
+    const f = new Date(from)
+    const t = new Date(to)
+    return `${f.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })} - ${t.toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' })}`
+  }
 
   const formatNumber = (n) => {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -1560,32 +2099,26 @@ function StatsPanel({ stats, dateFrom, dateTo, setDateFrom, setDateTo, onFilter 
 
   return (
     <div className="stats-layout">
-      {/* Period filter */}
+      {/* Date range selector */}
       <div className="stats-period-bar">
-        {[
-          { id: 'day', label: 'היום' },
-          { id: 'week', label: 'שבוע' },
-          { id: 'month', label: 'חודש' },
-          { id: 'custom', label: 'מותאם' },
-        ].map(p => (
-          <button key={p.id} className={`period-btn ${period === p.id ? 'active' : ''}`} onClick={() => setPeriod(p.id)}>
-            {p.label}
-          </button>
-        ))}
-      </div>
-
-      {period === 'custom' && (
-        <div className="stats-filter-bar">
-          <div className="filter-item">
-            <label>מתאריך</label>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        <div className="overview-date-wrap">
+          <div className="overview-date-range" onClick={() => setShowDatePicker(!showDatePicker)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <span>{formatDateRangeLabel(dateRange.from, dateRange.to)}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
-          <div className="filter-item">
-            <label>עד תאריך</label>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-          </div>
+          {showDatePicker && (
+            <StatsDateRangePicker
+              initialFrom={dateRange.from}
+              initialTo={dateRange.to}
+              onApply={(from, to) => { setDateRange({ from, to }); setShowDatePicker(false) }}
+              onCancel={() => setShowDatePicker(false)}
+            />
+          )}
         </div>
-      )}
+      </div>
 
       {/* KPI Cards */}
       <div className="stats-kpis">
@@ -1657,12 +2190,12 @@ function StatsPanel({ stats, dateFrom, dateTo, setDateFrom, setDateTo, onFilter 
         </div>
       )}
 
-      {/* Old stats: publications by group */}
+      {/* Publications by group */}
       {stats?.groupStats?.length > 0 && (
         <div className="stats-chart-card">
           <h4>פרסומים לפי קבוצה</h4>
           <div className="bar-chart">
-            {stats.groupStats.slice(0, 8).map(g => {
+            {stats.groupStats.slice(0, 5).map(g => {
               const maxCount = Math.max(...stats.groupStats.map(x => x.count))
               return (
                 <div key={g.id} className="bar-row">
@@ -1679,6 +2212,96 @@ function StatsPanel({ stats, dateFrom, dateTo, setDateFrom, setDateTo, onFilter 
           </div>
         </div>
       )}
+
+      {/* Top posts by engagement */}
+      <div className="stats-chart-card">
+        <div className="top-posts-header">
+          <h4>🏅 פוסטים מובילים</h4>
+          <div className="top-posts-actions">
+            <button
+              className={`top-posts-refresh-btn ${refreshingAll ? 'spinning' : ''}`}
+              onClick={() => {
+                if (refreshingAll) return
+                setRefreshingAll(true)
+                window.dispatchEvent(new CustomEvent('postit-op-start', {
+                  detail: { id: 'refresh-all-metrics', msg: '🔄 מרענן נתוני מעורבות מפייסבוק... ניתן להמשיך לגלוש באתר' }
+                }))
+                groupsService.refreshAllMetrics()
+                  .then(async (refreshRes) => {
+                    // Reload top posts with current date range
+                    const res = await groupsService.getTopPosts({
+                      sort: topPostsSort, limit: 10,
+                      from: dateRange.from, to: dateRange.to,
+                    })
+                    if (res.data?.posts) setTopPosts(res.data.posts)
+                    const count = refreshRes.data?.refreshed || 0
+                    window.dispatchEvent(new CustomEvent('postit-op-done', {
+                      detail: { id: 'refresh-all-metrics', success: true, msg: `✅ רענון הושלם! עודכנו ${count} פרסומים` }
+                    }))
+                  })
+                  .catch(() => {
+                    window.dispatchEvent(new CustomEvent('postit-op-done', {
+                      detail: { id: 'refresh-all-metrics', success: false, msg: '⚠️ שגיאה ברענון נתוני מעורבות' }
+                    }))
+                  })
+                  .finally(() => setRefreshingAll(false))
+              }}
+              disabled={refreshingAll}
+              title="רענן נתוני מעורבות (30 ימים אחרונים)"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={refreshingAll ? 'spin' : ''}>
+                <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+              </svg>
+              {refreshingAll ? 'מרענן...' : 'רענן'}
+            </button>
+            <div className="top-posts-toggle">
+              <button className={topPostsSort === 'likes' ? 'active' : ''} onClick={() => setTopPostsSort('likes')}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
+                לייקים
+              </button>
+              <button className={topPostsSort === 'comments' ? 'active' : ''} onClick={() => setTopPostsSort('comments')}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                תגובות
+              </button>
+            </div>
+          </div>
+        </div>
+        {topPostsLoading ? (
+          <div className="top-posts-loading">טוען...</div>
+        ) : topPosts.length === 0 ? (
+          <div className="top-posts-empty">
+            <p>אין עדיין נתוני מעורבות. לחץ על כפתור הרענון (🔄) ליד כל פרסום כדי למשוך לייקים ותגובות.</p>
+          </div>
+        ) : (
+          <div className="top-posts-list">
+            {topPosts.map((p, i) => (
+              <div key={p.id} className={`top-post-row ${i === 0 ? 'top-post-gold' : i === 1 ? 'top-post-silver' : i === 2 ? 'top-post-bronze' : ''}`}>
+                <span className="top-post-rank">{i + 1}</span>
+                <div className="top-post-info">
+                  <span className="top-post-title">{p.title || 'ללא כותרת'}</span>
+                  <span className="top-post-group">{p.groupName}</span>
+                </div>
+                <div className="top-post-metrics">
+                  <span className="top-post-metric" title="לייקים">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
+                    {p.likes}
+                  </span>
+                  <span className="top-post-metric" title="תגובות">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                    {p.comments}
+                  </span>
+                </div>
+                {p.externalPostUrl && (
+                  <a href={p.externalPostUrl} target="_blank" rel="noopener noreferrer" className="top-post-link" title="פתח בפייסבוק">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {loading && !exposure && (
         <div className="empty-state"><p>טוען נתונים...</p></div>
@@ -2536,16 +3159,55 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(!!initialEditing)
   const [lightboxIdx, setLightboxIdx] = useState(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [pubHistory, setPubHistory] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [refreshingId, setRefreshingId] = useState(null)
   const menuRef = useRef(null)
+
+  // Preload publication history on mount
+  useEffect(() => {
+    if (campaign.publishedCount > 0) {
+      groupsService.getCampaign(campaign.id)
+        .then(res => setPubHistory(res.data.campaign.publicationHistory || []))
+        .catch(() => {})
+    }
+  }, [campaign.id, campaign.publishedCount])
 
   const images = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
   const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
 
   const STATUS_LABELS = {
     scheduled: 'מתוזמן', paused: 'מושהה', draft: 'טיוטה',
-    recurring: 'חוזר', active: 'פעיל', 'one-time': 'חד-פעמי',
+    recurring: 'חוזר', active: 'פעיל', published: 'פורסם', 'one-time': 'חד-פעמי',
   }
   const DAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
+
+  const loadHistory = async () => {
+    if (pubHistory) { setHistoryOpen(!historyOpen); return }
+    setHistoryLoading(true)
+    try {
+      const res = await groupsService.getCampaign(campaign.id)
+      setPubHistory(res.data.campaign.publicationHistory || [])
+      setHistoryOpen(true)
+    } catch { /* ignore */ }
+    setHistoryLoading(false)
+  }
+
+  const handleRefreshMetrics = async (pubId) => {
+    setRefreshingId(pubId)
+    window.dispatchEvent(new CustomEvent('postit-op-start', { detail: { id: `refresh-${pubId}`, msg: 'מרענן מידע עבור פוסט זה...' } }))
+    try {
+      const res = await groupsService.refreshPublicationMetrics(pubId)
+      if (res.data.success) {
+        setPubHistory(prev => prev?.map(h => h.id === pubId ? { ...h, likes: res.data.metrics.likes, comments: res.data.metrics.comments } : h))
+        window.dispatchEvent(new CustomEvent('postit-op-done', { detail: { id: `refresh-${pubId}`, success: true, msg: `✅ מידע עודכן: ${res.data.metrics.likes} לייקים, ${res.data.metrics.comments} תגובות` } }))
+      }
+    } catch {
+      window.dispatchEvent(new CustomEvent('postit-op-done', { detail: { id: `refresh-${pubId}`, success: false, msg: '⚠️ שגיאה ברענון מידע' } }))
+    }
+    setRefreshingId(null)
+  }
 
   // Edit form state
   const [text, setText] = useState(campaign.content || '')
@@ -2799,6 +3461,81 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                 <span className="detail-label">נוצר</span>
                 <span>{new Date(campaign.createdAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
+              {campaign.postUrl && (
+                <div className="detail-meta-item">
+                  <span className="detail-label">קישור לפוסט</span>
+                  <a href={campaign.postUrl} target="_blank" rel="noopener noreferrer" className="detail-link">🔗 צפה בפוסט בפייסבוק</a>
+                </div>
+              )}
+
+              {/* Publication History */}
+              {(campaign.publishedCount > 0 || campaign.status === 'published') && (
+                <div className="detail-history-section">
+                  <button className="detail-history-btn" onClick={loadHistory} disabled={historyLoading}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    {historyLoading ? 'טוען...' : historyOpen ? 'הסתר היסטוריית פרסומים' : 'היסטוריית פרסומים'}
+                    {!historyOpen && <span className="detail-history-count">{campaign.publishedCount || ''}</span>}
+                  </button>
+                  {historyOpen && pubHistory && (
+                    <div className="detail-history-list">
+                      {pubHistory.length === 0 ? (
+                        <p className="detail-history-empty">אין היסטוריית פרסומים</p>
+                      ) : pubHistory.map(h => (
+                        <div key={h.id} className="detail-history-card">
+                          <div className="detail-history-card-top">
+                            <div className="detail-history-group">
+                              {h.groupImage
+                                ? <img src={h.groupImage} alt="" className="detail-history-avatar" onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }} />
+                                : null}
+                              <span className="detail-history-avatar-fallback" style={h.groupImage ? { display: 'none' } : {}}>{h.groupName?.[0] || '?'}</span>
+                              <div className="detail-history-group-info">
+                                <span className="detail-history-name">{h.groupName}</span>
+                                <span className="detail-history-date">
+                                  {new Date(h.publishedAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            </div>
+                            <span className={`detail-history-status ${h.status === 'SUCCESS' ? 'status-success' : 'status-fail'}`}>
+                              {h.status === 'SUCCESS' ? '✓ פורסם' : '✗ נכשל'}
+                            </span>
+                          </div>
+                          <div className="detail-history-card-stats">
+                            <span className="detail-history-stat" title="לייקים">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
+                              {h.likes ?? '—'}
+                            </span>
+                            <span className="detail-history-stat" title="תגובות">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                              {h.comments ?? '—'}
+                            </span>
+                            {h.postUrl && (
+                              <a href={h.postUrl} target="_blank" rel="noopener noreferrer" className="detail-history-stat detail-history-link" title="פתח בפייסבוק">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                צפה בפוסט
+                              </a>
+                            )}
+                            {h.postUrl && (
+                              <button
+                                className={`detail-history-stat detail-history-refresh ${refreshingId === h.id ? 'refreshing' : ''}`}
+                                title="מרענן מידע עבור פוסט זה"
+                                disabled={!!refreshingId}
+                                onClick={() => handleRefreshMetrics(h.id)}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

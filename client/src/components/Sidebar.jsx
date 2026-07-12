@@ -10,11 +10,11 @@ import {
 } from 'lucide-react'
 
 const NAV_ITEMS = [
-  { id: 'dashboard', icon: LayoutDashboard, label: 'דשבורד', action: 'navigate', path: '/dashboard', state: { tab: 'overview' } },
-  { id: 'groups', icon: Users, label: 'קבוצות', action: 'navigate', path: '/dashboard', state: { tab: 'groups' } },
-  { id: 'posts', icon: FileText, label: 'פוסטים', action: 'navigate', path: '/dashboard', state: { tab: 'campaigns' } },
+  { id: 'dashboard', icon: LayoutDashboard, label: 'דשבורד', action: 'navigate', path: '/dashboard', tab: 'overview' },
+  { id: 'groups', icon: Users, label: 'קבוצות', action: 'navigate', path: '/dashboard', tab: 'groups' },
+  { id: 'posts', icon: FileText, label: 'קמפיינים', action: 'navigate', path: '/dashboard', tab: 'campaigns' },
   { id: 'calendar', icon: CalendarDays, label: 'יומן', action: 'navigate', path: '/scheduled' },
-  { id: 'analytics', icon: BarChart3, label: 'סטטיסטיקות', action: 'navigate', path: '/dashboard', state: { tab: 'stats' } },
+  { id: 'analytics', icon: BarChart3, label: 'סטטיסטיקות', action: 'navigate', path: '/dashboard', tab: 'stats' },
   { id: 'history', icon: History, label: 'היסטוריה', action: 'none' },
   { id: 'templates', icon: LayoutTemplate, label: 'טמפלייטים', action: 'none' },
 ]
@@ -28,16 +28,16 @@ export default function Sidebar({ activeTab, onTabChange }) {
 
   const handleNav = (item) => {
     if (item.action === 'none') return
-    if (item.path === '/dashboard' && item.state) {
+    if (item.path === '/dashboard' && item.tab) {
       onTabChange?.(item.id)
-      navigate('/dashboard', { state: item.state, replace: location.pathname === '/dashboard' })
+      navigate(`/dashboard?tab=${item.tab}`, { replace: location.pathname === '/dashboard' })
     } else if (item.path) {
       navigate(item.path)
     }
   }
 
   const handleSyncGroups = () => {
-    navigate('/dashboard', { state: { tab: 'groups' }, replace: location.pathname === '/dashboard' })
+    navigate('/dashboard?tab=groups', { replace: location.pathname === '/dashboard' })
     window.dispatchEvent(new CustomEvent('postit-sync-start', { detail: { msg: 'מסנכרן קבוצות מפייסבוק...' } }))
     groupsService.scrapeMyGroups().then(res => {
       if (res.data?.success) {
@@ -51,7 +51,7 @@ export default function Sidebar({ activeTab, onTabChange }) {
   return (
     <aside className="sidebar">
       {/* Logo */}
-      <div className="sidebar-logo" onClick={() => { navigate('/dashboard', { state: { tab: 'overview' } }); onTabChange?.('dashboard') }}>
+      <div className="sidebar-logo" onClick={() => { navigate('/dashboard?tab=overview'); onTabChange?.('dashboard') }}>
         <img src="/logo.svg" alt="PostIt" className="sidebar-logo-img" />
         <span className="sidebar-logo-text">PostIt</span>
       </div>
@@ -82,7 +82,7 @@ export default function Sidebar({ activeTab, onTabChange }) {
       <div className="sidebar-quick-actions">
         <button className="sidebar-action-item sidebar-action-glow" onClick={() => navigate('/create-post')}>
           <span className="sidebar-action-icon"><SquarePen size={16} /></span>
-          <span>צור פוסט</span>
+          <span>צור קמפיין</span>
           <Plus size={16} className="sidebar-action-plus" />
         </button>
         <button className="sidebar-action-item" onClick={handleSyncGroups}>
@@ -113,10 +113,10 @@ export default function Sidebar({ activeTab, onTabChange }) {
 
           {userMenuOpen && (
             <div className="sidebar-user-menu">
-              <button onClick={() => { setUserMenuOpen(false); navigate('/dashboard', { state: { tab: 'settings' } }) }}>
+              <button onClick={() => { setUserMenuOpen(false); navigate('/dashboard?tab=settings') }}>
                 👤 הצג פרופיל
               </button>
-              <button onClick={() => { setUserMenuOpen(false); navigate('/dashboard', { state: { tab: 'settings' } }) }}>
+              <button onClick={() => { setUserMenuOpen(false); navigate('/dashboard?tab=settings') }}>
                 ✏️ ערוך פרופיל
               </button>
               <button className="sidebar-menu-logout" onClick={() => { setUserMenuOpen(false); logout(); navigate('/login') }}>
@@ -131,7 +131,7 @@ export default function Sidebar({ activeTab, onTabChange }) {
           <button className="sidebar-bottom-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'מצב בהיר' : 'מצב כהה'}>
             {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
-          <button className="sidebar-bottom-btn" onClick={() => navigate('/dashboard', { state: { tab: 'settings' } })} title="הגדרות">
+          <button className="sidebar-bottom-btn" onClick={() => navigate('/dashboard?tab=settings')} title="הגדרות">
             <Settings size={18} />
           </button>
           <button className="sidebar-bottom-btn" title="התראות">
