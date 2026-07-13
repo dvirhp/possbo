@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { groupsService } from '../services/groupsService'
 import { Users, Send, Clock3, CheckCircle2, Heart, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Eye, ThumbsUp, MessageCircle } from 'lucide-react'
 import PostsDataTable from './PostsDataTable'
@@ -220,7 +220,7 @@ function DateRangePicker({ initialFrom, initialTo, onApply, onCancel }) {
   )
 }
 
-function MiniCalendar({ campaigns, posts }) {
+function MiniCalendar({ campaigns, posts, jobs }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [hoveredDay, setHoveredDay] = useState(null)
   const year = currentDate.getFullYear()
@@ -232,18 +232,39 @@ function MiniCalendar({ campaigns, posts }) {
   // Build a map: day number → { scheduled: [...], published: [...] }
   const dayItemsMap = useMemo(() => {
     const map = {}
+    // Use jobs (pending publication jobs) for scheduled dots — same source as full calendar
+    if (jobs) {
+      jobs.forEach(j => {
+        if (!j.scheduledAt || (j.status !== 'PENDING' && j.status !== 'RUNNING')) return
+        const d = new Date(j.scheduledAt)
+        if (d.getMonth() === month && d.getFullYear() === year) {
+          const day = d.getDate()
+          if (!map[day]) map[day] = { scheduled: [], published: [] }
+          map[day].scheduled.push({
+            title: j.postGroup?.post?.title || j.postTitle || 'קמפיין מתוזמן',
+            time: d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
+            groups: 1,
+          })
+        }
+      })
+    }
+    // Recurring campaigns — show dots on their recurring weekdays (recurringDays are numbers 0-6)
     if (campaigns) {
       campaigns.forEach(c => {
-        if (c.scheduledAt && (c.status === 'scheduled' || c.status === 'recurring')) {
-          const d = new Date(c.scheduledAt)
-          if (d.getMonth() === month && d.getFullYear() === year) {
-            const day = d.getDate()
-            if (!map[day]) map[day] = { scheduled: [], published: [] }
-            map[day].scheduled.push({
-              title: c.title || c.content?.substring(0, 30) || 'קמפיין',
-              time: d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
-              groups: c.groupCount || 0,
-            })
+        if (!c.recurringDays?.length || c.isPaused) return
+        if (c.campaignType !== 'RECURRING' && c.status !== 'recurring') return
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dateObj = new Date(year, month, d)
+          if (c.recurringDays.includes(dateObj.getDay())) {
+            if (!map[d]) map[d] = { scheduled: [], published: [] }
+            const title = c.title || c.content?.substring(0, 30) || 'קמפיין חוזר'
+            if (!map[d].scheduled.some(s => s.title === title)) {
+              map[d].scheduled.push({
+                title,
+                time: c.recurringTime || '',
+                groups: c.groupCount || 0,
+              })
+            }
           }
         }
       })
@@ -263,7 +284,7 @@ function MiniCalendar({ campaigns, posts }) {
       })
     }
     return map
-  }, [campaigns, posts, month, year])
+  }, [campaigns, posts, jobs, month, year, daysInMonth])
 
   const scheduledCount = campaigns?.filter(c => c.status === 'scheduled' || c.status === 'recurring')?.length || 0
   const publishedCount = posts?.length || 0
@@ -388,6 +409,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
     return cached?.exposure || null
   })
   const [showDatePicker, setShowDatePicker] = useState(false)
+  const [engChartType, setEngChartType] = useState('area')
   const lastDateRef = useRef(null)
   const lastDataVersionRef = useRef(null)
 
@@ -580,7 +602,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
 
         {/* Right column */}
         <div className="ov2-right-col">
-          <MiniCalendar campaigns={campaigns} posts={posts} />
+          <MiniCalendar campaigns={campaigns} posts={posts} jobs={jobs} />
 
           {/* Top Performing Posts */}
           <div className="ov2-top-posts-card">
@@ -611,12 +633,22 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
       </div>
 
       {/* Engagement Overview */}
-      <div className="ov2-engagement-card" onClick={() => navigate('/dashboard?tab=stats')}>
+      <div className="ov2-engagement-card">
         <div className="ov2-engagement-header">
           <h3>סקירת מעורבות</h3>
-          <div className="ov2-engagement-period">{periodLabel}</div>
+          <div className="ov2-engagement-header-actions">
+            <div className="chart-type-toggle small" onClick={e => e.stopPropagation()}>
+              <button className={`chart-toggle-btn ${engChartType === 'area' ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setEngChartType('area') }} title="גרף קו">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              </button>
+              <button className={`chart-toggle-btn ${engChartType === 'bar' ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setEngChartType('bar') }} title="גרף עמודות">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
+              </button>
+            </div>
+            <div className="ov2-engagement-period">{periodLabel}</div>
+          </div>
         </div>
-        <div className="ov2-engagement-content">
+        <div className="ov2-engagement-content" onClick={() => navigate('/dashboard?tab=stats')}>
           <div className="ov2-engagement-stats">
             <div className="ov2-engagement-stat">
               <Eye size={16} className="ov2-stat-icon" />
@@ -652,18 +684,27 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
           <div className="ov2-engagement-chart">
             {exposure?.data?.length > 0 ? (
               <ResponsiveContainer width="100%" height={120}>
-                <AreaChart data={exposure.data.map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="engGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#818cf8" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
-                  <Tooltip contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }} formatter={(val) => [formatNumber(val), 'חשיפה']} />
-                  <Area type="monotone" dataKey="value" stroke="#6366F1" strokeWidth={2} fill="url(#engGrad)" dot={{ r: 4, fill: '#6366F1', stroke: '#1e2028', strokeWidth: 2 }} />
-                </AreaChart>
+                {engChartType === 'area' ? (
+                  <AreaChart data={exposure.data.map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="engGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#818cf8" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+                    <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} tickFormatter={formatNumber} />
+                    <Tooltip contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }} formatter={(val) => [formatNumber(val), 'חשיפה']} />
+                    <Area type="monotone" dataKey="value" stroke="#6366F1" strokeWidth={2} fill="url(#engGrad)" dot={{ r: 4, fill: '#6366F1', stroke: '#1e2028', strokeWidth: 2 }} />
+                  </AreaChart>
+                ) : (
+                  <BarChart data={exposure.data.map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+                    <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} tickFormatter={formatNumber} />
+                    <Tooltip contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }} formatter={(val) => [formatNumber(val), 'חשיפה']} />
+                    <Bar dataKey="value" fill="#818cf8" radius={[4, 4, 0, 0]} background={false} />
+                  </BarChart>
+                )}
               </ResponsiveContainer>
             ) : (
               <EngagementPlaceholderBars dateRange={dateRange} />

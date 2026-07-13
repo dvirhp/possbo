@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
 import { authAPI } from '../services/api'
 import { groupsService } from '../services/groupsService'
+import { templatesService } from '../services/templatesService'
 
 const DataContext = createContext(null)
 
@@ -20,6 +21,8 @@ export function DataProvider({ children }) {
   const [jobs, setJobs] = useState([])
   const [posts, setPosts] = useState([])
   const [stats, setStats] = useState(null)
+  const [templates, setTemplates] = useState([])
+  const [recentCampaigns, setRecentCampaigns] = useState({ drafts: [], history: [] })
 
   // Background refresh state
   const [refreshing, setRefreshing] = useState(false)
@@ -77,18 +80,22 @@ export function DataProvider({ children }) {
     setRefreshing(true)
 
     try {
-      const [jobsRes, groupsRes, historyRes, statsRes, campaignsRes] = await Promise.all([
+      const [jobsRes, groupsRes, historyRes, statsRes, campaignsRes, templatesRes, recentRes] = await Promise.all([
         groupsService.getJobs().catch(() => ({ data: { jobs: [] } })),
         groupsService.getSavedGroups().catch(() => ({ data: { groups: [] } })),
         groupsService.getPublicationHistory().catch(() => ({ data: { history: [] } })),
         groupsService.getStats().catch(() => ({ data: { stats: null } })),
         groupsService.getCampaigns().catch(() => ({ data: { campaigns: [] } })),
+        templatesService.getAll().catch(() => ({ data: { templates: [] } })),
+        groupsService.getRecentCampaigns().catch(() => ({ data: { drafts: [], history: [] } })),
       ])
       setJobs(jobsRes.data.jobs || [])
       setCampaigns(campaignsRes.data.campaigns || [])
       setGroups(groupsRes.data.groups || [])
       setPosts(historyRes.data.history || [])
       setStats(statsRes.data.stats || null)
+      setTemplates(templatesRes.data.templates || [])
+      setRecentCampaigns({ drafts: recentRes.data.drafts || [], history: recentRes.data.history || [] })
       lastFetchRef.current.all = Date.now()
     } catch {
       // silent
@@ -197,6 +204,8 @@ export function DataProvider({ children }) {
     jobs,
     posts,
     stats,
+    templates,
+    recentCampaigns,
     // Actions
     refreshing,
     dataReady,
@@ -211,6 +220,8 @@ export function DataProvider({ children }) {
     setGroups,
     setPosts,
     setStats,
+    setTemplates,
+    setRecentCampaigns,
   }
 
   return (

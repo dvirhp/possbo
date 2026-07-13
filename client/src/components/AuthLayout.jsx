@@ -28,6 +28,12 @@ export default function AuthLayout({ children }) {
       setActiveTab('calendar')
     } else if (path.startsWith('/group/')) {
       setActiveTab('groups')
+    } else if (path === '/templates' || path.startsWith('/templates/')) {
+      setActiveTab('templates')
+    } else if (path === '/reports') {
+      setActiveTab('history')
+    } else if (path === '/guides') {
+      setActiveTab('guides')
     }
   }, [location, searchParams])
 

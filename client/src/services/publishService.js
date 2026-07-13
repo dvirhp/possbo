@@ -43,4 +43,23 @@ export const publishService = {
     const params = groupUrl ? `?groupUrl=${encodeURIComponent(groupUrl)}` : "";
     return api.get(`/publish/history${params}`);
   },
+
+  publishToProfile: (text, images, location = "", title = "") => {
+    const formData = new FormData();
+    formData.append("text", text);
+    if (title) formData.append("title", title);
+    if (location) formData.append("location", location);
+    formData.append("targetType", "PROFILE");
+    if (Array.isArray(images)) {
+      for (const img of images) {
+        formData.append("images", img);
+      }
+    } else if (images) {
+      formData.append("images", images);
+    }
+    return api.post("/publish/profile", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000,
+    });
+  },
 };

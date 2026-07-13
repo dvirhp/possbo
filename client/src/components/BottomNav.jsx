@@ -1,30 +1,202 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useAppData } from '../context/DataProvider'
+import { useTheme } from '../context/ThemeProvider'
+import {
+  LayoutDashboard, SquarePen, Users, CalendarDays, BarChart3,
+  LayoutTemplate, History, BookOpen, Settings, Moon, Sun, LogOut,
+  Menu, X, Bell, Home
+} from 'lucide-react'
+import NotificationSettings from './NotificationSettings'
+import '../styles/bottom-nav.css'
 
-const NAV_ITEMS = [
-  { path: '/dashboard', icon: '🏠', label: 'בית' },
-  { path: '/create-post', icon: '✍️', label: 'פרסום' },
-  { path: '/my-groups', icon: '👥', label: 'קבוצות' },
+// Bottom nav order (RTL): תפריט | בית | [פרסום] | קמפיינים | טמפלייטים
+const MAIN_ITEMS = [
+  { id: 'menu', icon: Menu, label: 'תפריט', isMenu: true },
+  { id: 'home', path: '/dashboard?tab=overview', match: '/dashboard', icon: Home, label: 'בית' },
+  { id: 'publish', path: '/create-post', match: '/create-post', icon: null, label: 'פרסום', isCenter: true },
+  { id: 'campaigns', path: '/dashboard?tab=campaigns', match: null, icon: SquarePen, label: 'פוסטים', matchTab: 'campaigns' },
+  { id: 'templates', path: '/templates', match: '/templates', icon: LayoutTemplate, label: 'קמפיינים' },
+]
+
+const DRAWER_ITEMS = [
+  { path: '/dashboard?tab=overview', icon: LayoutDashboard, label: 'דשבורד' },
+  { path: '/dashboard?tab=groups', icon: Users, label: 'קבוצות' },
+  { path: '/dashboard?tab=campaigns', icon: SquarePen, label: 'קמפיינים' },
+  { path: '/scheduled', icon: CalendarDays, label: 'יומן' },
+  { path: '/dashboard?tab=stats', icon: BarChart3, label: 'סטטיסטיקות' },
+  { path: '/templates', icon: LayoutTemplate, label: 'טמפלייטים' },
+  { path: '/reports', icon: History, label: 'דוחות וסיכום' },
+  { path: '/guides', icon: BookOpen, label: 'מדריכים' },
 ]
 
 export default function BottomNav() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAppData()
+  const { theme, setTheme } = useTheme()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
 
-  // Don't show on auth/landing pages
-  const hiddenPaths = ['/', '/login', '/register']
+  // Swipe left-to-right to open drawer (RTL: swipe from left edge)
+  const touchStartX = useRef(0)
+  const touchStartY = useRef(0)
+
+  useEffect(() => {
+    const handleTouchStart = (e) => {
+      touchStartX.current = e.touches[0].clientX
+      touchStartY.current = e.touches[0].clientY
+    }
+    const handleTouchEnd = (e) => {
+      const dx = e.changedTouches[0].clientX - touchStartX.current
+      const dy = Math.abs(e.changedTouches[0].clientY - touchStartY.current)
+      // Swipe right (LTR direction) with start near left edge — opens RTL drawer
+      if (dx > 80 && dy < 60 && touchStartX.current < 40) {
+        setDrawerOpen(true)
+      }
+    }
+    document.addEventListener('touchstart', handleTouchStart, { passive: true })
+    document.addEventListener('touchend', handleTouchEnd, { passive: true })
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart)
+      document.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [])
+
+  const hiddenPaths = ['/', '/login', '/register', '/forgot-password', '/privacy']
   if (hiddenPaths.includes(location.pathname)) return null
 
+  const isActive = (item) => {
+    if (item.isMenu) return false
+    if (item.matchTab) {
+      const params = new URLSearchParams(location.search)
+      return location.pathname === '/dashboard' && params.get('tab') === item.matchTab
+    }
+    if (item.id === 'home') {
+      const tab = new URLSearchParams(location.search).get('tab')
+      return location.pathname === '/dashboard' && (!tab || tab === 'overview')
+    }
+    if (item.match) return location.pathname === item.match
+    return false
+  }
+
+  const isDrawerActive = (item) => {
+    const [path, query] = item.path.split('?')
+    if (query) {
+      const tab = new URLSearchParams(query).get('tab')
+      const currentTab = new URLSearchParams(location.search).get('tab')
+      return location.pathname === path && currentTab === tab
+    }
+    return location.pathname === path
+  }
+
   return (
-    <nav className="bottom-nav">
-      {NAV_ITEMS.map(item => (
-        <NavLink
-          key={item.path}
-          to={item.path}
-          className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
-        >
-          <span className="bottom-nav-icon">{item.icon}</span>
-          <span className="bottom-nav-label">{item.label}</span>
-        </NavLink>
-      ))}
-    </nav>
+    <>
+      {/* SVG gradient definition for active nav icons */}
+      <svg width="0" height="0" style={{ position: 'absolute' }}>
+        <defs>
+          <linearGradient id="bnav-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#43E6FF" />
+            <stop offset="100%" stopColor="#a78bfa" />
+          </linearGradient>
+        </defs>
+      </svg>
+
+      <nav className="bottom-nav">
+        <div className="bottom-nav-inner">
+        {MAIN_ITEMS.map(item => {
+          const Icon = item.icon
+          if (item.isMenu) {
+            return (
+              <button key={item.id} className={`bottom-nav-item bottom-nav-menu ${drawerOpen ? 'active' : ''}`} onClick={() => setDrawerOpen(!drawerOpen)}>
+                <Icon size={26} strokeWidth={2} />
+                <span className="bottom-nav-label">{item.label}</span>
+              </button>
+            )
+          }
+          if (item.isCenter) {
+            return (
+              <button
+                key={item.id}
+                className={`bottom-nav-item bottom-nav-center ${isActive(item) ? 'active' : ''}`}
+                onClick={() => { navigate(item.path); setDrawerOpen(false) }}
+              >
+                <div className="bottom-nav-center-ring">
+                  <img src="/logo.svg" alt="" width="42" height="42" />
+                </div>
+                <span className="bottom-nav-label">{item.label}</span>
+              </button>
+            )
+          }
+          return (
+            <button
+              key={item.id}
+              className={`bottom-nav-item ${isActive(item) ? 'active' : ''}`}
+              onClick={() => { navigate(item.path); setDrawerOpen(false) }}
+            >
+              <Icon size={26} strokeWidth={2} />
+              <span className="bottom-nav-label">{item.label}</span>
+            </button>
+          )
+        })}
+        </div>
+      </nav>
+
+      {/* Mobile Drawer */}
+      {drawerOpen && <div className="mobile-drawer-overlay" onClick={() => setDrawerOpen(false)} />}
+      <div className={`mobile-drawer ${drawerOpen ? 'open' : ''}`}>
+        <div className="mobile-drawer-header">
+          <div className="mobile-drawer-user">
+            <div className="mobile-drawer-avatar">
+              {user?.profileImage || user?.avatarUrl
+                ? <img src={user.profileImage || user.avatarUrl} alt="" />
+                : <span>{user?.name?.[0] || '?'}</span>}
+            </div>
+            <div className="mobile-drawer-user-info">
+              <span className="mobile-drawer-name">{user?.name || 'משתמש'}</span>
+              <span className="mobile-drawer-email">{user?.email || ''}</span>
+            </div>
+          </div>
+          <button className="mobile-drawer-close" onClick={() => setDrawerOpen(false)}>
+            <X size={20} />
+          </button>
+        </div>
+        <nav className="mobile-drawer-nav">
+          {DRAWER_ITEMS.map(item => {
+            const Icon = item.icon
+            return (
+              <button
+                key={item.path}
+                className={`mobile-drawer-item ${isDrawerActive(item) ? 'active' : ''}`}
+                onClick={() => { navigate(item.path); setDrawerOpen(false) }}
+              >
+                <Icon size={20} strokeWidth={1.8} />
+                <span>{item.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+        <div className="mobile-drawer-divider" />
+        <div className="mobile-drawer-actions">
+          <button className="mobile-drawer-item" onClick={() => { navigate('/dashboard?tab=settings'); setDrawerOpen(false) }}>
+            <Settings size={20} strokeWidth={1.8} />
+            <span>הגדרות</span>
+          </button>
+          <button className="mobile-drawer-item" onClick={() => { setNotifOpen(true); setDrawerOpen(false) }}>
+            <Bell size={20} strokeWidth={1.8} />
+            <span>התראות</span>
+          </button>
+          <button className="mobile-drawer-item" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            {theme === 'dark' ? <Moon size={20} strokeWidth={1.8} /> : <Sun size={20} strokeWidth={1.8} />}
+            <span>{theme === 'dark' ? 'מצב כהה' : 'מצב בהיר'}</span>
+          </button>
+          <button className="mobile-drawer-item logout" onClick={() => { logout(); navigate('/login'); setDrawerOpen(false) }}>
+            <LogOut size={20} strokeWidth={1.8} />
+            <span>התנתק</span>
+          </button>
+        </div>
+      </div>
+      <NotificationSettings open={notifOpen} onClose={() => setNotifOpen(false)} />
+    </>
   )
 }

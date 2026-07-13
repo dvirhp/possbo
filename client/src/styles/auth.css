@@ -50,9 +50,6 @@
 }
 
 .auth-back-btn {
-  position: absolute;
-  top: 16px;
-  left: 16px;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -65,7 +62,8 @@
   font-size: 18px;
   text-decoration: none;
   transition: 0.2s ease;
-  z-index: 5;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .auth-back-btn:hover {
@@ -73,10 +71,30 @@
   color: var(--text-primary, #e8ecf0);
 }
 
+/* Top row: back button + logo in one line */
+.auth-toprow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 0;
+}
+
+.auth-toprow-logo {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.auth-toprow-logo .auth-logo-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
 .auth-header {
-  background: var(--bg-card, #23272f);
-  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
-  padding: 36px 24px 28px;
+  background: var(--bg-base, #1c1f26);
+  border-bottom: none;
+  padding: 20px 24px 28px;
   text-align: center;
   position: relative;
 }

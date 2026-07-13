@@ -57,9 +57,9 @@ describe("isValidFacebookGroupUrl", () => {
     expect(
       isValidFacebookGroupUrl("https://www.facebook.com/groups/12345"),
     ).toBe(true);
-    expect(
-      isValidFacebookGroupUrl("https://facebook.com/groups/mygroup"),
-    ).toBe(true);
+    expect(isValidFacebookGroupUrl("https://facebook.com/groups/mygroup")).toBe(
+      true,
+    );
   });
 
   it("should reject non-group Facebook URLs", () => {
@@ -157,7 +157,7 @@ describe("imageFileFilter", () => {
 });
 
 describe("MAX_FILE_SIZE", () => {
-  it("should be 5MB", () => {
-    expect(MAX_FILE_SIZE).toBe(5 * 1024 * 1024);
+  it("should be 50MB", () => {
+    expect(MAX_FILE_SIZE).toBe(50 * 1024 * 1024);
   });
 });

@@ -469,8 +469,10 @@
   height: 5px;
   border-radius: 50%;
 }
-.dot.scheduled { background: #6366F1; }
+.dot.scheduled { background: #818cf8; }
 .dot.published { background: #10B981; }
+.ov2-calendar-day.today .dot.scheduled { background: #c7d2fe; }
+.ov2-calendar-day.today .dot.published { background: #6ee7b7; }
 .ov2-calendar-legend {
   display: flex;
   align-items: center;
@@ -666,7 +668,7 @@
 .ov2-engagement-header {
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: space-between;
   margin-bottom: 20px;
 }
 .ov2-engagement-header h3 {
@@ -674,6 +676,11 @@
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+}
+.ov2-engagement-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .ov2-engagement-period {
   padding: 5px 12px;
@@ -727,6 +734,14 @@
   flex: 1;
   min-width: 0;
 }
+.ov2-engagement-chart .recharts-wrapper,
+.ov2-engagement-chart .recharts-surface {
+  background: transparent !important;
+}
+.ov2-engagement-chart .recharts-bar-background-rect,
+.ov2-engagement-chart .recharts-rectangle.recharts-bar-background-rect {
+  fill: transparent !important;
+}
 .ov2-engagement-cta {
   display: block;
   text-align: center;
@@ -744,11 +759,28 @@
 }
 @media (max-width: 768px) {
   .ov2-engagement-content {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
   .ov2-engagement-stats {
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 8px;
+  }
+  .ov2-engagement-stat {
+    min-width: 80px;
+    padding: 10px 12px;
+  }
+  .ov2-stat-value {
+    font-size: 18px;
+  }
+  .ov2-engagement-chart {
+    width: 100%;
+    min-height: 180px;
+  }
+  .ov2-engagement-card {
+    padding: 16px;
+  }
+  .ov2-engagement-header h3 {
+    font-size: 14px;
   }
 }
 

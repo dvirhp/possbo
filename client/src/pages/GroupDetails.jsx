@@ -75,12 +75,11 @@ export default function GroupDetails() {
         setError(locale.groupDetails.captureFailed)
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.message
-      if (msg === 'FACEBOOK_SESSION_REQUIRED') {
+      if (err.response?.data?.error === 'FACEBOOK_SESSION_REQUIRED') {
         localStorage.removeItem('fbSessionReady')
         navigate('/')
       } else {
-        setError(`${locale.errors.generic} ${msg}`)
+        setError(err.userMessage || 'שגיאה בלתי צפויה')
       }
     } finally {
       setCapturing(false)
@@ -117,12 +116,11 @@ export default function GroupDetails() {
         setError(locale.publish.failed)
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.message
-      if (msg === 'FACEBOOK_SESSION_REQUIRED') {
+      if (err.response?.data?.error === 'FACEBOOK_SESSION_REQUIRED') {
         localStorage.removeItem('fbSessionReady')
         navigate('/')
       } else {
-        setError(`${locale.errors.generic} ${msg}`)
+        setError(err.userMessage || 'שגיאה בלתי צפויה')
       }
     } finally {
       setPublishing(false)

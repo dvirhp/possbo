@@ -1289,7 +1289,7 @@
 /* ═══════════ CAMPAIGNS GRID ═══════════ */
 .campaigns-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -1585,7 +1585,7 @@
 /* ═══════════ GROUPS GRID ═══════════ */
 .groups-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(290px, 100%), 1fr));
   gap: 14px;
 }
 
@@ -1798,6 +1798,13 @@
   color: var(--text-primary);
 }
 
+.gl-stat-label {
+  display: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 .gl-open-btn {
   padding: 7px 16px;
   border-radius: var(--radius-sm);
@@ -1830,7 +1837,7 @@
 /* ═══ Groups Grid View (Cubes) ═══ */
 .groups-grid-view {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -2184,6 +2191,54 @@
   margin-bottom: 20px;
 }
 
+.stats-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.stats-chart-header h4 {
+  margin-bottom: 0;
+}
+
+.chart-type-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-deep);
+  border-radius: 8px;
+  padding: 3px;
+}
+.chart-type-toggle.small {
+  padding: 2px;
+  border-radius: 6px;
+}
+.chart-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.chart-type-toggle.small .chart-toggle-btn {
+  width: 26px;
+  height: 22px;
+  border-radius: 5px;
+}
+.chart-toggle-btn:hover {
+  color: var(--text-secondary);
+}
+.chart-toggle-btn.active {
+  background: var(--bg-card);
+  color: var(--indigo);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
 .bar-chart {
   display: flex;
   flex-direction: column;
@@ -2290,6 +2345,24 @@
 /* ─── Stats Chart ─── */
 .stats-chart-container {
   margin-top: 8px;
+}
+.stats-chart-container .recharts-wrapper,
+.stats-chart-container .recharts-surface {
+  background: transparent !important;
+}
+.stats-chart-container .recharts-bar-background-rect,
+.stats-chart-container .recharts-bar-rectangle rect[fill="#fff"],
+.stats-chart-container .recharts-bar-rectangle rect[fill="white"],
+.stats-chart-container .recharts-rectangle.recharts-bar-background-rect {
+  fill: transparent !important;
+}
+
+.best-times-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 12px;
+  margin-bottom: 0;
 }
 
 /* ─── Top Groups Table ─── */
@@ -3209,8 +3282,8 @@
   }
 }
 @media (max-width: 600px) {
-  .settings-page { padding: 0; }
-  .settings-page-header { padding: 0 4px; }
+  .settings-page { padding: 0; margin-top: 0; }
+  .settings-page-header { padding: 0 4px; margin-top: 0; }
   .settings-hero { padding: 20px 0 18px; }
   .settings-card-header { padding: 14px 16px; gap: 10px; }
   .settings-card-body { padding: 14px 16px; }
@@ -3295,8 +3368,8 @@
   }
 
   .dash-body {
-    padding: 14px 10px 70px;
-    margin-top: 54px;
+    padding: 6px 10px 110px;
+    margin-top: 44px;
     overflow-x: hidden;
     max-width: 100vw;
   }
@@ -3359,7 +3432,11 @@
   .kpi-row {
     grid-template-columns: 1fr 1fr 1fr;
     gap: 8px;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
+  }
+
+  .filter-bar {
+    margin-bottom: 12px;
   }
 
   .kpi-card {
@@ -3375,7 +3452,14 @@
   }
 
   .kpi-card-label {
-    font-size: 10px;
+    font-size: 9px;
+    line-height: 1.2;
+    word-break: keep-all;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
 
   .kpi-card-icon {
@@ -3416,10 +3500,28 @@
     flex-shrink: 0;
   }
 
-  /* Campaigns grid */
+  /* Campaigns table — compact mobile layout */
+  .cl-header { display: none; }
+  .cl-row {
+    padding: 10px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cl-col-exposure,
+  .cl-col-date,
+  .cl-col-groups { display: none; }
+  .cl-col-post { flex: 1 1 0; min-width: 0; gap: 10px; }
+  .cl-col-status { flex: 0 0 auto; }
+  .cl-col-actions { flex: 0 0 auto; }
+  .cl-thumb { width: 40px; height: 40px; }
+  .cl-post-info h4 { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cl-post-subtitle { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cl-status-badge { font-size: 9px; padding: 3px 7px; }
+
+  /* Campaigns grid — 2 per row */
   .campaigns-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
   }
 
   .campaign-card-visual {
@@ -3427,16 +3529,20 @@
   }
 
   .campaign-card-body {
-    padding: 12px 14px;
+    padding: 10px 12px;
   }
 
   .campaign-card-title {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .campaign-card-meta {
+    font-size: 10px;
+    gap: 6px;
+  }
+
+  .campaign-card-footer {
     font-size: 11px;
-    gap: 8px;
   }
 
   /* Groups */
@@ -3464,17 +3570,24 @@
   .gl-col-posts,
   .gl-col-scheduled {
     flex: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 4px;
+    background: var(--bg-elevated, rgba(255,255,255,0.03));
+    border-radius: 8px;
   }
 
   .gl-stat-label {
     display: block;
   }
 
+  .gl-stat-value {
+    font-size: 14px;
+  }
+
   .gl-col-action {
-    flex: 1 1 100%;
-    justify-content: center;
-    padding-top: 6px;
-    border-top: 1px solid var(--border);
+    display: none;
   }
 
   .groups-grid-view {
@@ -3603,18 +3716,29 @@
   }
 
   /* Stats */
+  .stats-layout {
+    gap: 14px;
+  }
+  .stats-period-bar {
+    padding: 0;
+  }
   .stats-kpis {
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(2, 1fr);
     gap: 8px;
+    margin-top: 0;
   }
   .stat-box {
-    padding: 14px 8px;
+    padding: 10px 8px;
   }
   .stat-box-val {
-    font-size: 20px;
+    font-size: 18px;
   }
   .stat-box-label {
     font-size: 10px;
+  }
+  .stat-box-icon {
+    width: 32px;
+    height: 32px;
   }
   .stats-filter-bar {
     flex-direction: column;
@@ -3624,8 +3748,87 @@
   }
   .bar-label { width: 80px; font-size: 11px; }
   .bar-value { font-size: 11px; width: 28px; }
-  .stats-chart-card { padding: 16px 12px; }
-  .stats-chart-card h4 { font-size: 14px; }
+  .stats-chart-card { padding: 14px 10px; overflow: hidden; }
+  .stats-chart-card h4 { font-size: 13px; }
+
+  /* Stats chart header — stack on mobile */
+  .stats-chart-header {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .chart-type-toggle {
+    flex-shrink: 0;
+  }
+
+  /* Stats chart container — fill width */
+  .stats-chart-container {
+    margin: 0 -4px;
+    width: calc(100% + 8px);
+  }
+
+  /* Top posts header — stack on mobile */
+  .top-posts-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .top-posts-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  /* Post content overflow */
+  .cl-post-info h4,
+  .cl-post-subtitle,
+  .campaign-card-title,
+  .post-card-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
+  }
+
+  /* Date pickers: contain within viewport */
+  .drp-dropdown {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: 80px !important;
+    min-width: unset !important;
+    max-width: calc(100vw - 20px) !important;
+    border-radius: 16px;
+    z-index: 500;
+  }
+
+  .stats-period-bar .drp-dropdown,
+  .dash-date-wrap .drp-dropdown,
+  .overview-date-wrap .drp-dropdown {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: 80px !important;
+    min-width: unset !important;
+  }
+
+  /* Charts visibility on mobile */
+  .stats-chart-container {
+    min-height: 180px;
+  }
+  .stats-chart-container .recharts-responsive-container {
+    min-height: 180px;
+  }
+  .stats-chart-card .recharts-responsive-container,
+  .ov2-engagement-chart .recharts-responsive-container {
+    min-height: 180px;
+  }
+
+  .stats-chart-card .recharts-wrapper,
+  .ov2-engagement-chart .recharts-wrapper {
+    max-width: 100% !important;
+  }
 
   /* Settings */
   .settings-card { max-width: none; }
@@ -3657,6 +3860,11 @@
   }
 
   .stats-kpis {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .campaigns-grid {
     grid-template-columns: 1fr;
     gap: 8px;
   }
@@ -4268,7 +4476,7 @@
 .cl-header {
   display: flex;
   align-items: center;
-  padding: 10px 16px;
+  padding: 10px 24px;
   background: var(--bg-elevated);
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   border-bottom: 1px solid var(--border);
@@ -4316,6 +4524,7 @@
 
 .cl-col { display: flex; align-items: center; }
 .cl-col-post { flex: 2.5; min-width: 0; gap: 12px; }
+.cl-header .cl-col-post { padding-inline-start: 72px; }
 .cl-col-groups { flex: 0.7; justify-content: center; }
 .cl-col-status { flex: 1; justify-content: center; }
 .cl-col-exposure { flex: 1; justify-content: center; }
@@ -4680,18 +4889,104 @@
   gap: 8px;
   margin-top: 4px;
 }
-.detail-edit-actions .modal-cancel-btn {
+.detail-edit-actions .modal-submit-btn {
   flex: 1;
+  background: var(--emerald, #34d399);
+  font-size: 13px;
   padding: 10px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-secondary);
+}
+.detail-edit-actions .modal-submit-btn:hover:not(:disabled) {
+  background: #2dd4a8;
+}
+.detail-edit-actions .modal-cancel-btn {
+  padding: 8px 14px;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.08);
+  color: #f87171;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+  font-family: inherit;
+  transition: 0.15s;
 }
 .detail-edit-actions .modal-cancel-btn:hover {
-  background: var(--bg-elevated);
+  background: rgba(248, 113, 113, 0.15);
+  border-color: #f87171;
+}
+
+/* WhatsApp toggle */
+.wa-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.wa-toggle-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  background: var(--bg-elevated, rgba(255,255,255,0.04));
+  color: var(--text-muted, #6b7684);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.wa-toggle-btn.active {
+  border-color: #25d366;
+  background: rgba(37, 211, 102, 0.1);
+  color: #25d366;
+}
+.wa-toggle-btn:hover {
+  border-color: #25d366;
+}
+
+/* Selected groups chips */
+.selected-groups-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.selected-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 10px;
+  background: var(--bg-elevated, rgba(255,255,255,0.06));
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 16px;
+  font-size: 11px;
+  color: var(--text-primary, #e8ecf0);
+}
+.selected-group-chip button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted, #6b7684);
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
+  transition: 0.15s;
+}
+.selected-group-chip button:hover {
+  color: #f87171;
+}
+.groups-expand-btn {
+  padding: 4px 10px;
+  background: none;
+  border: 1px dashed var(--border, rgba(255,255,255,0.12));
+  border-radius: 16px;
+  color: var(--indigo, #6366f1);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.groups-expand-btn:hover {
+  border-color: var(--indigo, #6366f1);
 }
 .detail-body {
   padding: 16px 20px 20px;

@@ -200,7 +200,7 @@ router.get(
       take: 50,
     });
 
-    // Override any legacy FAILED statuses and include screenshot info
+    // Include screenshot info and post images
     const cleaned = history.map((h) => ({
       ...h,
       postUrl: h.externalPostUrl || null,
@@ -210,11 +210,49 @@ router.get(
             images: h.post.media?.map((m) => m.url) || [],
           }
         : h.post,
-      status: "SUCCESS",
       hasScreenshot: !!h.screenshotUrl && h.screenshotUrl !== "stored",
     }));
 
     res.json({ success: true, history: cleaned });
+  }),
+);
+
+// ─── Get single publication by ID ────────────────────────
+
+router.get(
+  "/history/:pubId",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const pub = await prisma.publicationHistory.findFirst({
+      where: { id: req.params.pubId, userId: req.user.id },
+      include: {
+        post: {
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            isAnonymous: true,
+            location: true,
+            media: { orderBy: { orderIndex: "asc" }, select: { url: true } },
+          },
+        },
+        group: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!pub) return res.status(404).json({ error: "Publication not found" });
+
+    const publication = {
+      ...pub,
+      postUrl: pub.externalPostUrl || null,
+      post: pub.post
+        ? { ...pub.post, images: pub.post.media?.map((m) => m.url) || [] }
+        : pub.post,
+      status: "SUCCESS",
+      hasScreenshot: !!pub.screenshotUrl && pub.screenshotUrl !== "stored",
+    };
+
+    res.json({ success: true, publication });
   }),
 );
 
@@ -321,6 +359,7 @@ router.post(
       recurringStartDate,
       recurringEndDate,
       campaignType,
+      publishToProfile,
     } = req.body;
 
     // Parse stringified arrays from FormData
@@ -332,13 +371,20 @@ router.post(
     if (typeof dayTimes === "string") dayTimes = JSON.parse(dayTimes);
     if (anonymous === "true") anonymous = true;
     if (anonymous === "false") anonymous = false;
+    if (publishToProfile === "true") publishToProfile = true;
+    if (publishToProfile === "false") publishToProfile = false;
 
     if (!text) {
       return res.status(400).json({ error: "text is required" });
     }
 
-    // Allow saving without groups (draft only)
-    if (!groupIds?.length && scheduleMode && scheduleMode !== "draft") {
+    // Allow saving without groups (draft only) — unless publishing to profile
+    if (
+      !groupIds?.length &&
+      !publishToProfile &&
+      scheduleMode &&
+      scheduleMode !== "draft"
+    ) {
       return res
         .status(400)
         .json({ error: "groupIds are required for scheduled campaigns" });
@@ -421,6 +467,7 @@ router.post(
         status: scheduledAt ? "ACTIVE" : "DRAFT",
         isAnonymous: anonymous || false,
         location: location || null,
+        publishToProfile: publishToProfile || false,
         campaignType: campaignType || "ONE_TIME",
         recurringDays: recurringDays || [],
         recurringTime: recurringTime || recurringTimes?.[0] || null,
@@ -521,6 +568,17 @@ router.post(
       }
 
       results.push(postGroup.id);
+    }
+
+    // Create a profile publication job if publishToProfile is true
+    if (publishToProfile && scheduledAt) {
+      await prisma.publicationJob.create({
+        data: {
+          postId: post.id,
+          scheduledAt,
+          targetType: "PROFILE",
+        },
+      });
     }
 
     res.json({
@@ -1196,6 +1254,11 @@ router.get(
           },
           include: {
             group: { select: { id: true, name: true } },
+            metrics: {
+              orderBy: { collectedAt: "desc" },
+              take: 1,
+              select: { likesCount: true, commentsCount: true },
+            },
           },
           orderBy: { publishedAt: "desc" },
         }),
@@ -1212,6 +1275,30 @@ router.get(
       groupStats[gId].count++;
     }
 
+    // Hourly engagement aggregation for best posting times
+    const hourlyEngagement = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      label: `${String(h).padStart(2, "0")}:00`,
+      likes: 0,
+      comments: 0,
+      posts: 0,
+    }));
+    for (const item of history) {
+      if (!item.publishedAt) continue;
+      const h = new Date(item.publishedAt).getHours();
+      const m = item.metrics?.[0];
+      hourlyEngagement[h].posts += 1;
+      hourlyEngagement[h].likes += m?.likesCount || 0;
+      hourlyEngagement[h].comments += m?.commentsCount || 0;
+    }
+    const hourlyData = hourlyEngagement
+      .filter((h) => h.posts > 0)
+      .map((h) => ({
+        ...h,
+        avgLikes: Math.round(h.likes / h.posts),
+        avgComments: Math.round(h.comments / h.posts),
+      }));
+
     res.json({
       success: true,
       stats: {
@@ -1219,6 +1306,7 @@ router.get(
         groupsCount,
         publishedCount,
         groupStats: Object.values(groupStats).sort((a, b) => b.count - a.count),
+        hourlyEngagement: hourlyData,
       },
     });
   }),

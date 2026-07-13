@@ -81,7 +81,7 @@ describe('Login page', () => {
 
   it('should render submit button', () => {
     renderLogin();
-    expect(screen.getByText('🔑 התחבר')).toBeInTheDocument();
+    expect(screen.getByText('התחבר')).toBeInTheDocument();
   });
 
   it('should render link to register page', () => {
@@ -110,6 +110,7 @@ describe('Login page', () => {
   it('should show error on login failure', async () => {
     mockLogin.mockRejectedValue({
       response: { data: { error: 'Invalid email or password' } },
+      userMessage: 'אימייל או סיסמה שגויים',
     });
 
     renderLogin();
@@ -119,7 +120,7 @@ describe('Login page', () => {
     fireEvent.submit(document.querySelector('form'));
 
     await waitFor(() => {
-      expect(screen.getByText('Invalid email or password')).toBeInTheDocument();
+      expect(screen.getByText('אימייל או סיסמה שגויים')).toBeInTheDocument();
     });
   });
 
@@ -152,7 +153,7 @@ describe('Login page', () => {
     fireEvent.submit(document.querySelector('form'));
 
     await waitFor(() => {
-      expect(screen.getByText('⏳ מתחבר...')).toBeInTheDocument();
+      expect(screen.getByText('מתחבר...')).toBeInTheDocument();
     });
   });
 });

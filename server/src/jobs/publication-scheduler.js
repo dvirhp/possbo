@@ -1,5 +1,8 @@
 import { PrismaClient } from "@prisma/client";
-import { publishToGroup } from "../utils/facebook-automation.js";
+import {
+  publishToGroup,
+  publishToProfile,
+} from "../utils/facebook-automation.js";
 import { createLogger } from "../utils/logger.js";
 
 const prisma = new PrismaClient();
@@ -117,6 +120,9 @@ export async function processPublicationJobs() {
           user: true,
         },
       },
+      post: {
+        include: { media: true, user: true },
+      },
     },
     orderBy: { scheduledAt: "asc" },
     take: 20,
@@ -131,7 +137,8 @@ export async function processPublicationJobs() {
   // Group jobs by user for per-user queue management
   const jobsByUser = new Map();
   for (const job of pendingJobs) {
-    const userId = job.postGroup.user.id;
+    const userId = job.postGroup?.user?.id || job.post?.user?.id;
+    if (!userId) continue; // Skip invalid jobs
     if (!jobsByUser.has(userId)) jobsByUser.set(userId, []);
     jobsByUser.get(userId).push(job);
   }
@@ -232,8 +239,27 @@ export async function processPublicationJobs() {
         continue;
       }
 
-      const { postGroup } = job;
-      const { post, group, user } = postGroup;
+      // Determine if this is a profile or group job
+      const isProfileJob = job.targetType === "PROFILE";
+      const postGroup = job.postGroup;
+      const post = isProfileJob ? job.post : postGroup?.post;
+      const group = isProfileJob ? null : postGroup?.group;
+      const user = isProfileJob ? job.post?.user : postGroup?.user;
+
+      if (!post || !user) {
+        await prisma.publicationJob.update({
+          where: { id: job.id },
+          data: {
+            status: "FAILED",
+            lastError: "Missing post or user data",
+            completedAt: new Date(),
+            lockedAt: null,
+            lockedBy: null,
+          },
+        });
+        failed++;
+        continue;
+      }
 
       try {
         // Check if user has valid Facebook session
@@ -241,19 +267,28 @@ export async function processPublicationJobs() {
           throw new Error("SESSION_EXPIRED");
         }
 
-        // Get the group URL
-        const groupUrl =
-          group.url || `https://www.facebook.com/groups/${group.externalId}`;
-
         // Get image path if there's media
         const imagePath = post.media?.[0]?.url || null;
 
-        // Publish
-        const result = await publishToGroup(groupUrl, post.content, imagePath, {
-          userId: user.id,
-          isAnonymous: post.isAnonymous,
-          location: post.location,
-        });
+        let result;
+        if (isProfileJob) {
+          // Publish to user's personal profile
+          result = await publishToProfile(post.content, imagePath, {
+            userId: user.id,
+            location: post.location,
+          });
+        } else {
+          // Get the group URL
+          const groupUrl =
+            group.url || `https://www.facebook.com/groups/${group.externalId}`;
+
+          // Publish to group
+          result = await publishToGroup(groupUrl, post.content, imagePath, {
+            userId: user.id,
+            isAnonymous: post.isAnonymous,
+            location: post.location,
+          });
+        }
 
         // Mark as success
         await prisma.publicationJob.update({
@@ -270,10 +305,11 @@ export async function processPublicationJobs() {
         await prisma.publicationHistory.create({
           data: {
             postId: post.id,
-            groupId: group.id,
+            groupId: group?.id || null,
             userId: user.id,
-            postGroupId: postGroup.id,
+            postGroupId: postGroup?.id || null,
             publicationJobId: job.id,
+            targetType: isProfileJob ? "PROFILE" : "GROUP",
             publishedAt: new Date(),
             status: "SUCCESS",
             externalPostUrl: result?.postUrl || null,
@@ -284,15 +320,15 @@ export async function processPublicationJobs() {
         succeeded++;
         log.info("Post published successfully", {
           postId: post.id,
-          groupId: group.id,
+          groupId: group?.id || "PROFILE",
           jobId: job.id,
           userDailyTotal: todayCount + i + 1,
         });
 
         // Track exposure - add group's member count to daily exposure
-        let groupMemberCount = group.memberCount || 0;
+        let groupMemberCount = group?.memberCount || 0;
         // Fallback: look up from FacebookGroup if Group table doesn't have memberCount
-        if (!groupMemberCount) {
+        if (!groupMemberCount && group) {
           const fbGroupId =
             group.url?.match(/groups\/([^/?]+)/)?.[1] || group.externalGroupId;
           if (fbGroupId) {
@@ -387,10 +423,11 @@ export async function processPublicationJobs() {
           await prisma.publicationHistory.create({
             data: {
               postId: post.id,
-              groupId: group.id,
+              groupId: group?.id || null,
               userId: user.id,
-              postGroupId: postGroup.id,
+              postGroupId: postGroup?.id || null,
               publicationJobId: job.id,
+              targetType: isProfileJob ? "PROFILE" : "GROUP",
               publishedAt: new Date(),
               status: "FAILED",
               errorMessage: errorMsg,

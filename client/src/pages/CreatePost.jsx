@@ -3,28 +3,46 @@ import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { groupsService } from '../services/groupsService'
 import { publishService } from '../services/publishService'
+import { templatesService } from '../services/templatesService'
 import { authAPI } from '../services/api'
 import confetti from 'canvas-confetti'
 import LocationAutocomplete from '../components/LocationAutocomplete'
 import FacebookPreview from '../components/FacebookPreview'
 import ConfirmDialog from '../components/ConfirmDialog'
+import OptimalTimesHint from '../components/OptimalTimesHint'
 import '../styles/create-post.css'
+import '../styles/templates.css'
 
 export default function CreatePost() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, authChecked, groups: cachedGroups, forceRefresh } = useAppData()
+  const { user, authChecked, groups: cachedGroups, forceRefresh, templates: cachedTemplates, recentCampaigns: cachedRecent } = useAppData()
 
   const preSelectedGroup = location.state?.group || null
   const republishData = location.state?.republish || null
+  const fromTemplate = location.state?.fromTemplate || null
+  const profilePublishDefault = location.state?.publishToProfile || false
 
-  const [campaignTitle, setCampaignTitle] = useState(republishData?.title || '')
-  const [postText, setPostText] = useState(republishData?.content || '')
+  // Profile publishing
+  const [publishToProfile, setPublishToProfile] = useState(profilePublishDefault)
+
+  // Template selector
+  const [templates, setTemplates] = useState(cachedTemplates || [])
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false)
+  const [selectedTemplateName, setSelectedTemplateName] = useState(fromTemplate?.name || null)
+
+  // Sync from cache
+  useEffect(() => {
+    if (cachedTemplates?.length) setTemplates(cachedTemplates)
+  }, [cachedTemplates])
+
+  const [campaignTitle, setCampaignTitle] = useState(fromTemplate?.title || republishData?.title || '')
+  const [postText, setPostText] = useState(fromTemplate?.content || republishData?.content || '')
   const [postImages, setPostImages] = useState([])
   const [postImagePreviews, setPostImagePreviews] = useState([])
-  const [isAnonymous, setIsAnonymous] = useState(republishData?.isAnonymous || false)
-  const [postLocation, setPostLocation] = useState(republishData?.location || '')
-  const [showLocationInput, setShowLocationInput] = useState(!!republishData?.location)
+  const [isAnonymous, setIsAnonymous] = useState(fromTemplate?.isAnonymous || republishData?.isAnonymous || false)
+  const [postLocation, setPostLocation] = useState(fromTemplate?.location || republishData?.location || '')
+  const [showLocationInput, setShowLocationInput] = useState(!!(fromTemplate?.location || republishData?.location))
   const [whatsappNumber, setWhatsappNumber] = useState(user?.whatsappNumber || '')
   const [whatsappMessage, setWhatsappMessage] = useState(user?.whatsappMessage || '')
   const [showWhatsapp, setShowWhatsapp] = useState(false)
@@ -34,14 +52,14 @@ export default function CreatePost() {
   const [waSaving, setWaSaving] = useState(false)
 
   // Scheduling
-  const [scheduleMode, setScheduleMode] = useState('now') // 'now' | 'scheduled' | 'recurring'
+  const [scheduleMode, setScheduleMode] = useState(fromTemplate?.scheduleMode || 'now') // 'now' | 'scheduled' | 'recurring'
   const [scheduleDate, setScheduleDate] = useState('')
   const [scheduleTime, setScheduleTime] = useState('')
-  const [recurringDays, setRecurringDays] = useState([])
+  const [recurringDays, setRecurringDays] = useState(fromTemplate?.recurringDays || [])
   const [recurringTime, setRecurringTime] = useState('')
   const [recurringStartDate, setRecurringStartDate] = useState('')
   const [recurringEndDate, setRecurringEndDate] = useState('')
-  const [dayTimes, setDayTimes] = useState({}) // { 0: ['10:00'], 2: ['16:00','17:00'] }
+  const [dayTimes, setDayTimes] = useState(fromTemplate?.dayTimes || {}) // { 0: ['10:00'], 2: ['16:00','17:00'] }
 
   // Groups - use cached data
   const [groups, setGroups] = useState(cachedGroups || [])
@@ -56,8 +74,42 @@ export default function CreatePost() {
       if (matched.length) setSelectedGroups(matched)
     }
   }, [republishData, cachedGroups])
+
+  // Pre-select groups from template
+  useEffect(() => {
+    if (fromTemplate?.groupIds?.length && cachedGroups?.length && selectedGroups.length === 0) {
+      const matched = cachedGroups.filter(g => fromTemplate.groupIds.includes(g.id))
+      if (matched.length) setSelectedGroups(matched)
+    }
+  }, [fromTemplate, cachedGroups])
+
+  // Templates already loaded from DataProvider cache
+
+  const applyTemplate = (tpl) => {
+    setCampaignTitle(tpl.campaignTitle || '')
+    setPostText(tpl.content || '')
+    setIsAnonymous(tpl.isAnonymous || false)
+    setPostLocation(tpl.location || '')
+    setShowLocationInput(!!tpl.location)
+    setScheduleMode(tpl.scheduleMode || 'now')
+    setRecurringDays(tpl.recurringDays || [])
+    setDayTimes(tpl.dayTimes || {})
+    if (tpl.groupIds?.length && cachedGroups?.length) {
+      const matched = cachedGroups.filter(g => tpl.groupIds.includes(g.id))
+      setSelectedGroups(matched)
+    }
+    setSelectedTemplateName(tpl.name)
+    setShowTemplateSelector(false)
+    // Mark usage
+    templatesService.markUsed(tpl.id).catch(() => {})
+  }
+
+  const clearTemplate = () => {
+    setSelectedTemplateName(null)
+  }
   const [loadingGroups, setLoadingGroups] = useState(!cachedGroups?.length)
   const [groupSearch, setGroupSearch] = useState('')
+  const [showAllChips, setShowAllChips] = useState(false)
 
   // Publishing
   const [publishing, setPublishing] = useState(false)
@@ -83,10 +135,7 @@ export default function CreatePost() {
     }
   }, [authChecked, user, navigate, cachedGroups])
 
-  // Load recent drafts/history for restore panel
-  useEffect(() => {
-    if (user && !republishData) loadRecentCampaigns()
-  }, [user])
+  // Recent campaigns loaded from DataProvider cache
 
   const loadGroups = async () => {
     setLoadingGroups(true)
@@ -163,6 +212,7 @@ export default function CreatePost() {
           groupIds: selectedGroups.map(g => g.id),
           anonymous: isAnonymous,
           location: postLocation,
+          publishToProfile,
           scheduleMode,
           scheduleDate,
           scheduleTime,
@@ -187,7 +237,7 @@ export default function CreatePost() {
           setError(res.data.error || 'שגיאה ביצירת הקמפיין')
         }
       } catch (err) {
-        setError(err.response?.data?.error || err.message)
+        setError(err.userMessage || 'שגיאה בלתי צפויה')
       } finally {
         setPublishing(false)
       }
@@ -202,7 +252,7 @@ export default function CreatePost() {
     setPublishing(false)
 
     const groupsCopy = [...selectedGroups]
-    const groupCount = groupsCopy.length
+    const groupCount = groupsCopy.length + (publishToProfile ? 1 : 0)
 
     // Navigate immediately — let user continue browsing
     window.dispatchEvent(new CustomEvent('postit-publish-start', { detail: { count: groupCount } }))
@@ -210,6 +260,17 @@ export default function CreatePost() {
 
     // Fire publish in background
     const publishResults = []
+
+    // Publish to profile if enabled
+    if (publishToProfile) {
+      try {
+        await publishService.publishToProfile(finalText, postImages, postLocation, campaignTitle)
+        publishResults.push({ group: 'פרופיל אישי', success: true })
+      } catch {
+        publishResults.push({ group: 'פרופיל אישי', success: false })
+      }
+    }
+
     const promises = groupsCopy.map(async (group) => {
       try {
         const groupUrl = group.url || `https://www.facebook.com/groups/${group.externalId}`
@@ -274,7 +335,7 @@ export default function CreatePost() {
           forceRefresh()
           navigate('/dashboard', { state: { toast: 'נשמר כטיוטה ✓' } })
         } catch (err) {
-          setError(err.response?.data?.error || 'שגיאה בשמירה')
+          setError(err.userMessage || 'שגיאה בשמירה')
         } finally {
           setSavingDraft(false)
         }
@@ -301,22 +362,18 @@ export default function CreatePost() {
 
   // ─── Restore / Continue from draft ─────────────────────
   const [showRestore, setShowRestore] = useState(false)
-  const [recentDrafts, setRecentDrafts] = useState([])
-  const [recentHistory, setRecentHistory] = useState([])
+  const [recentDrafts, setRecentDrafts] = useState(cachedRecent?.drafts || [])
+  const [recentHistory, setRecentHistory] = useState(cachedRecent?.history || [])
   const [loadingRecent, setLoadingRecent] = useState(false)
   const [showMoreHistory, setShowMoreHistory] = useState(false)
 
-  const loadRecentCampaigns = async () => {
-    setLoadingRecent(true)
-    try {
-      const res = await groupsService.getRecentCampaigns()
-      if (res.data.success) {
-        setRecentDrafts(res.data.drafts || [])
-        setRecentHistory(res.data.history || [])
-      }
-    } catch { /* silent */ }
-    finally { setLoadingRecent(false) }
-  }
+  // Sync from cache
+  useEffect(() => {
+    if (cachedRecent?.drafts) setRecentDrafts(cachedRecent.drafts)
+    if (cachedRecent?.history) setRecentHistory(cachedRecent.history)
+  }, [cachedRecent])
+
+  const loadRecentCampaigns = () => {} // kept for compatibility, data comes from cache
 
   const handleRestore = (campaign) => {
     // Strip WhatsApp link from content if present
@@ -441,7 +498,7 @@ export default function CreatePost() {
       if (!postText.trim()) errors[0] = 'יש לכתוב טקסט לפוסט'
     }
     if (step >= 1) {
-      if (selectedGroups.length === 0) errors[1] = 'יש לבחור לפחות קבוצה אחת'
+      if (selectedGroups.length === 0 && !publishToProfile) errors[1] = 'יש לבחור לפחות קבוצה אחת או לסמן פרסום בפרופיל'
     }
     if (step >= 2) {
       if (scheduleMode === 'scheduled') {
@@ -593,9 +650,14 @@ export default function CreatePost() {
           </div>
 
           <div className="cp-wizard">
-          {/* Restore / Continue buttons */}
-          {!results && currentStep === 0 && !showRestore && (recentDrafts.length > 0 || recentHistory.length > 0) && (
+          {/* Restore / Continue / Template buttons */}
+          {!results && currentStep === 0 && !showRestore && (recentDrafts.length > 0 || recentHistory.length > 0 || templates.length > 0) && (
             <div className="cp-restore-bar">
+              {templates.length > 0 && (
+                <button type="button" className="cp-restore-btn cp-restore-template" onClick={() => setShowRestore('templates')}>
+                  📋 טען מטמפלייט ({templates.length})
+                </button>
+              )}
               {recentDrafts.length > 0 && (
                 <button type="button" className="cp-restore-btn" onClick={() => setShowRestore('drafts')}>
                   📝 המשך מאיפה שעצרתי ({recentDrafts.length})
@@ -609,14 +671,29 @@ export default function CreatePost() {
             </div>
           )}
 
-          {/* Restore panel */}
+          {/* Restore / Templates panel */}
           {showRestore && (
             <div className="cp-restore-panel">
               <div className="cp-restore-header">
-                <h3>{showRestore === 'drafts' ? '📝 טיוטות שנשמרו' : '🔄 שחזור מקמפיינים קודמים'}</h3>
+                <h3>{showRestore === 'templates' ? '📋 טען מטמפלייט' : showRestore === 'drafts' ? '📝 טיוטות שנשמרו' : '🔄 שחזור מקמפיינים קודמים'}</h3>
                 <button type="button" className="cp-restore-close" onClick={() => setShowRestore(false)}>✕</button>
               </div>
-              {loadingRecent ? (
+              {showRestore === 'templates' ? (
+                <div className="cp-restore-list">
+                  {templates.map(tpl => (
+                    <div key={tpl.id} className="cp-restore-item" onClick={() => { applyTemplate(tpl); setShowRestore(false) }}>
+                      <div className="cp-restore-item-content">
+                        <strong>{tpl.name}</strong>
+                        <p>{tpl.content?.slice(0, 60)}...</p>
+                      </div>
+                      <div className="cp-restore-item-meta">
+                        <span>{tpl.groupIds?.length || 0} קבוצות</span>
+                        <span>{tpl.usageCount} שימושים</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : loadingRecent ? (
                 <div className="cp-restore-loading">טוען...</div>
               ) : (
                 <div className="cp-restore-list">
@@ -669,6 +746,13 @@ export default function CreatePost() {
             {/* STEP 0: Content */}
             {currentStep === 0 && (
               <div className="cp-step-panel">
+                {/* Template badge */}
+                {selectedTemplateName && (
+                  <div className="tpl-selector-badge">
+                    📋 טמפלייט: {selectedTemplateName}
+                    <button onClick={clearTemplate}>✕</button>
+                  </div>
+                )}
                 <div className="cp-card">
                   <input
                     type="text"
@@ -689,8 +773,12 @@ export default function CreatePost() {
                     <div className="cp-images-preview">
                       {postImagePreviews.map((preview, i) => (
                         <div key={i} className="cp-image-preview-item">
-                          <img src={preview} alt={`preview ${i + 1}`} />
-                          <span className="cp-image-number">{i + 1}</span>
+                          {postImages[i]?.type?.startsWith('video/') ? (
+                            <video src={preview} muted style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
+                          ) : (
+                            <img src={preview} alt={`preview ${i + 1}`} />
+                          )}
+                          <span className="cp-image-number">{postImages[i]?.type?.startsWith('video/') ? '🎬' : i + 1}</span>
                           <button onClick={() => removeImage(i)} className="cp-remove-img">✕</button>
                         </div>
                       ))}
@@ -767,8 +855,8 @@ export default function CreatePost() {
                   <div className="cp-options">
                     <label className="cp-option">
                       <span className="cp-option-icon">📷</span>
-                      <span>תמונות</span>
-                      <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden />
+                      <span>תמונות / סרטון</span>
+                      <input type="file" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onChange={handleImageSelect} hidden />
                     </label>
                     <button
                       type="button"
@@ -815,6 +903,21 @@ export default function CreatePost() {
             {/* STEP 1: Groups */}
             {currentStep === 1 && (
               <div className="cp-step-panel">
+                {/* Profile Publishing Toggle */}
+                <div className="cp-card cp-profile-toggle-card">
+                  <label className="cp-profile-toggle">
+                    <input
+                      type="checkbox"
+                      checked={publishToProfile}
+                      onChange={(e) => setPublishToProfile(e.target.checked)}
+                    />
+                    <span className="cp-profile-toggle-label">
+                      <span>👤 פרסם בפרופיל האישי שלי</span>
+                      <span className="cp-profile-toggle-hint">הפוסט יפורסם גם בפיד האישי שלך</span>
+                    </span>
+                  </label>
+                </div>
+
                 <div className="cp-card">
                   <div className="cp-card-header">
                     <h3>בחר קבוצות לפרסום</h3>
@@ -823,12 +926,22 @@ export default function CreatePost() {
 
                   {selectedGroups.length > 0 && (
                     <div className="cp-selected-groups-chips">
-                      {selectedGroups.map(g => (
+                      {(showAllChips ? selectedGroups : selectedGroups.slice(0, 4)).map(g => (
                         <span key={g.id} className="cp-selected-chip">
                           <span>{g.name}</span>
                           <button type="button" onClick={() => toggleGroup(g)}>✕</button>
                         </span>
                       ))}
+                      {selectedGroups.length > 4 && !showAllChips && (
+                        <button type="button" className="cp-selected-chip cp-chip-more" onClick={() => setShowAllChips(true)}>
+                          +{selectedGroups.length - 4} עוד
+                        </button>
+                      )}
+                      {selectedGroups.length > 4 && showAllChips && (
+                        <button type="button" className="cp-selected-chip cp-chip-more" onClick={() => setShowAllChips(false)}>
+                          הצג פחות
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -919,6 +1032,19 @@ export default function CreatePost() {
                       <div className="schedule-info">
                         <p className="schedule-info-text">הפוסט יפורסם מיד לאחר לחיצה על כפתור הפרסום</p>
                       </div>
+                    )}
+
+                    {scheduleMode !== 'now' && (
+                      <OptimalTimesHint
+                        onSelectTime={(time) => {
+                          if (scheduleMode === 'scheduled') setScheduleTime(time)
+                        }}
+                        onSelectDay={(dayNum) => {
+                          if (scheduleMode === 'recurring' && !recurringDays.includes(dayNum)) {
+                            setRecurringDays(prev => [...prev, dayNum])
+                          }
+                        }}
+                      />
                     )}
 
                     {scheduleMode === 'scheduled' && (
@@ -1110,12 +1236,14 @@ export default function CreatePost() {
                     )}
 
                     <div className="cp-review-section">
-                      <span className="cp-review-label">קבוצות ({selectedGroups.length}):</span>
+                      <span className="cp-review-label">יעד פרסום:</span>
                       <div className="cp-review-groups">
+                        {publishToProfile && <span className="cp-review-chip cp-chip-profile">👤 פרופיל אישי</span>}
                         {selectedGroups.slice(0, 5).map(g => (
                           <span key={g.id} className="cp-review-chip">{g.name}</span>
                         ))}
                         {selectedGroups.length > 5 && <span className="cp-review-chip cp-chip-more">+{selectedGroups.length - 5} נוספות</span>}
+                        {!publishToProfile && selectedGroups.length === 0 && <span className="cp-review-value">לא נבחרו קבוצות</span>}
                       </div>
                     </div>
 
@@ -1164,12 +1292,20 @@ export default function CreatePost() {
                 disabled={publishing}
               >
                 {publishing
-                  ? `מפרסם ב-${selectedGroups.length} קבוצות...`
+                  ? publishToProfile && selectedGroups.length === 0
+                    ? 'מפרסם בפרופיל...'
+                    : `מפרסם ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}...`
                   : scheduleMode === 'recurring'
-                    ? `🔄 תזמן חוזר ב-${selectedGroups.length} קבוצות`
+                    ? publishToProfile && selectedGroups.length === 0
+                      ? '🔄 תזמן חוזר בפרופיל'
+                      : `🔄 תזמן חוזר ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
                     : scheduleMode === 'scheduled'
-                      ? `📅 תזמן ב-${selectedGroups.length} קבוצות`
-                      : `🚀 פרסם ב-${selectedGroups.length} קבוצות`
+                      ? publishToProfile && selectedGroups.length === 0
+                        ? '📅 תזמן בפרופיל'
+                        : `📅 תזמן ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
+                      : publishToProfile && selectedGroups.length === 0
+                        ? '🚀 פרסם בפרופיל האישי'
+                        : `🚀 פרסם ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
                 }
               </button>
             )}

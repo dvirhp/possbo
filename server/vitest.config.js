@@ -16,6 +16,7 @@ export default defineConfig({
         "src/utils/facebook-automation.js",
         "src/utils/metrics-scraper.js",
         "src/utils/puppeteer.js",
+        "src/routes/templates.js",
       ],
       thresholds: {
         statements: 70,

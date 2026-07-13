@@ -195,3 +195,17 @@ button, a {
 .global-publish-banner button:hover {
   opacity: 1;
 }
+
+/* ─── Mobile Responsive ─────────────────────────────── */
+@media (max-width: 480px) {
+  .global-banners-container {
+    width: calc(100% - 32px);
+    top: 8px;
+  }
+  .global-publish-banner {
+    font-size: 13px;
+    padding: 10px 14px;
+    gap: 8px;
+    width: 100%;
+  }
+}

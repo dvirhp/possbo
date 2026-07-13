@@ -25,6 +25,7 @@ export const groupsService = {
   bootstrapSession: () =>
     api.post("/groups/session/bootstrap", {}, { timeout: 360000 }),
   getPublicationHistory: () => api.get("/scheduler/history"),
+  getPublication: (pubId) => api.get(`/scheduler/history/${pubId}`),
   getJobs: () => api.get("/scheduler/jobs"),
   getCampaigns: () => api.get("/scheduler/campaigns"),
   getRecentCampaigns: () => api.get("/scheduler/campaigns/recent"),

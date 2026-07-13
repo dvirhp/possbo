@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authAPI } from '../services/api'
+import LandingChatBot from '../components/LandingChatBot'
 import '../styles/landing.css'
 
 export default function Landing() {
@@ -72,6 +73,7 @@ export default function Landing() {
           </div>
         </div>
       </main>
+      <LandingChatBot />
     </div>
   )
 }

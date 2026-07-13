@@ -352,11 +352,11 @@
   display: none !important;
 }
 .app-layout .bottom-nav {
-  display: none !important;
+  display: none;
 }
 
 @media (max-width: 768px) {
   .app-layout .bottom-nav {
-    display: flex !important;
+    display: flex;
   }
 }

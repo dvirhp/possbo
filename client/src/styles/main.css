@@ -33,3 +33,97 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* Pull-to-refresh */
+.ptr-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+.ptr-spinner {
+  color: var(--indigo, #6366f1);
+  transition: opacity 0.15s;
+}
+.ptr-spinning {
+  animation: ptr-spin 0.8s linear infinite;
+}
+@keyframes ptr-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error Boundary */
+.error-boundary {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg-deep, #16181d);
+}
+.error-boundary-card {
+  text-align: center;
+  max-width: 400px;
+  width: 100%;
+  background: var(--bg-card, #1e2128);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 16px;
+  padding: 40px 32px;
+}
+.error-boundary-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+.error-boundary-card h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary, #e8ecf0);
+  margin-bottom: 8px;
+}
+.error-boundary-card p {
+  font-size: 14px;
+  color: var(--text-muted, #6b7684);
+  margin-bottom: 24px;
+}
+.error-boundary-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.error-boundary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: 0.15s;
+  border: none;
+}
+.error-boundary-btn.primary {
+  background: var(--indigo, #6366f1);
+  color: #fff;
+}
+.error-boundary-btn.primary:hover {
+  background: #4f46e5;
+}
+.error-boundary-btn.secondary {
+  background: transparent;
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  color: var(--text-secondary, #a3adb8);
+}
+.error-boundary-btn.secondary:hover {
+  border-color: var(--indigo, #6366f1);
+  color: var(--indigo, #6366f1);
+}

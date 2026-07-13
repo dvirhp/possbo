@@ -140,6 +140,11 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
               {/* Groups column */}
               <div className="pdt-col pdt-col-groups">
                 <div className="pdt-group-avatars">
+                  {campaign.publishToProfile && (
+                    <div className="pdt-group-avatar pdt-profile-badge" title="פרופיל אישי">
+                      <span>👤</span>
+                    </div>
+                  )}
                   {groups.slice(0, 2).map((g, i) => (
                     <div key={i} className="pdt-group-avatar" title={g.name}>
                       {g.pictureUrl || g.image ? (
@@ -149,7 +154,7 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
                     </div>
                   ))}
                   {groupCount > 2 && <span className="pdt-group-more">+{groupCount - 2}</span>}
-                  {groupCount === 0 && <span className="pdt-group-more">0 קבוצות</span>}
+                  {!campaign.publishToProfile && groupCount === 0 && <span className="pdt-group-more">0 קבוצות</span>}
                 </div>
               </div>
 

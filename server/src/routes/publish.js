@@ -3,7 +3,10 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
-import { publishToGroup } from "../utils/facebook-automation.js";
+import {
+  publishToGroup,
+  publishToProfile,
+} from "../utils/facebook-automation.js";
 import {
   savePost,
   getAllPosts,
@@ -114,5 +117,59 @@ router.get("/history", requireAuth, async (req, res) => {
     : await getAllPosts(req.user.id);
   res.json({ success: true, posts });
 });
+
+// Publish to user's personal profile
+router.post(
+  "/profile",
+  requireAuth,
+  upload.array("images", 10),
+  asyncHandler(async (req, res) => {
+    const { text, location, title } = req.body;
+    if (!text) {
+      return res
+        .status(400)
+        .json({ success: false, error: "text is required" });
+    }
+    const sanitizedText = sanitizeText(text);
+    if (!sanitizedText) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Text is invalid or too long" });
+    }
+    const sanitizedLocation = location ? sanitizeText(location, 200) : null;
+    const imagePaths = req.files?.map((f) => f.path) || [];
+
+    try {
+      const result = await publishToProfile(
+        sanitizedText,
+        imagePaths[0] || null,
+        {
+          location: sanitizedLocation,
+          userId: req.user.id,
+        },
+      );
+
+      const saved = await savePost({
+        userId: req.user.id,
+        groupUrl: "https://www.facebook.com/profile",
+        groupName: "פרופיל אישי",
+        text: sanitizedText,
+        title: title || null,
+        postUrl: result.postUrl,
+        screenshot: result.screenshot,
+        anonymous: false,
+        location: sanitizedLocation,
+        imagePaths,
+      });
+
+      res.json({ ...result, savedPost: saved });
+    } catch (err) {
+      for (const p of imagePaths) {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      }
+      throw err;
+    }
+  }),
+);
 
 export default router;

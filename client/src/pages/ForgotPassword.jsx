@@ -26,7 +26,7 @@ export default function ForgotPassword() {
       await authAPI.forgotPassword({ email })
       setStep(2)
     } catch (err) {
-      setError(err.response?.data?.error || 'שגיאה בשליחת הקוד')
+      setError(err.userMessage || 'שגיאה בשליחת הקוד')
     } finally {
       setLoading(false)
     }
@@ -55,7 +55,7 @@ export default function ForgotPassword() {
         setTimeout(() => navigate('/login'), 2500)
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'שגיאה באיפוס הסיסמה')
+      setError(err.userMessage || 'שגיאה באיפוס הסיסמה')
     } finally {
       setLoading(false)
     }

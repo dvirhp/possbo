@@ -75,56 +75,57 @@ enum CampaignType {
 // ─── USERS ──────────────────────────────────────────────
 
 model User {
-  id                    String      @id @default(uuid())
-  email                 String?     @unique
-  username              String?     @unique
-  passwordHash          String?     @map("password_hash")
-  name                  String?
-  firstName             String?     @map("first_name")
-  lastName              String?     @map("last_name")
-  phone                 String?
-  profilePicture        String?     @map("profile_picture_url")
-  profileImage          String?     @map("profile_image")
-  facebookId            String?     @unique @map("facebook_id")
-  facebookAccessToken   String?     @map("facebook_access_token")
-  facebookAppId         String?     @map("facebook_app_id")
-  facebookAppSecret     String?     @map("facebook_app_secret")
-  facebookOauthId       String?     @unique @map("facebook_oauth_id")
-  facebookStorageState  String?     @map("facebook_storage_state")
-  fbSessionValid        Boolean     @default(false) @map("fb_session_valid")
-  googleId              String?     @unique @map("google_id")
-  githubId              String?     @unique @map("github_id")
-  linkedinId            String?     @unique @map("linkedin_id")
-  appleId               String?     @unique @map("apple_id")
-  avatarUrl             String?     @map("avatar_url")
-  gender                String?
-  status                UserStatus  @default(ACTIVE)
-  refreshToken          String?     @map("refresh_token")
-  whatsappNumber        String?     @map("whatsapp_number")
-  whatsappMessage       String?     @map("whatsapp_message")
-  emailVerifiedAt       DateTime?   @map("email_verified_at")
-  lastLoginAt           DateTime?   @map("last_login_at")
-  createdAt             DateTime    @default(now()) @map("created_at")
-  updatedAt             DateTime    @updatedAt @map("updated_at")
-  deletedAt             DateTime?   @map("deleted_at")
+  id                   String     @id @default(uuid())
+  email                String?    @unique
+  username             String?    @unique
+  passwordHash         String?    @map("password_hash")
+  name                 String?
+  firstName            String?    @map("first_name")
+  lastName             String?    @map("last_name")
+  phone                String?
+  profilePicture       String?    @map("profile_picture_url")
+  profileImage         String?    @map("profile_image")
+  facebookId           String?    @unique @map("facebook_id")
+  facebookAccessToken  String?    @map("facebook_access_token")
+  facebookAppId        String?    @map("facebook_app_id")
+  facebookAppSecret    String?    @map("facebook_app_secret")
+  facebookOauthId      String?    @unique @map("facebook_oauth_id")
+  facebookStorageState String?    @map("facebook_storage_state")
+  fbSessionValid       Boolean    @default(false) @map("fb_session_valid")
+  googleId             String?    @unique @map("google_id")
+  githubId             String?    @unique @map("github_id")
+  linkedinId           String?    @unique @map("linkedin_id")
+  appleId              String?    @unique @map("apple_id")
+  avatarUrl            String?    @map("avatar_url")
+  gender               String?
+  status               UserStatus @default(ACTIVE)
+  refreshToken         String?    @map("refresh_token")
+  whatsappNumber       String?    @map("whatsapp_number")
+  whatsappMessage      String?    @map("whatsapp_message")
+  notificationSettings Json?      @map("notification_settings")
+  emailVerifiedAt      DateTime?  @map("email_verified_at")
+  lastLoginAt          DateTime?  @map("last_login_at")
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+  deletedAt            DateTime?  @map("deleted_at")
 
-  facebookGroups        FacebookGroup[]
-  connectedAccounts     ConnectedAccount[]
-  sessions              UserSession[]
-  passwordResets        PasswordResetToken[]
-  emailVerifications    EmailVerificationToken[]
-  userGroups            UserGroup[]
-  posts                 Post[]
-  postGroups            PostGroup[]
-  postTemplates         PostTemplate[]
-  notifications         Notification[]
-  auditLogs             AuditLog[]
-  groupSyncs            GroupSyncHistory[]
-  publicationHistory    PublicationHistory[]
-  subscriptions         Subscription[]
-  usageLimits           UsageLimit[]
-  dailyExposure         DailyExposure[]
-  dailyStats            DailyStats[]
+  facebookGroups     FacebookGroup[]
+  connectedAccounts  ConnectedAccount[]
+  sessions           UserSession[]
+  passwordResets     PasswordResetToken[]
+  emailVerifications EmailVerificationToken[]
+  userGroups         UserGroup[]
+  posts              Post[]
+  postGroups         PostGroup[]
+  postTemplates      PostTemplate[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  groupSyncs         GroupSyncHistory[]
+  publicationHistory PublicationHistory[]
+  subscriptions      Subscription[]
+  usageLimits        UsageLimit[]
+  dailyExposure      DailyExposure[]
+  dailyStats         DailyStats[]
 
   @@map("users")
 }
@@ -179,20 +180,20 @@ model EmailVerificationToken {
 // ─── CONNECTED ACCOUNTS ─────────────────────────────────
 
 model ConnectedAccount {
-  id                    String                 @id @default(uuid())
-  userId                String                 @map("user_id")
+  id                    String                   @id @default(uuid())
+  userId                String                   @map("user_id")
   provider              ConnectedAccountProvider
-  providerUserId        String                 @map("provider_user_id")
-  providerUserName      String?                @map("provider_user_name")
-  accessTokenEncrypted  String                 @map("access_token_encrypted")
-  refreshTokenEncrypted String?                @map("refresh_token_encrypted")
-  tokenExpiresAt        DateTime?              @map("token_expires_at")
-  storageStatePath      String?                @map("storage_state_path")
-  status                ConnectedAccountStatus @default(ACTIVE)
-  createdAt             DateTime               @default(now()) @map("created_at")
-  updatedAt             DateTime               @updatedAt @map("updated_at")
+  providerUserId        String                   @map("provider_user_id")
+  providerUserName      String?                  @map("provider_user_name")
+  accessTokenEncrypted  String                   @map("access_token_encrypted")
+  refreshTokenEncrypted String?                  @map("refresh_token_encrypted")
+  tokenExpiresAt        DateTime?                @map("token_expires_at")
+  storageStatePath      String?                  @map("storage_state_path")
+  status                ConnectedAccountStatus   @default(ACTIVE)
+  createdAt             DateTime                 @default(now()) @map("created_at")
+  updatedAt             DateTime                 @updatedAt @map("updated_at")
 
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   userGroups UserGroup[]
   groupSyncs GroupSyncHistory[]
 
@@ -231,9 +232,9 @@ model Group {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  userGroups          UserGroup[]
-  postGroups          PostGroup[]
-  publicationHistory  PublicationHistory[]
+  userGroups         UserGroup[]
+  postGroups         PostGroup[]
+  publicationHistory PublicationHistory[]
 
   @@map("groups")
 }
@@ -262,32 +263,33 @@ model UserGroup {
 // ─── POSTS ──────────────────────────────────────────────
 
 model Post {
-  id             String       @id @default(uuid())
-  userId         String       @map("user_id")
-  title          String?
-  content        String
-  status         PostStatus   @default(DRAFT)
-  isAnonymous    Boolean      @default(false) @map("is_anonymous")
-  location       String?
-  campaignType   CampaignType @default(ONE_TIME) @map("campaign_type")
-  recurringDays  Int[]        @default([]) @map("recurring_days")
-  scheduledDates DateTime[]   @default([]) @map("scheduled_dates")
-  recurringTime  String?      @map("recurring_time")
-  recurringTimes String[]     @default([]) @map("recurring_times")
-  recurringStart DateTime?    @map("recurring_start")
-  recurringEnd   DateTime?    @map("recurring_end")
-  dayTimes       Json?        @map("day_times")
-  isPaused       Boolean      @default(false) @map("is_paused")
-  imageUrl       String?      @map("image_url")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  id               String       @id @default(uuid())
+  userId           String       @map("user_id")
+  title            String?
+  content          String
+  status           PostStatus   @default(DRAFT)
+  isAnonymous      Boolean      @default(false) @map("is_anonymous")
+  location         String?
+  campaignType     CampaignType @default(ONE_TIME) @map("campaign_type")
+  recurringDays    Int[]        @default([]) @map("recurring_days")
+  scheduledDates   DateTime[]   @default([]) @map("scheduled_dates")
+  recurringTime    String?      @map("recurring_time")
+  recurringTimes   String[]     @default([]) @map("recurring_times")
+  recurringStart   DateTime?    @map("recurring_start")
+  recurringEnd     DateTime?    @map("recurring_end")
+  dayTimes         Json?        @map("day_times")
+  isPaused         Boolean      @default(false) @map("is_paused")
+  publishToProfile Boolean      @default(false) @map("publish_to_profile")
+  imageUrl         String?      @map("image_url")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
 
   user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   media              PostMedia[]
   postGroups         PostGroup[]
-  templates          PostTemplate[]
   versions           PostVersion[]
   publicationHistory PublicationHistory[]
+  publicationJobs    PublicationJob[]
 
   @@index([userId])
   @@index([status])
@@ -315,7 +317,7 @@ model PostGroup {
   postId          String   @map("post_id")
   groupId         String   @map("group_id")
   userId          String   @map("user_id")
-  isEnabled       Boolean  @default(true)  @map("is_enabled")
+  isEnabled       Boolean  @default(true) @map("is_enabled")
   priorityEnabled Boolean  @default(false) @map("priority_enabled")
   priorityRank    Int?     @map("priority_rank")
   createdAt       DateTime @default(now()) @map("created_at")
@@ -358,7 +360,9 @@ model PostGroupSchedule {
 
 model PublicationJob {
   id          String    @id @default(uuid())
-  postGroupId String    @map("post_group_id")
+  postGroupId String?   @map("post_group_id")
+  postId      String?   @map("post_id")
+  targetType  String    @default("GROUP") @map("target_type") // GROUP or PROFILE
   scheduledAt DateTime  @map("scheduled_at")
   startedAt   DateTime? @map("started_at")
   completedAt DateTime? @map("completed_at")
@@ -371,7 +375,8 @@ model PublicationJob {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  postGroup    PostGroup            @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+  postGroup    PostGroup?           @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+  post         Post?                @relation(fields: [postId], references: [id], onDelete: Cascade)
   publications PublicationHistory[]
 
   @@index([status, scheduledAt])
@@ -384,10 +389,11 @@ model PublicationJob {
 model PublicationHistory {
   id               String            @id @default(uuid())
   postId           String            @map("post_id")
-  groupId          String            @map("group_id")
+  groupId          String?           @map("group_id")
   userId           String            @map("user_id")
-  postGroupId      String            @map("post_group_id")
+  postGroupId      String?           @map("post_group_id")
   publicationJobId String?           @map("publication_job_id")
+  targetType       String            @default("GROUP") @map("target_type") // GROUP or PROFILE
   publishedAt      DateTime          @map("published_at")
   externalPostId   String?           @map("external_post_id")
   externalPostUrl  String?           @map("external_post_url")
@@ -396,11 +402,11 @@ model PublicationHistory {
   errorMessage     String?           @map("error_message")
   createdAt        DateTime          @default(now()) @map("created_at")
 
-  post           Post            @relation(fields: [postId], references: [id])
-  group          Group           @relation(fields: [groupId], references: [id])
-  user           User            @relation(fields: [userId], references: [id])
-  postGroup      PostGroup       @relation(fields: [postGroupId], references: [id])
-  publicationJob PublicationJob? @relation(fields: [publicationJobId], references: [id])
+  post           Post                @relation(fields: [postId], references: [id])
+  group          Group?              @relation(fields: [groupId], references: [id])
+  user           User                @relation(fields: [userId], references: [id])
+  postGroup      PostGroup?          @relation(fields: [postGroupId], references: [id])
+  publicationJob PublicationJob?     @relation(fields: [publicationJobId], references: [id])
   metrics        PublicationMetric[]
 
   @@index([postId])
@@ -429,16 +435,26 @@ model PublicationMetric {
 // ─── TEMPLATES ──────────────────────────────────────────
 
 model PostTemplate {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  postId    String?  @map("post_id")
-  name      String
-  content   String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  name           String
+  content        String
+  campaignTitle  String?  @map("campaign_title")
+  isAnonymous    Boolean  @default(false) @map("is_anonymous")
+  location       String?
+  whatsappText   String?  @map("whatsapp_text")
+  scheduleMode   String?  @map("schedule_mode")
+  scheduledDate  String?  @map("scheduled_date")
+  recurringDays  Int[]    @default([]) @map("recurring_days")
+  recurringTimes String[] @default([]) @map("recurring_times")
+  dayTimes       Json?    @map("day_times")
+  groupIds       String[] @default([]) @map("group_ids")
+  imageUrls      String[] @default([]) @map("image_urls")
+  usageCount     Int      @default(0) @map("usage_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  post Post? @relation(fields: [postId], references: [id], onDelete: SetNull)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("post_templates")
@@ -545,15 +561,15 @@ model AuditLog {
 }
 
 model GroupSyncHistory {
-  id                 String    @id @default(uuid())
-  userId             String    @map("user_id")
-  connectedAccountId String?   @map("connected_account_id")
-  syncedAt           DateTime  @default(now()) @map("synced_at")
-  groupsFound        Int       @default(0) @map("groups_found")
-  groupsAdded        Int       @default(0) @map("groups_added")
-  groupsRemoved      Int       @default(0) @map("groups_removed")
+  id                 String   @id @default(uuid())
+  userId             String   @map("user_id")
+  connectedAccountId String?  @map("connected_account_id")
+  syncedAt           DateTime @default(now()) @map("synced_at")
+  groupsFound        Int      @default(0) @map("groups_found")
+  groupsAdded        Int      @default(0) @map("groups_added")
+  groupsRemoved      Int      @default(0) @map("groups_removed")
   status             String
-  errorMessage       String?   @map("error_message")
+  errorMessage       String?  @map("error_message")
 
   user             User              @relation(fields: [userId], references: [id])
   connectedAccount ConnectedAccount? @relation(fields: [connectedAccountId], references: [id])
@@ -563,17 +579,16 @@ model GroupSyncHistory {
   @@map("group_sync_history")
 }
 
-
 // ─── EXPOSURE TRACKING ──────────────────────────────────
 
 model DailyExposure {
-  id              String   @id @default(uuid())
-  userId          String   @map("user_id")
-  date            DateTime @db.Date
-  exposureCount   Int      @default(0) @map("exposure_count")
-  postsPublished  Int      @default(0) @map("posts_published")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  date           DateTime @db.Date
+  exposureCount  Int      @default(0) @map("exposure_count")
+  postsPublished Int      @default(0) @map("posts_published")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -583,17 +598,16 @@ model DailyExposure {
   @@map("daily_exposure")
 }
 
-
 model DailyStats {
-  id              String   @id @default(uuid())
-  userId          String   @map("user_id")
-  date            DateTime @db.Date
-  groupsCount     Int      @default(0) @map("groups_count")
-  postsCount      Int      @default(0) @map("posts_count")
-  scheduledCount  Int      @default(0) @map("scheduled_count")
-  publishedCount  Int      @default(0) @map("published_count")
-  exposureCount   Int      @default(0) @map("exposure_count")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  date           DateTime @db.Date
+  groupsCount    Int      @default(0) @map("groups_count")
+  postsCount     Int      @default(0) @map("posts_count")
+  scheduledCount Int      @default(0) @map("scheduled_count")
+  publishedCount Int      @default(0) @map("published_count")
+  exposureCount  Int      @default(0) @map("exposure_count")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -25,8 +25,8 @@ export default function OAuthButtons({ mode, onSuccess, onError }) {
       }
       onSuccess(result)
     } catch (err) {
-      const msg = err.response?.data?.error || err.message
-      if (!msg.includes('cancelled')) {
+      const msg = err.userMessage || 'שגיאה בהתחברות'
+      if (!(err.message || '').includes('cancelled')) {
         onError(msg)
       }
     } finally {

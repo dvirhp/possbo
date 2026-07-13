@@ -1,0 +1,294 @@
+/* ══════════════════════════════════════════════════════════════
+   Bottom Navigation & Mobile Drawer — Premium Floating Bar
+   ══════════════════════════════════════════════════════════════ */
+
+/* ─── Bottom Nav Bar — Floating Card ─── */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 900;
+}
+
+@media (max-width: 768px) {
+  .bottom-nav { display: block; }
+}
+
+.bottom-nav-inner {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  background: linear-gradient(180deg, #171C27 0%, #11151E 100%);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 24px;
+  padding: 12px 20px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.25), 0 18px 40px rgba(0,0,0,0.55);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 72px;
+  padding: 0;
+  color: rgba(255,255,255,0.65);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, transform 0.2s;
+  position: relative;
+}
+.bottom-nav-item:hover {
+  color: #e8ecf0;
+  transform: translateY(-2px);
+}
+
+.bottom-nav-item svg {
+  width: 26px;
+  height: 26px;
+  stroke-width: 2;
+}
+
+/* Active state — gradient icon + cyan text */
+.bottom-nav-item.active svg {
+  stroke: url(#bnav-gradient);
+  color: #43E6FF;
+}
+.bottom-nav-item.active {
+  color: #43E6FF;
+}
+/* Remove old active indicator bar */
+.bottom-nav-item.active::before {
+  display: none;
+}
+
+.bottom-nav-label {
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+  color: #AEB6CA;
+}
+.bottom-nav-item.active .bottom-nav-label {
+  color: #43E6FF;
+}
+
+/* ─── Center Publish Button — Premium Dark Circle ─── */
+.bottom-nav-center {
+  position: relative;
+  margin-top: -28px;
+  width: 88px;
+}
+.bottom-nav-center .bottom-nav-label {
+  color: #AEB6CA;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.bottom-nav-center.active .bottom-nav-label {
+  color: #43E6FF;
+}
+.bottom-nav-center-ring {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #1C2331, #141A25);
+  border: 2px solid rgba(80,180,255,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 35px rgba(77,157,255,0.22);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.bottom-nav-center-ring img {
+  width: 42px;
+  height: 42px;
+  filter: none;
+}
+.bottom-nav-center:hover .bottom-nav-center-ring {
+  transform: scale(1.06);
+  box-shadow: 0 0 45px rgba(77,157,255,0.3);
+}
+.bottom-nav-center.active .bottom-nav-center-ring {
+  box-shadow: 0 0 40px rgba(77,157,255,0.28);
+  border-color: rgba(80,180,255,0.5);
+}
+
+/* Press animation on center button */
+@keyframes bnav-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+.bottom-nav-center:active .bottom-nav-center-ring {
+  animation: bnav-pulse 0.2s ease;
+}
+
+.bottom-nav-menu {
+  position: relative;
+}
+
+/* SVG gradient def — injected via CSS trick, but we'll add it in JSX */
+.mobile-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 950;
+  animation: drawer-fade-in 0.2s ease;
+}
+@keyframes drawer-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ─── Mobile Drawer ─── */
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  right: -300px;
+  width: 280px;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg-base, #1c1f26);
+  border-left: 1px solid var(--border, rgba(255,255,255,0.06));
+  z-index: 960;
+  display: flex;
+  flex-direction: column;
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mobile-drawer.open {
+  right: 0;
+}
+
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+}
+.mobile-drawer-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mobile-drawer-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--bg-elevated, #252830);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.mobile-drawer-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mobile-drawer-avatar span {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--indigo, #818cf8);
+}
+.mobile-drawer-user-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mobile-drawer-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mobile-drawer-email {
+  font-size: 11px;
+  color: var(--text-muted, #6b7684);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mobile-drawer-close {
+  background: none;
+  border: none;
+  color: var(--text-muted, #6b7684);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+}
+.mobile-drawer-close:hover {
+  color: var(--text-primary, #e8ecf0);
+  background: rgba(255,255,255,0.05);
+}
+
+/* ─── Drawer Nav ─── */
+.mobile-drawer-nav {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mobile-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #a3adb8);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  width: 100%;
+  text-align: right;
+  transition: 0.15s;
+}
+.mobile-drawer-item:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-primary, #e8ecf0);
+}
+.mobile-drawer-item.active {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--indigo, #6366f1);
+}
+.mobile-drawer-item.logout {
+  color: #f87171;
+}
+.mobile-drawer-item.logout:hover {
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.mobile-drawer-divider {
+  height: 1px;
+  background: var(--border, rgba(255,255,255,0.06));
+  margin: 4px 16px;
+}
+
+.mobile-drawer-actions {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ─── Safe area for bottom nav ─── */
+@media (max-width: 768px) {
+  .app-main {
+    padding-bottom: 110px;
+  }
+}
