@@ -55,6 +55,7 @@ import groupRoutes from "./routes/groups.js";
 import screenshotRoutes from "./routes/screenshot.js";
 import publishRoutes from "./routes/publish.js";
 import schedulerRoutes from "./routes/scheduler.js";
+import templateRoutes from "./routes/templates.js";
 
 // Use routes
 app.use("/api/auth", authRoutes);
@@ -63,6 +64,7 @@ app.use("/api/groups", groupRoutes);
 app.use("/api/screenshot", screenshotRoutes);
 app.use("/api/publish", publishRoutes);
 app.use("/api/scheduler", schedulerRoutes);
+app.use("/api/templates", templateRoutes);
 
 // Basic route
 app.get("/", (req, res) => {

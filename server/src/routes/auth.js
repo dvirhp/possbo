@@ -11,7 +11,11 @@ import {
   verifyRefreshToken,
 } from "../utils/jwt.js";
 import { createLogger } from "../utils/logger.js";
-import { sendVerificationEmail, sendPasswordResetEmail, generateCode } from "../utils/mailer.js";
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  generateCode,
+} from "../utils/mailer.js";
 import { verifyTurnstile } from "../utils/turnstile.js";
 
 const router = express.Router();
@@ -27,15 +31,18 @@ const pendingVerifications = new Map();
 const passwordResetCodes = new Map();
 
 // Clean expired entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of pendingVerifications) {
-    if (val.expiresAt < now) pendingVerifications.delete(key);
-  }
-  for (const [key, val] of passwordResetCodes) {
-    if (val.expiresAt < now) passwordResetCodes.delete(key);
-  }
-}, 5 * 60 * 1000);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, val] of pendingVerifications) {
+      if (val.expiresAt < now) pendingVerifications.delete(key);
+    }
+    for (const [key, val] of passwordResetCodes) {
+      if (val.expiresAt < now) passwordResetCodes.delete(key);
+    }
+  },
+  5 * 60 * 1000,
+);
 
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -73,7 +80,9 @@ router.post("/register", async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
 
     // Check if user already exists
-    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const existing = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (existing) {
       return res.status(409).json({ error: "Email already registered" });
     }
@@ -91,7 +100,11 @@ router.post("/register", async (req, res) => {
       return res.status(500).json({ error: "שגיאה בשליחת המייל — נסה שוב" });
     }
 
-    res.json({ success: true, requiresVerification: true, email: normalizedEmail });
+    res.json({
+      success: true,
+      requiresVerification: true,
+      email: normalizedEmail,
+    });
   } catch (error) {
     log.error("Registration failed", error, { email: req.body?.email });
     res.status(500).json({ error: "Registration failed" });
@@ -110,7 +123,9 @@ router.post("/verify-email", async (req, res) => {
 
     const pending = pendingVerifications.get(normalizedEmail);
     if (!pending) {
-      return res.status(400).json({ error: "לא נמצא קוד אימות — נסה להירשם מחדש" });
+      return res
+        .status(400)
+        .json({ error: "לא נמצא קוד אימות — נסה להירשם מחדש" });
     }
 
     if (pending.expiresAt < Date.now()) {
@@ -127,7 +142,9 @@ router.post("/verify-email", async (req, res) => {
     const { password, name, gender, phone } = pending.data;
 
     // Double-check email not taken (race condition)
-    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const existing = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (existing) {
       return res.status(409).json({ error: "Email already registered" });
     }
@@ -254,7 +271,9 @@ router.post("/forgot-password", async (req, res) => {
       return res.status(400).json({ error: "יש להזין אימייל" });
     }
 
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!user) {
       // Don't reveal if email exists — still return success
       return res.json({ success: true });
@@ -380,7 +399,11 @@ router.post("/verify-facebook", async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: { facebookAccessToken: true, facebookStorageState: true, fbSessionValid: true },
+      select: {
+        facebookAccessToken: true,
+        facebookStorageState: true,
+        fbSessionValid: true,
+      },
     });
 
     if (!user) {
@@ -403,7 +426,7 @@ router.post("/verify-facebook", async (req, res) => {
     if (user.facebookAccessToken) {
       try {
         const fbRes = await fetch(
-          `https://graph.facebook.com/me?fields=id&access_token=${user.facebookAccessToken}`
+          `https://graph.facebook.com/me?fields=id&access_token=${user.facebookAccessToken}`,
         );
         const fbData = await fbRes.json();
         tokenValid = !fbData.error;
@@ -423,7 +446,9 @@ router.post("/verify-facebook", async (req, res) => {
         const cookies = state.cookies || [];
         // Check critical FB cookies (c_user, xs) for expiry
         const now = Date.now() / 1000;
-        const criticalCookies = cookies.filter(c => c.name === "c_user" || c.name === "xs");
+        const criticalCookies = cookies.filter(
+          (c) => c.name === "c_user" || c.name === "xs",
+        );
         if (criticalCookies.length === 0) {
           cookiesExpired = true;
         } else {
@@ -454,20 +479,25 @@ router.post("/verify-facebook", async (req, res) => {
       if (!fbSessionValid) {
         // Clear storage state if cookies expired
         if (cookiesExpired) {
-          await prisma.user.update({
-            where: { id: req.user.id },
-            data: { facebookStorageState: null },
-          }).catch(() => {});
+          await prisma.user
+            .update({
+              where: { id: req.user.id },
+              data: { facebookStorageState: null },
+            })
+            .catch(() => {});
         }
 
-        await prisma.notification.create({
-          data: {
-            userId: req.user.id,
-            type: "SESSION_EXPIRED",
-            title: "חיבור הפייסבוק פג תוקף",
-            message: "החיבור לפייסבוק שלך אינו תקין. אנא התחבר מחדש כדי שפוסטים מתוזמנים ימשיכו לפעול.",
-          },
-        }).catch(() => {});
+        await prisma.notification
+          .create({
+            data: {
+              userId: req.user.id,
+              type: "SESSION_EXPIRED",
+              title: "חיבור הפייסבוק פג תוקף",
+              message:
+                "החיבור לפייסבוק שלך אינו תקין. אנא התחבר מחדש כדי שפוסטים מתוזמנים ימשיכו לפעול.",
+            },
+          })
+          .catch(() => {});
       }
     }
 
@@ -494,10 +524,12 @@ router.get("/me", async (req, res) => {
     });
     if (!hasState?.facebookStorageState) {
       fbSessionValid = false;
-      await prisma.user.update({
-        where: { id: req.user.id },
-        data: { fbSessionValid: false },
-      }).catch(() => {});
+      await prisma.user
+        .update({
+          where: { id: req.user.id },
+          data: { fbSessionValid: false },
+        })
+        .catch(() => {});
     }
   }
 
@@ -510,6 +542,7 @@ router.get("/me", async (req, res) => {
     fbSessionValid,
     whatsappNumber: req.user.whatsappNumber || null,
     whatsappMessage: req.user.whatsappMessage || null,
+    notificationSettings: req.user.notificationSettings || null,
   });
 });
 
@@ -570,7 +603,9 @@ router.post("/password/request-code", async (req, res) => {
 
   const user = await prisma.user.findUnique({ where: { id: req.user.id } });
   if (!user || !user.passwordHash) {
-    return res.status(400).json({ error: "לא ניתן לשנות סיסמה — חשבון ללא סיסמה" });
+    return res
+      .status(400)
+      .json({ error: "לא ניתן לשנות סיסמה — חשבון ללא סיסמה" });
   }
 
   const valid = await bcrypt.compare(currentPassword, user.passwordHash);
@@ -607,7 +642,9 @@ router.patch("/password", async (req, res) => {
   }
 
   if (newPassword.length < 6) {
-    return res.status(400).json({ error: "סיסמה חדשה חייבת להכיל לפחות 6 תווים" });
+    return res
+      .status(400)
+      .json({ error: "סיסמה חדשה חייבת להכיל לפחות 6 תווים" });
   }
 
   const user = await prisma.user.findUnique({ where: { id: req.user.id } });
@@ -758,7 +795,9 @@ router.patch("/whatsapp", async (req, res) => {
       cleaned = "972" + cleaned.slice(1);
     }
     if (cleaned.length < 9 || cleaned.length > 15) {
-      return res.status(400).json({ error: "מספר וואטסאפ לא תקין — אורך לא תקין" });
+      return res
+        .status(400)
+        .json({ error: "מספר וואטסאפ לא תקין — אורך לא תקין" });
     }
     const data = { whatsappNumber: cleaned };
     if (whatsappMessage !== undefined) {
@@ -783,6 +822,40 @@ router.patch("/whatsapp", async (req, res) => {
     data: { whatsappNumber: null, whatsappMessage: null },
   });
   res.json({ success: true, whatsappNumber: null, whatsappMessage: null });
+});
+
+// ─── Notification Settings ──────────────────────────────────
+router.patch("/notification-settings", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const {
+    enabled,
+    emailOnSuccess,
+    emailOnFailure,
+    emailOnSchedule,
+    pushOnSuccess,
+    pushOnFailure,
+    pushOnSchedule,
+  } = req.body;
+
+  const settings = {
+    enabled: Boolean(enabled),
+    emailOnSuccess: Boolean(emailOnSuccess),
+    emailOnFailure: Boolean(emailOnFailure),
+    emailOnSchedule: Boolean(emailOnSchedule),
+    pushOnSuccess: Boolean(pushOnSuccess),
+    pushOnFailure: Boolean(pushOnFailure),
+    pushOnSchedule: Boolean(pushOnSchedule),
+  };
+
+  await prisma.user.update({
+    where: { id: req.user.id },
+    data: { notificationSettings: settings },
+  });
+
+  res.json({ success: true, notificationSettings: settings });
 });
 
 export default router;

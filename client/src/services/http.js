@@ -56,6 +56,34 @@ function isNetworkError(error) {
   );
 }
 
+// Map technical errors to user-friendly Hebrew messages
+function getUserFriendlyMessage(error) {
+  if (!error.response) {
+    if (error.code === "ECONNABORTED" || error.message?.includes("timeout"))
+      return "הפעולה נמשכה יותר מדי זמן. נסה שוב.";
+    if (
+      error.code === "ERR_NETWORK" ||
+      error.message?.includes("Network Error")
+    )
+      return "אין חיבור לשרת. בדוק את החיבור לאינטרנט.";
+    return "שגיאה בלתי צפויה. נסה שוב מאוחר יותר.";
+  }
+  const status = error.response.status;
+  const serverMsg = error.response.data?.error;
+  // Known Hebrew server messages — pass through
+  if (serverMsg && /[\u0590-\u05FF]/.test(serverMsg)) return serverMsg;
+  // Map HTTP status codes
+  if (status === 400) return serverMsg || "הנתונים שהוזנו אינם תקינים.";
+  if (status === 401) return "יש להתחבר מחדש.";
+  if (status === 403) return "אין הרשאה לבצע פעולה זו.";
+  if (status === 404) return "הפריט המבוקש לא נמצא.";
+  if (status === 409) return serverMsg || "פעולה זו כבר בוצעה.";
+  if (status === 413) return "הקובץ גדול מדי.";
+  if (status === 429) return "יותר מדי בקשות. נסה שוב בעוד מספר דקות.";
+  if (status >= 500) return "שגיאת שרת. נסה שוב מאוחר יותר.";
+  return serverMsg || "שגיאה בלתי צפויה. נסה שוב.";
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -117,6 +145,8 @@ api.interceptors.response.use(
       }
     }
 
+    // Attach user-friendly message
+    error.userMessage = getUserFriendlyMessage(error);
     return Promise.reject(error);
   },
 );

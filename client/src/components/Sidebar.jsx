@@ -3,10 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
+import NotificationSettings from './NotificationSettings'
 import {
   LayoutDashboard, Users, FileText, CalendarDays, BarChart3,
   History, LayoutTemplate, Settings, Bell, SquarePen, Plus, RefreshCw, Sparkles,
-  Moon, Sun, LogOut, ChevronDown
+  Moon, Sun, LogOut, ChevronDown, BookOpen
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -15,8 +16,9 @@ const NAV_ITEMS = [
   { id: 'posts', icon: FileText, label: 'קמפיינים', action: 'navigate', path: '/dashboard', tab: 'campaigns' },
   { id: 'calendar', icon: CalendarDays, label: 'יומן', action: 'navigate', path: '/scheduled' },
   { id: 'analytics', icon: BarChart3, label: 'סטטיסטיקות', action: 'navigate', path: '/dashboard', tab: 'stats' },
-  { id: 'history', icon: History, label: 'היסטוריה', action: 'none' },
-  { id: 'templates', icon: LayoutTemplate, label: 'טמפלייטים', action: 'none' },
+  { id: 'templates', icon: LayoutTemplate, label: 'טמפלייטים', action: 'navigate', path: '/templates' },
+  { id: 'history', icon: History, label: 'דוחות וסיכום', action: 'navigate', path: '/reports' },
+  { id: 'guides', icon: BookOpen, label: 'מדריכים', action: 'navigate', path: '/guides' },
 ]
 
 export default function Sidebar({ activeTab, onTabChange }) {
@@ -25,6 +27,7 @@ export default function Sidebar({ activeTab, onTabChange }) {
   const { user, logout } = useAppData()
   const { theme, setTheme } = useTheme()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
 
   const handleNav = (item) => {
     if (item.action === 'none') return
@@ -134,7 +137,7 @@ export default function Sidebar({ activeTab, onTabChange }) {
           <button className="sidebar-bottom-btn" onClick={() => navigate('/dashboard?tab=settings')} title="הגדרות">
             <Settings size={18} />
           </button>
-          <button className="sidebar-bottom-btn" title="התראות">
+          <button className="sidebar-bottom-btn" title="התראות" onClick={() => setNotifOpen(true)}>
             <Bell size={18} />
           </button>
           <button className="sidebar-bottom-btn sidebar-logout-btn" onClick={() => { logout(); navigate('/login') }} title="התנתק">
@@ -142,6 +145,7 @@ export default function Sidebar({ activeTab, onTabChange }) {
           </button>
         </div>
       </div>
+      <NotificationSettings open={notifOpen} onClose={() => setNotifOpen(false)} />
     </aside>
   )
 }

@@ -63,8 +63,11 @@ export default function Register() {
         setTimeout(() => navigate('/dashboard'), 0)
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.message
-      setError(msg)
+      if (!navigator.onLine || err.code === 'ERR_NETWORK') {
+        setError('אין חיבור לאינטרנט. בדוק את החיבור ונסה שוב.')
+      } else {
+        setError(err.userMessage || 'שגיאה בהרשמה. נסה שוב מאוחר יותר.')
+      }
     } finally {
       setLoading(false)
     }
@@ -88,7 +91,7 @@ export default function Register() {
         navigate('/dashboard')
       }
     } catch (err) {
-      setError(err.response?.data?.error || err.message)
+      setError(err.userMessage || 'שגיאה בלתי צפויה')
     } finally {
       setLoading(false)
     }
@@ -101,7 +104,7 @@ export default function Register() {
       await authAPI.resendCode({ email })
       setError(null)
     } catch (err) {
-      setError(err.response?.data?.error || 'שגיאה בשליחה חוזרת')
+      setError(err.userMessage || 'שגיאה בשליחה חוזרת')
     } finally {
       setResending(false)
     }
@@ -115,9 +118,11 @@ export default function Register() {
         </div>
       ) : verificationStep ? (
         <div className="auth-card">
-          <button className="auth-back-btn" onClick={() => setVerificationStep(false)}>←</button>
+          <div className="auth-toprow">
+            <div className="auth-toprow-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /></div>
+            <button className="auth-back-btn" onClick={() => setVerificationStep(false)}>←</button>
+          </div>
           <div className="auth-header">
-            <div className="auth-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /> PostIt</div>
             <h2>אימות אימייל</h2>
             <p>שלחנו קוד בן 6 ספרות ל-<strong>{email}</strong></p>
           </div>
@@ -151,9 +156,11 @@ export default function Register() {
         </div>
       ) : (
       <div className="auth-card">
-        <Link to="/" className="auth-back-btn">←</Link>
+        <div className="auth-toprow">
+          <Link to="/" className="auth-toprow-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /></Link>
+          <Link to="/" className="auth-back-btn">←</Link>
+        </div>
         <div className="auth-header">
-          <Link to="/" className="auth-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /> PostIt</Link>
           <h2>הרשמה</h2>
           <p>צור חשבון חדש והתחל לפרסם</p>
         </div>
@@ -216,11 +223,11 @@ export default function Register() {
           <Turnstile onVerify={setCaptchaToken} />
 
           <button type="submit" className="auth-submit-btn" disabled={loading || !captchaToken || !agreedToTerms}>
-            {loading ? '⏳ שולח קוד...' : '📝 הירשם'}
+            {loading ? 'שולח קוד...' : 'הירשם'}
           </button>
         </form>
 
-        <div className="auth-divider"><span>או הירשם עם</span></div>
+        <div className="auth-divider"><span>התחבר באמצעות</span></div>
 
         <OAuthButtons
           mode="register"

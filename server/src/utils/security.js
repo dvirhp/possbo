@@ -79,15 +79,24 @@ export function imageFileFilter(_req, file, cb) {
     "image/png",
     "image/gif",
     "image/webp",
+    "video/mp4",
+    "video/quicktime",
+    "video/webm",
+    "video/x-msvideo",
   ];
   if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error("Only image files (JPEG, PNG, GIF, WebP) are allowed"), false);
+    cb(
+      new Error(
+        "Only image (JPEG, PNG, GIF, WebP) and video (MP4, MOV, WebM, AVI) files are allowed",
+      ),
+      false,
+    );
   }
 }
 
 /**
- * Maximum file upload size in bytes (5 MB).
+ * Maximum file upload size in bytes (50 MB for videos).
  */
-export const MAX_FILE_SIZE = 5 * 1024 * 1024;
+export const MAX_FILE_SIZE = 50 * 1024 * 1024;

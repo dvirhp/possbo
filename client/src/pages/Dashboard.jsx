@@ -5,7 +5,8 @@ import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
 import { authAPI } from '../services/api'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import PullToRefresh from '../components/PullToRefresh'
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import DashboardOverview from '../components/DashboardOverview'
 import '../styles/dashboard.css'
 import '../styles/overview.css'
@@ -224,6 +225,7 @@ export default function Dashboard() {
     setFilterSheetOpen(false)
     const urlSubTab = searchParams.get('subTab')
     setCampaignSubTab((urlSubTab === 'scheduled' || urlSubTab === 'published') ? urlSubTab : 'all')
+    window.scrollTo(0, 0)
   }, [activeTab])
 
   const hasActiveFilters = statusFilter !== 'all' || groupFilter !== 'all' || sortBy !== 'date'
@@ -486,6 +488,7 @@ export default function Dashboard() {
         </header>
 
         {/* Content */}
+        <PullToRefresh onRefresh={forceRefresh}>
         <div className="dash-body">
           {(!authChecked || !dataReady) ? (
             <div className="dash-loader">
@@ -946,6 +949,7 @@ export default function Dashboard() {
             </>
           )}
         </div>
+        </PullToRefresh>
       </div>
 
       {/* ─── MOBILE BOTTOM NAV ─── */}
@@ -1639,12 +1643,15 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
                 </div>
               </div>
               <div className="gl-col gl-col-members">
+                <span className="gl-stat-label">חברים</span>
                 <span className="gl-stat-value">{group.memberCount ? (group.memberCount >= 1000 ? (group.memberCount / 1000).toFixed(1) + 'K' : group.memberCount.toLocaleString()) : '—'}</span>
               </div>
               <div className="gl-col gl-col-posts">
+                <span className="gl-stat-label">פורסמו</span>
                 <span className="gl-stat-value">{group.postsCount || 0}</span>
               </div>
               <div className="gl-col gl-col-scheduled">
+                <span className="gl-stat-label">מתוזמנים</span>
                 <span className="gl-stat-value">{group.scheduledCount || 0}</span>
               </div>
               <div className="gl-col gl-col-action">
@@ -2008,6 +2015,68 @@ function StatsDateRangePicker({ initialFrom, initialTo, onApply, onCancel }) {
   )
 }
 
+function BestPostingTimesChart({ hourlyData: data }) {
+  const [timesChartType, setTimesChartType] = useState('bar')
+
+  if (!data?.length) return null
+
+  return (
+    <div className="stats-chart-card">
+      <div className="stats-chart-header">
+        <h4>🕐 שעות פרסום מומלצות</h4>
+        <div className="chart-type-toggle">
+          <button className={`chart-toggle-btn ${timesChartType === 'area' ? 'active' : ''}`} onClick={() => setTimesChartType('area')} title="גרף קו">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </button>
+          <button className={`chart-toggle-btn ${timesChartType === 'bar' ? 'active' : ''}`} onClick={() => setTimesChartType('bar')} title="גרף עמודות">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div className="stats-chart-container">
+        <ResponsiveContainer width="100%" height={220}>
+          {timesChartType === 'bar' ? (
+            <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <XAxis dataKey="label" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+              <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
+                formatter={(val, name) => [val, name === 'avgLikes' ? 'ממוצע לייקים' : name === 'avgComments' ? 'ממוצע תגובות' : name]}
+                labelFormatter={(label) => `שעה ${label}`}
+              />
+              <Bar dataKey="avgLikes" fill="#818cf8" radius={[4, 4, 0, 0]} name="avgLikes" background={false} />
+              <Bar dataKey="avgComments" fill="#10B981" radius={[4, 4, 0, 0]} name="avgComments" background={false} />
+            </BarChart>
+          ) : (
+            <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="timesLikesGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#818cf8" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="timesCommentsGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10B981" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="label" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+              <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
+                formatter={(val, name) => [val, name === 'avgLikes' ? 'ממוצע לייקים' : name === 'avgComments' ? 'ממוצע תגובות' : name]}
+                labelFormatter={(label) => `שעה ${label}`}
+              />
+              <Area type="monotone" dataKey="avgLikes" stroke="#818cf8" strokeWidth={2} fill="url(#timesLikesGrad)" name="avgLikes" />
+              <Area type="monotone" dataKey="avgComments" stroke="#10B981" strokeWidth={2} fill="url(#timesCommentsGrad)" name="avgComments" />
+            </AreaChart>
+          )}
+        </ResponsiveContainer>
+      </div>
+      <p className="best-times-hint">ממוצע לייקים ותגובות לפי שעת פרסום</p>
+    </div>
+  )
+}
+
 function StatsPanel({ stats }) {
   const toDS = (d) => d.toISOString().split('T')[0]
   const defaultRange = useMemo(() => {
@@ -2018,6 +2087,7 @@ function StatsPanel({ stats }) {
 
   const [dateRange, setDateRange] = useState(defaultRange)
   const [showDatePicker, setShowDatePicker] = useState(false)
+  const [chartType, setChartType] = useState('area') // 'area' or 'bar'
 
   // Top posts state
   const [topPosts, setTopPosts] = useState([])
@@ -2057,24 +2127,31 @@ function StatsPanel({ stats }) {
       const params = {}
       if (from) params.from = from
       if (to) params.to = to
-      const [exposureRes, topPostsRes] = await Promise.all([
-        groupsService.getExposure(params),
-        groupsService.getTopPosts({ sort: topPostsSort, limit: 10, from, to }),
-      ])
+      const exposureRes = await groupsService.getExposure(params)
       if (exposureRes.data?.exposure) {
         setExposure(exposureRes.data.exposure)
         setCache(from, to, exposureRes.data.exposure)
       }
-      if (topPostsRes.data?.posts) setTopPosts(topPostsRes.data.posts)
     } catch { /* ignore */ }
     setLoading(false)
+  }, [getCached, setCache])
+
+  const loadTopPosts = useCallback(async (sort, from, to) => {
+    setTopPostsLoading(true)
+    try {
+      const res = await groupsService.getTopPosts({ sort, limit: 10, from, to })
+      if (res.data?.posts) setTopPosts(res.data.posts)
+    } catch { /* ignore */ }
     setTopPostsLoading(false)
-  }, [getCached, setCache, topPostsSort])
+  }, [])
 
   useEffect(() => {
-    setTopPostsLoading(true)
     loadExposure(dateRange.from, dateRange.to)
   }, [dateRange, loadExposure])
+
+  useEffect(() => {
+    loadTopPosts(topPostsSort, dateRange.from, dateRange.to)
+  }, [topPostsSort, dateRange, loadTopPosts])
 
   const formatDateRangeLabel = (from, to) => {
     const f = new Date(from)
@@ -2148,24 +2225,46 @@ function StatsPanel({ stats }) {
       {/* Exposure Chart */}
       {chartData.length > 0 && (
         <div className="stats-chart-card">
-          <h4>חשיפה לאורך זמן</h4>
+          <div className="stats-chart-header">
+            <h4>חשיפה לאורך זמן</h4>
+            <div className="chart-type-toggle">
+              <button className={`chart-toggle-btn ${chartType === 'area' ? 'active' : ''}`} onClick={() => setChartType('area')} title="גרף קו">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              </button>
+              <button className={`chart-toggle-btn ${chartType === 'bar' ? 'active' : ''}`} onClick={() => setChartType('bar')} title="גרף עמודות">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
+              </button>
+            </div>
+          </div>
           <div className="stats-chart-container">
             <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="exposureGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#818cf8" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
-                <Tooltip
-                  contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
-                  formatter={(val) => [formatNumber(val), 'חשיפה']}
-                />
-                <Area type="monotone" dataKey="exposure" stroke="#818cf8" strokeWidth={2} fill="url(#exposureGradient)" />
-              </AreaChart>
+              {chartType === 'area' ? (
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="exposureGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#818cf8" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+                  <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} tickFormatter={formatNumber} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
+                    formatter={(val) => [formatNumber(val), 'חשיפה']}
+                  />
+                  <Area type="monotone" dataKey="exposure" stroke="#818cf8" strokeWidth={2} fill="url(#exposureGradient)" />
+                </AreaChart>
+              ) : (
+                <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+                  <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} tickFormatter={formatNumber} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
+                    formatter={(val) => [formatNumber(val), 'חשיפה']}
+                  />
+                  <Bar dataKey="exposure" fill="#818cf8" radius={[4, 4, 0, 0]} background={false} />
+                </BarChart>
+              )}
             </ResponsiveContainer>
           </div>
         </div>
@@ -2303,6 +2402,9 @@ function StatsPanel({ stats }) {
         )}
       </div>
 
+      {/* Best Posting Times */}
+      <BestPostingTimesChart hourlyData={stats?.hourlyEngagement} />
+
       {loading && !exposure && (
         <div className="empty-state"><p>טוען נתונים...</p></div>
       )}
@@ -2385,7 +2487,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
         setWaValidation(null)
       }
     } catch (err) {
-      setWaError(err.response?.data?.error || 'שגיאה בשמירה')
+      setWaError(err.userMessage || 'שגיאה בשמירה')
     } finally {
       setWaSaving(false)
     }
@@ -2400,7 +2502,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
         setUser(prev => ({ ...prev, whatsappMessage: res.data.whatsappMessage || null }))
       }
     } catch (err) {
-      setWaError(err.response?.data?.error || 'שגיאה בשמירה')
+      setWaError(err.userMessage || 'שגיאה בשמירה')
     } finally {
       setWaSaving(false)
     }
@@ -2435,7 +2537,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
         setEditing(false)
       }
     } catch (err) {
-      setEditError(err.response?.data?.error || 'שגיאה בעדכון')
+      setEditError(err.userMessage || 'שגיאה בעדכון')
     } finally {
       setSaving(false)
     }
@@ -2458,7 +2560,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
           setPwStep(2)
         }
       } catch (err) {
-        setPwError(err.response?.data?.error || 'שגיאה')
+        setPwError(err.userMessage || 'שגיאה')
       } finally {
         setPwSaving(false)
       }
@@ -2491,7 +2593,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
         setTimeout(() => { setPwSuccess(false); setShowPassword(false) }, 2000)
       }
     } catch (err) {
-      setPwError(err.response?.data?.error || 'שגיאה בשינוי סיסמה')
+      setPwError(err.userMessage || 'שגיאה בשינוי סיסמה')
     } finally {
       setPwSaving(false)
     }
@@ -2844,11 +2946,16 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
   const [scheduleTime, setScheduleTime] = useState('')
   const [groupSearch, setGroupSearch] = useState('')
   const [newImages, setNewImages] = useState([])
+  const [showAllGroups, setShowAllGroups] = useState(false)
   const [whatsappNumber, setWhatsappNumber] = useState(campaign.whatsappNumber || '')
   const [whatsappMessage, setWhatsappMessage] = useState(campaign.whatsappMessage || '')
+  const [showWhatsapp, setShowWhatsapp] = useState(!!(campaign.whatsappNumber))
   const existingEditImgs = (campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : []))
     .map(url => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url)
   const [imagePreviews, setImagePreviews] = useState(existingEditImgs)
+
+  const selectedGroupObjects = groups.filter(g => selectedGroups.includes(g.id))
+  const visibleSelected = showAllGroups ? selectedGroupObjects : selectedGroupObjects.slice(0, 4)
 
   const handleImageSelect = (e) => {
     const files = Array.from(e.target.files)
@@ -2890,8 +2997,8 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
       scheduleMode,
       scheduleDate,
       scheduleTime,
-      whatsappNumber: whatsappNumber.trim() || null,
-      whatsappMessage: whatsappMessage.trim() || null,
+      whatsappNumber: showWhatsapp ? whatsappNumber.trim() || null : null,
+      whatsappMessage: showWhatsapp ? whatsappMessage.trim() || null : null,
     }, newImages)
   }
 
@@ -2933,7 +3040,22 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
           </div>
 
           <div className="form-group">
-            <label>קבוצות</label>
+            <label>קבוצות ({selectedGroups.length})</label>
+            {selectedGroups.length > 0 && (
+              <div className="selected-groups-chips">
+                {visibleSelected.map(g => (
+                  <span key={g.id} className="selected-group-chip">
+                    {g.name}
+                    <button type="button" onClick={() => toggleGroup(g.id)}>✕</button>
+                  </span>
+                ))}
+                {selectedGroupObjects.length > 4 && (
+                  <button type="button" className="groups-expand-btn" onClick={() => setShowAllGroups(!showAllGroups)}>
+                    {showAllGroups ? 'הצג פחות' : `+${selectedGroupObjects.length - 4} נוספות`}
+                  </button>
+                )}
+              </div>
+            )}
             <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." />
             <div className="group-checkboxes">
               {filteredGroups.map(g => (
@@ -2997,16 +3119,30 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
           )}
 
           <div className="form-group">
-            <label>וואטסאפ (אופציונלי)</label>
-            <input type="text" value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="מספר וואטסאפ" />
-            {whatsappNumber.trim() && (
-              <input type="text" value={whatsappMessage} onChange={e => setWhatsappMessage(e.target.value)} placeholder="הודעה מוכנה (אופציונלי)" style={{ marginTop: '8px' }} />
+            <div className="wa-toggle-row">
+              <label>WhatsApp</label>
+              <button
+                type="button"
+                className={`wa-toggle-btn ${showWhatsapp ? 'active' : ''}`}
+                onClick={() => setShowWhatsapp(!showWhatsapp)}
+              >
+                {showWhatsapp ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{marginLeft: 4}}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> מופעל</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{marginLeft: 4}}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> כבוי</>}
+              </button>
+            </div>
+            {showWhatsapp && (
+              <>
+                <input type="text" value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="מספר וואטסאפ" />
+                <input type="text" value={whatsappMessage} onChange={e => setWhatsappMessage(e.target.value)} placeholder="הודעה מוכנה (אופציונלי)" style={{ marginTop: '8px' }} />
+              </>
             )}
           </div>
 
-          <button type="submit" className="modal-submit-btn" disabled={loading || !text || !selectedGroups.length}>
-            {loading ? '⏳ מעדכן...' : 'עדכן קמפיין'}
-          </button>
+          <div className="detail-edit-actions">
+            <button type="submit" className="modal-submit-btn" disabled={loading || !text || !selectedGroups.length}>
+              {loading ? '⏳ מעדכן...' : 'עדכן קמפיין'}
+            </button>
+            <button type="button" className="modal-cancel-btn" onClick={onClose}>ביטול</button>
+          </div>
         </form>
       </div>
     </div>
@@ -3165,14 +3301,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
   const [refreshingId, setRefreshingId] = useState(null)
   const menuRef = useRef(null)
 
-  // Preload publication history on mount
-  useEffect(() => {
-    if (campaign.publishedCount > 0) {
-      groupsService.getCampaign(campaign.id)
-        .then(res => setPubHistory(res.data.campaign.publicationHistory || []))
-        .catch(() => {})
-    }
-  }, [campaign.id, campaign.publishedCount])
+  // Load publication history lazily (on button click only)
 
   const images = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
   const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
@@ -3222,9 +3351,16 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
   const [scheduleTime, setScheduleTime] = useState('')
   const [groupSearch, setGroupSearch] = useState('')
   const [newImages, setNewImages] = useState([])
+  const [showAllGroups, setShowAllGroups] = useState(false)
+  const [whatsappNumber, setWhatsappNumber] = useState(campaign.whatsappNumber || '')
+  const [whatsappMessage, setWhatsappMessage] = useState(campaign.whatsappMessage || '')
+  const [showWhatsapp, setShowWhatsapp] = useState(!!(campaign.whatsappNumber))
   const existingDetailImgs = (campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : []))
     .map(url => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url)
   const [imagePreviews, setImagePreviews] = useState(existingDetailImgs)
+
+  const selectedGroupObjects = groups.filter(g => selectedGroups.includes(g.id))
+  const visibleSelected = showAllGroups ? selectedGroupObjects : selectedGroupObjects.slice(0, 4)
 
   const handleImageSelect = (e) => {
     const files = Array.from(e.target.files)
@@ -3247,6 +3383,8 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
       text, title: title || null, anonymous, location: locationVal,
       groupIds: selectedGroups, campaignType, recurringDays, recurringTime,
       scheduleMode, scheduleDate, scheduleTime,
+      whatsappNumber: showWhatsapp ? whatsappNumber.trim() || null : null,
+      whatsappMessage: showWhatsapp ? whatsappMessage.trim() || null : null,
     }, newImages)
   }
 
@@ -3365,7 +3503,22 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
               </div>
             </div>
             <div className="form-group">
-              <label>קבוצות</label>
+              <label>קבוצות ({selectedGroups.length})</label>
+              {selectedGroups.length > 0 && (
+                <div className="selected-groups-chips">
+                  {visibleSelected.map(g => (
+                    <span key={g.id} className="selected-group-chip">
+                      {g.name}
+                      <button type="button" onClick={() => toggleGroup(g.id)}>✕</button>
+                    </span>
+                  ))}
+                  {selectedGroupObjects.length > 4 && (
+                    <button type="button" className="groups-expand-btn" onClick={() => setShowAllGroups(!showAllGroups)}>
+                      {showAllGroups ? 'הצג פחות' : `+${selectedGroupObjects.length - 4} נוספות`}
+                    </button>
+                  )}
+                </div>
+              )}
               <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." />
               <div className="group-checkboxes">
                 {filteredGroups.map(g => (
@@ -3413,6 +3566,24 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                 <div className="form-group"><label>שעה</label><input type="time" value={recurringTime} onChange={e => setRecurringTime(e.target.value)} /></div>
               </>
             )}
+            <div className="form-group">
+              <div className="wa-toggle-row">
+                <label>WhatsApp</label>
+                <button
+                  type="button"
+                  className={`wa-toggle-btn ${showWhatsapp ? 'active' : ''}`}
+                  onClick={() => setShowWhatsapp(!showWhatsapp)}
+                >
+                  {showWhatsapp ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{marginLeft: 4}}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> מופעל</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{marginLeft: 4}}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> כבוי</>}
+                </button>
+              </div>
+              {showWhatsapp && (
+                <>
+                  <input type="text" value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="מספר וואטסאפ" />
+                  <input type="text" value={whatsappMessage} onChange={e => setWhatsappMessage(e.target.value)} placeholder="הודעה מוכנה (אופציונלי)" style={{ marginTop: '8px' }} />
+                </>
+              )}
+            </div>
             <div className="detail-edit-actions">
               <button type="submit" className="modal-submit-btn" disabled={loading || !text || !selectedGroups.length}>
                 {loading ? '⏳ מעדכן...' : 'עדכן קמפיין'}

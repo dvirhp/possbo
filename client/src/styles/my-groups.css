@@ -1,6 +1,6 @@
 .my-groups-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--bg-deep, #f5f7fa);
   padding: 0 16px 16px;
   max-width: 900px;
   margin: 0 auto;
@@ -9,6 +9,15 @@
 @media (min-width: 768px) {
   .my-groups-page {
     padding: 24px 40px;
+  }
+}
+@media (max-width: 768px) {
+  .my-groups-page {
+    padding-top: 0;
+  }
+  .my-groups-page .page-header {
+    margin-top: 0;
+    padding-top: 8px;
   }
 }
 
@@ -45,4 +54,61 @@
   border-radius: 10px;
   margin-bottom: 16px;
   font-size: 14px;
+}
+
+/* Profile Publish Section */
+.profile-publish-section {
+  margin-bottom: 20px;
+}
+
+.profile-publish-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--bg-card, #1e2128);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 14px;
+  gap: 12px;
+}
+
+.profile-publish-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-publish-icon {
+  font-size: 28px;
+}
+
+.profile-publish-info h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #e8ecf0);
+}
+
+.profile-publish-info p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted, #6b7684);
+}
+
+.profile-publish-btn {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.2s;
+  white-space: nowrap;
+}
+.profile-publish-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
 }

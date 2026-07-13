@@ -128,6 +128,23 @@ function parseLikesFromText(text) {
     return othersCount + namedCount;
   }
 
+  // Pattern: "Name and Name" / "Name ו Name" — named people with no count
+  // e.g. "You and John" → 2, "A, B and C" → 3, "Name ו Name" → 2
+  if (
+    /\band\b/i.test(str) &&
+    !/\band\s+[\d.,KkMm]/i.test(str) &&
+    !/\bothers?\b/i.test(str)
+  ) {
+    return countNamedPeople(str);
+  }
+  if (
+    /\sו[-–]?\s/.test(str) &&
+    !/ו[-–]?\s*[\d.,KkMm]/i.test(str) &&
+    !/(?:אחרי[ם]?|נוספי[ם]?|אחר)\b/i.test(str)
+  ) {
+    return countNamedPeople(str);
+  }
+
   // Pattern: number + likes/like/לייקים/לייק/אהבו/אוהבים
   const likesMatch = str.match(
     /([\d.,KkMm\s]+(?:אלף|מיליון)?)\s*(?:likes?|לייקי?[ם]?|אהבו|אוהבי[ם]?|reactions?|תגובות\s*רגשיות)/i,
@@ -154,6 +171,24 @@ function parseLikesFromText(text) {
 }
 
 /**
+ * Count named people in a text like "A and B" or "A, B and C" or "A ו B".
+ */
+function countNamedPeople(text) {
+  const commaParts = text.split(/\s*,\s*/);
+  let count = 0;
+  for (const part of commaParts) {
+    if (/\band\b/i.test(part)) {
+      count += part.split(/\band\b/i).filter((s) => s.trim()).length;
+    } else if (/\sו[-–]?\s/.test(part)) {
+      count += part.split(/\sו[-–]?\s/).filter((s) => s.trim()).length;
+    } else if (part.trim()) {
+      count += 1;
+    }
+  }
+  return Math.max(count, 1);
+}
+
+/**
  * Extract comments count from text.
  * Handles: "5 comments" / "5 תגובות" / "1 comment" / "1 תגובה"
  */
@@ -162,14 +197,14 @@ function parseCommentsFromText(text) {
   const str = text.trim();
 
   const commentsMatch = str.match(
-    /([\d.,KkMm\s]+(?:אלף|מיליון)?)\s*(?:comments?|תגובות?|comment)/i,
+    /([\d.,KkMm\s]+(?:אלף|מיליון)?)\s*(?:comments?|תגובות?|תגובה)/i,
   );
   if (commentsMatch) {
     return parseEngagementCount(commentsMatch[1]);
   }
 
   const reverseComments = str.match(
-    /(?:comments?|תגובות?)\s+([\d.,KkMm\s]+(?:אלף|מיליון)?)/i,
+    /(?:comments?|תגובות?|תגובה)\s+([\d.,KkMm\s]+(?:אלף|מיליון)?)/i,
   );
   if (reverseComments) {
     return parseEngagementCount(reverseComments[1]);
@@ -204,8 +239,52 @@ async function scrapePostMetrics(context, postUrl) {
       let comments = null;
       const debugInfo = { strategies: [] };
 
-      // Search across the full document — scoping to article is too narrow on post detail pages
-      const allElements = document.querySelectorAll(
+      // ─── SCOPE: Find the target post container ───
+      // Facebook shows post URLs in different layouts:
+      //  1. Dialog/modal overlay containing the post (div[role="dialog"])
+      //  2. Main feed with the post (div[role="main"])
+      //  3. Entire document as fallback
+      // We must scope to the correct container to avoid picking up
+      // metrics from OTHER posts visible on the page.
+      let postRoot = null;
+
+      // Priority 1: Dialog — FB often opens post links in a dialog overlay
+      // But only use it if it actually contains post-like content (reactions area)
+      // and is not just a notifications panel or other UI dialog
+      const dialogs = document.querySelectorAll('div[role="dialog"]');
+      for (const dialog of dialogs) {
+        const dialogText = dialog.textContent || "";
+        // A post dialog typically has "Like" / "Comment" / "Share" buttons
+        // and/or reaction content — not just notification text
+        if (
+          (/\bLike\b/.test(dialogText) && /\bComment\b/.test(dialogText)) ||
+          (/\bלייק\b/.test(dialogText) && /\bתגובה\b/.test(dialogText)) ||
+          dialog.querySelector(
+            'div[aria-label*="reaction"], div[aria-label*="like" i]',
+          )
+        ) {
+          postRoot = dialog;
+          debugInfo.strategies.push("SCOPE: post-dialog");
+          break;
+        }
+      }
+
+      // Priority 2: Main content area
+      if (!postRoot) {
+        const main = document.querySelector('div[role="main"]');
+        if (main) {
+          postRoot = main;
+          debugInfo.strategies.push("SCOPE: main");
+        }
+      }
+
+      // Fallback: entire document
+      if (!postRoot) {
+        postRoot = document;
+        debugInfo.strategies.push("SCOPE: document (fallback)");
+      }
+
+      const allElements = postRoot.querySelectorAll(
         "span, a, div[role='button']",
       );
 
@@ -229,7 +308,7 @@ async function scrapePostMetrics(context, postUrl) {
 
       // Strategy C2: aria-label with exact "N comments" pattern (anchored)
       if (comments === null) {
-        const ariaEls = document.querySelectorAll("[aria-label]");
+        const ariaEls = postRoot.querySelectorAll("[aria-label]");
         for (const el of ariaEls) {
           const label = el.getAttribute("aria-label") || "";
           const cmLabelMatch = label.match(
@@ -264,6 +343,29 @@ async function scrapePostMetrics(context, postUrl) {
       }
 
       // ─── LIKES / REACTIONS ───
+      // Strategy L0: "All reactions:N ..." — Facebook's accessibility text
+      // This is the most reliable source when present (e.g. "All reactions:2 You and Name")
+      for (const el of allElements) {
+        if (el.closest("header, nav, [role='banner']")) continue;
+        const text = el.textContent?.trim() || "";
+        const arLabel = el.getAttribute?.("aria-label") || "";
+        // Check both text content and aria-label
+        for (const candidate of [text, arLabel]) {
+          if (!candidate) continue;
+          const allReactionsMatch = candidate.match(
+            /All reactions:\s*([\d.,KkMm]+)/i,
+          );
+          if (allReactionsMatch) {
+            likes = allReactionsMatch[1];
+            debugInfo.strategies.push(
+              `L0: "${candidate}" → ${allReactionsMatch[1]}`,
+            );
+            break;
+          }
+        }
+        if (likes !== null) break;
+      }
+
       // Strategy L1: "X and Y others" / "X ו-Y אחרים" (multiple likes with named people)
       for (const el of allElements) {
         if (el.closest("header, nav, [role='banner']")) continue;
@@ -296,6 +398,37 @@ async function scrapePostMetrics(context, postUrl) {
             debugInfo.strategies.push(`L1-veod: "${text}"`);
             break;
           }
+
+          // "Name and Name" — multiple named people, no count
+          if (
+            text.length <= 80 &&
+            !/\d/.test(text) &&
+            /\band\b/i.test(text) &&
+            !/\bothers?\b/i.test(text) &&
+            !/\b(?:comment|share|send|reply|like|post)\b/i.test(text) &&
+            !/(?:תגובה|שיתוף|שליחה|לייק|כתוב)/i.test(text)
+          ) {
+            if (el.tagName === "A" || el.closest('[role="button"]')) {
+              likes = text;
+              debugInfo.strategies.push(`L1-names: "${text}"`);
+              break;
+            }
+          }
+          // Hebrew: "Name ו Name" — multiple named people, no count
+          if (
+            text.length <= 80 &&
+            !/\d/.test(text) &&
+            /\sו[-–]?\s/.test(text) &&
+            !/(?:אחרי[ם]?|נוספי[ם]?|אחר)\b/i.test(text) &&
+            !/\b(?:comment|share|send|reply|like|post)\b/i.test(text) &&
+            !/(?:תגובה|שיתוף|שליחה|לייק|כתוב)/i.test(text)
+          ) {
+            if (el.tagName === "A" || el.closest('[role="button"]')) {
+              likes = text;
+              debugInfo.strategies.push(`L1-names-he: "${text}"`);
+              break;
+            }
+          }
         }
       }
 
@@ -323,7 +456,7 @@ async function scrapePostMetrics(context, postUrl) {
       // inside a link/span that acts as the reaction summary.
       if (likes === null) {
         // Look for elements that contain reaction emoji images
-        const reactionImgs = document.querySelectorAll(
+        const reactionImgs = postRoot.querySelectorAll(
           'img[src*="emoji"], img[aria-label*="Like"], img[aria-label*="Love"], img[aria-label*="Haha"], img[aria-label*="Wow"], img[aria-label*="Sad"], img[aria-label*="Angry"], ' +
             'img[alt*="like" i], img[alt*="love" i], img[alt*="haha" i], img[alt*="wow" i], img[alt*="sad" i], img[alt*="angry" i], ' +
             'i[data-visualcompletion="css-img"][style*="background-image"]',
@@ -353,6 +486,32 @@ async function scrapePostMetrics(context, postUrl) {
           if (/(?:and\s+\d|ו[-–]?\s*\d)/i.test(containerText)) {
             likes = containerText;
             break;
+          }
+
+          // Multiple named people: "Name and Name" or "Name ו Name" (no digits)
+          if (
+            containerText.length >= 2 &&
+            containerText.length <= 100 &&
+            !/\d/.test(containerText) &&
+            (/\band\b/i.test(containerText) || /\sו[-–]?\s/.test(containerText))
+          ) {
+            const lowerText = containerText.toLowerCase();
+            if (
+              ![
+                "like",
+                "comment",
+                "send",
+                "share",
+                "לייק",
+                "תגובה",
+                "שליחה",
+                "שיתוף",
+              ].some((w) => lowerText === w || lowerText === w + "s")
+            ) {
+              likes = containerText;
+              debugInfo.strategies.push(`L3-names: "${containerText}"`);
+              break;
+            }
           }
 
           // If it's just a person's name (no number) — that's 1 like
@@ -388,11 +547,13 @@ async function scrapePostMetrics(context, postUrl) {
 
       // Strategy L4: aria-label approach for reactions
       if (likes === null) {
-        const ariaEls = document.querySelectorAll("[aria-label]");
+        const ariaEls = postRoot.querySelectorAll("[aria-label]");
         for (const el of ariaEls) {
           const label = el.getAttribute("aria-label") || "";
-          // "1 reaction" / "5 reactions" / "Like: 3"
-          if (/(?:reaction|people reacted|אנשים הגיבו)/i.test(label)) {
+          // Skip action buttons like "Change Like reaction", "Remove reaction"
+          if (/^(Change|Remove|Add)\b/i.test(label)) continue;
+          // "1 reaction" / "5 reactions" / "Like: 3" / "All reactions:5"
+          if (/(?:reactions?|people reacted|אנשים הגיבו)/i.test(label)) {
             const numMatch = label.match(/([\d.,KkMm]+)/);
             if (numMatch) {
               likes = numMatch[1];

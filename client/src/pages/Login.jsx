@@ -49,8 +49,11 @@ export default function Login() {
         navigate('/dashboard')
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.message
-      setError(msg)
+      if (!navigator.onLine || err.code === 'ERR_NETWORK') {
+        setError('אין חיבור לאינטרנט. בדוק את החיבור ונסה שוב.')
+      } else {
+        setError(err.userMessage || 'שגיאה בהתחברות. נסה שוב מאוחר יותר.')
+      }
     } finally {
       setLoading(false)
     }
@@ -64,9 +67,11 @@ export default function Login() {
         </div>
       ) : (
       <div className="auth-card">
-        <Link to="/" className="auth-back-btn">←</Link>
+        <div className="auth-toprow">
+          <Link to="/" className="auth-toprow-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /></Link>
+          <Link to="/" className="auth-back-btn">←</Link>
+        </div>
         <div className="auth-header">
-          <Link to="/" className="auth-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /> PostIt</Link>
           <h2>התחברות</h2>
           <p>התחבר לחשבון שלך</p>
         </div>
@@ -97,11 +102,11 @@ export default function Login() {
           <Turnstile onVerify={setCaptchaToken} />
 
           <button type="submit" className="auth-submit-btn" disabled={loading || !captchaToken}>
-            {loading ? '⏳ מתחבר...' : '🔑 התחבר'}
+            {loading ? 'מתחבר...' : 'התחבר'}
           </button>
         </form>
 
-        <div className="auth-divider"><span>או התחבר עם</span></div>
+        <div className="auth-divider"><span>התחבר באמצעות</span></div>
 
         <OAuthButtons
           mode="login"

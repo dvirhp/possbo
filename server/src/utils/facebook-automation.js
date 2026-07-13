@@ -1155,6 +1155,311 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
   }
 }
 
+// ─── Publish to user's personal profile ───────────────────
+
+export async function publishToProfile(text, imagePath, options = {}) {
+  const { location = "", userId } = options;
+  const storageState = await getStorageState(userId);
+
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+  });
+
+  try {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+      userAgent: USER_AGENT,
+      storageState,
+    });
+    const page = await context.newPage();
+
+    // Navigate to profile page
+    await page.goto("https://www.facebook.com/profile", {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    await page.waitForTimeout(2000);
+
+    const currentUrl = page.url();
+    log.debug("Profile page URL:", currentUrl);
+
+    if (/login|checkpoint/i.test(currentUrl)) {
+      throw new Error("FACEBOOK_SESSION_REQUIRED");
+    }
+
+    // Click on "What's on your mind?" composer
+    const composerSelectors = [
+      'div[role="button"] span:has-text("What\'s on your mind")',
+      'div[role="button"] span:has-text("מה חדש אצלך")',
+      'div[role="button"] span:has-text("על מה את/ה חושב")',
+      'div[role="button"] span:has-text("מה עובר עליך")',
+      'div[role="button"] span:has-text("מה נשמע")',
+      'div[role="button"] span:has-text("במה את/ה חושב/ת")',
+    ];
+
+    let composerClicked = false;
+    for (const selector of composerSelectors) {
+      const el = page.locator(selector).first();
+      if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+        log.debug("Found profile composer with selector:", selector);
+        await el.click();
+        composerClicked = true;
+        break;
+      }
+    }
+
+    if (!composerClicked) {
+      const fallback = page
+        .locator('[role="button"]')
+        .filter({ hasText: /mind|חדש|חושב|עובר|נשמע/i })
+        .first();
+      if (await fallback.isVisible({ timeout: 2000 }).catch(() => false)) {
+        log.debug("Found profile composer via fallback");
+        await fallback.click();
+        composerClicked = true;
+      }
+    }
+
+    if (!composerClicked) {
+      throw new Error("PROFILE_COMPOSER_NOT_FOUND");
+    }
+
+    await page.waitForTimeout(2000);
+
+    // Type text into the composer dialog
+    const editor = page
+      .locator('div[role="dialog"] div[role="textbox"][contenteditable="true"]')
+      .first();
+    await editor.waitFor({ state: "visible", timeout: 10000 });
+    log.debug("Typing text into profile composer...");
+    await editor.click();
+    await editor.fill(text);
+    await page.waitForTimeout(1000);
+
+    // Upload image if provided
+    if (imagePath && fs.existsSync(imagePath)) {
+      log.debug("Uploading image to profile post:", imagePath);
+
+      const photoButtonSelectors = [
+        'div[role="dialog"] div[role="button"] span:has-text("Photo/video")',
+        'div[role="dialog"] div[role="button"] span:has-text("Photo/Video")',
+        'div[role="dialog"] div[role="button"] span:has-text("תמונה/סרטון")',
+      ];
+
+      let photoClicked = false;
+      for (const selector of photoButtonSelectors) {
+        const btn = page.locator(selector).first();
+        if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await btn.click();
+          photoClicked = true;
+          log.debug("Clicked photo button");
+          break;
+        }
+      }
+
+      if (!photoClicked) {
+        const iconBtn = page
+          .locator(
+            'div[role="dialog"] [aria-label*="Photo"], div[role="dialog"] [aria-label*="תמונה"]',
+          )
+          .first();
+        if (await iconBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await iconBtn.click();
+          photoClicked = true;
+        }
+      }
+
+      await page.waitForTimeout(1000);
+      const fileInput = page
+        .locator('div[role="dialog"] input[type="file"]')
+        .first();
+      await fileInput.setInputFiles(imagePath);
+      log.debug("Image file sent to input");
+
+      try {
+        await page
+          .locator(
+            'div[role="dialog"] img[src*="blob:"], div[role="dialog"] img[alt], div[role="dialog"] div[role="img"]',
+          )
+          .first()
+          .waitFor({ state: "visible", timeout: 15000 });
+        log.debug("Image preview appeared");
+      } catch {
+        log.debug("Image preview not detected, waiting extra time...");
+      }
+      await page.waitForTimeout(3000);
+    }
+
+    // Handle location if provided
+    if (location) {
+      log.debug("Adding location to profile post:", location);
+      try {
+        const locationBtnSelectors = [
+          'div[role="dialog"] [aria-label*="Check in"]',
+          'div[role="dialog"] [aria-label*="צ\'ק אין"]',
+          'div[role="dialog"] [aria-label*="מיקום"]',
+          'div[role="dialog"] [aria-label*="location"]',
+        ];
+        let locationClicked = false;
+        for (const selector of locationBtnSelectors) {
+          const btn = page.locator(selector).first();
+          if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await btn.click();
+            locationClicked = true;
+            break;
+          }
+        }
+        if (locationClicked) {
+          await page.waitForTimeout(2000);
+          const locationInput = page
+            .locator('input[type="search"], input[role="combobox"]')
+            .first();
+          if (
+            await locationInput.isVisible({ timeout: 2000 }).catch(() => false)
+          ) {
+            await locationInput.click();
+            await locationInput.fill(location);
+            await page.waitForTimeout(3000);
+            const firstResult = page
+              .locator('div[role="option"], li[role="option"]')
+              .first();
+            if (
+              await firstResult.isVisible({ timeout: 3000 }).catch(() => false)
+            ) {
+              await firstResult.click();
+              await page.waitForTimeout(1000);
+            }
+          }
+        }
+      } catch (e) {
+        log.debug("Profile location error (non-fatal):", e.message);
+      }
+    }
+
+    // Click "Next" button if it appears (profile posts have a 2-step flow)
+    const nextSelectors = [
+      'div[role="dialog"] div[role="button"]:has-text("Next")',
+      'div[role="dialog"] div[role="button"]:has-text("הבא")',
+      'div[role="dialog"] button:has-text("Next")',
+      'div[role="dialog"] button:has-text("הבא")',
+    ];
+    for (const selector of nextSelectors) {
+      const btn = page.locator(selector).first();
+      if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        log.debug("Clicking 'Next' button in profile composer");
+        await btn.click();
+        await page.waitForTimeout(2000);
+        break;
+      }
+    }
+
+    // Click Post/Publish button
+    let posted = false;
+    const postButtonTexts = ["post", "publish", "פרסם", "פרסום", "שלח"];
+    const postTextRegex = new RegExp(`^(${postButtonTexts.join("|")})$`, "i");
+
+    // Strategy 1: aria-label match
+    for (const label of postButtonTexts) {
+      const selector = `div[role="dialog"] div[role="button"][aria-label="${label}" i]`;
+      const btn = page.locator(selector).first();
+      if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
+        log.debug("Clicking profile post button (aria-label):", label);
+        await btn.click();
+        posted = true;
+        break;
+      }
+    }
+
+    // Strategy 2: scan buttons for text match
+    if (!posted) {
+      const allButtons = page.locator('div[role="dialog"] div[role="button"]');
+      const count = await allButtons.count();
+      for (let i = count - 1; i >= 0; i--) {
+        const btn = allButtons.nth(i);
+        const btnText = (await btn.innerText().catch(() => "")).trim();
+        if (postTextRegex.test(btnText)) {
+          log.debug("Found profile post button:", btnText);
+          await btn.click();
+          posted = true;
+          break;
+        }
+      }
+    }
+
+    // Strategy 3: native buttons
+    if (!posted) {
+      const nativeButtons = page.locator('div[role="dialog"] button');
+      const nbCount = await nativeButtons.count();
+      for (let i = nbCount - 1; i >= 0; i--) {
+        const btn = nativeButtons.nth(i);
+        const btnText = (await btn.innerText().catch(() => "")).trim();
+        if (postTextRegex.test(btnText)) {
+          await btn.click();
+          posted = true;
+          break;
+        }
+      }
+    }
+
+    if (!posted) {
+      throw new Error("PROFILE_POST_BUTTON_NOT_FOUND");
+    }
+
+    // Wait for post to be submitted
+    log.debug("Waiting for profile post to be submitted...");
+    await page.waitForTimeout(6000);
+
+    // Try to capture post URL from GraphQL response
+    let postUrl = null;
+    try {
+      await page.goto("https://www.facebook.com/profile", {
+        waitUntil: "domcontentloaded",
+        timeout: 15000,
+      });
+      await page.waitForTimeout(3000);
+
+      const topPostLink = await page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll("a[href]"));
+        const postLink = links.find(
+          (l) => l.href.includes("/posts/") || l.href.includes("/permalink/"),
+        );
+        return postLink?.href || null;
+      });
+      if (topPostLink) {
+        postUrl = topPostLink;
+        try {
+          const u = new URL(postUrl);
+          u.search = "";
+          postUrl = u.toString();
+        } catch {
+          /* keep as-is */
+        }
+      }
+    } catch (e) {
+      log.debug("Profile post URL detection error (non-fatal):", e.message);
+    }
+
+    // Take screenshot
+    const screenshot = await page.screenshot({ type: "png", fullPage: false });
+    log.debug("Profile post published! Screenshot size:", screenshot.length);
+
+    // Save updated storage state
+    if (userId) {
+      const updatedState = await context.storageState();
+      await saveUserStorageState(userId, updatedState);
+    }
+
+    return {
+      success: true,
+      screenshot: screenshot.toString("base64"),
+      postUrl,
+    };
+  } finally {
+    await browser.close();
+  }
+}
+
 // ─── Scrape group metadata (member count + privacy) ───────
 
 /**

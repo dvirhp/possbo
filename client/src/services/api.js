@@ -24,7 +24,11 @@ export const authAPI = {
     return res;
   },
   login: async (email, password, captchaToken) => {
-    const res = await http.post("/auth/login", { email, password, captchaToken });
+    const res = await http.post("/auth/login", {
+      email,
+      password,
+      captchaToken,
+    });
     if (res.data.accessToken) {
       setAccessToken(res.data.accessToken);
     }
@@ -57,10 +61,14 @@ export const authAPI = {
   updateWhatsapp: (data) => http.patch("/auth/whatsapp", data),
   disconnectFacebook: () => http.post("/auth/disconnect-facebook"),
   verifyFacebook: () => http.post("/auth/verify-facebook"),
+  updateNotificationSettings: (settings) =>
+    http.patch("/auth/notification-settings", settings),
   uploadAvatar: (file) => {
     const formData = new FormData();
     formData.append("avatar", file);
-    return http.post("/auth/avatar", formData, { headers: { "Content-Type": "multipart/form-data" } });
+    return http.post("/auth/avatar", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
   },
 };
 

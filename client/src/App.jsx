@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { DataProvider } from './context/DataProvider'
 import { ThemeProvider } from './context/ThemeProvider'
 import TopLoader from './components/TopLoader'
@@ -15,9 +15,34 @@ import PostDetails from './pages/PostDetails'
 import OAuthCallback from './pages/OAuthCallback'
 import Privacy from './pages/Privacy'
 import ForgotPassword from './pages/ForgotPassword'
+import Templates from './pages/Templates'
+import TemplateForm from './pages/TemplateForm'
+import Reports from './pages/Reports'
+import Guides from './pages/Guides'
 import AuthLayout from './components/AuthLayout'
+import ChatBot from './components/ChatBot'
+import AccessibilityWidget from './components/AccessibilityWidget'
+import ErrorBoundary from './components/ErrorBoundary'
 import './App.css'
 import './styles/sidebar.css'
+
+const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password', '/privacy']
+
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => { window.scrollTo(0, 0) }, [pathname])
+  return null
+}
+
+function AuthWidgets() {
+  const { pathname } = useLocation()
+  if (PUBLIC_ROUTES.includes(pathname)) return null
+  return (
+    <>
+      <ChatBot />
+    </>
+  )
+}
 
 function GlobalPublishBanner() {
   const [banners, setBanners] = useState([])
@@ -116,9 +141,11 @@ function GlobalPublishBanner() {
 
 function App() {
   return (
+    <ErrorBoundary>
     <ThemeProvider>
     <DataProvider>
       <Router>
+        <ScrollToTop />
         <TopLoader />
         <GlobalPublishBanner />
         <Routes>
@@ -131,15 +158,23 @@ function App() {
           <Route path="/scheduled" element={<AuthLayout><ScheduledCalendar /></AuthLayout>} />
           <Route path="/group/:id" element={<AuthLayout><GroupDetails /></AuthLayout>} />
           <Route path="/post/:id" element={<AuthLayout><PostDetails /></AuthLayout>} />
+          <Route path="/templates" element={<AuthLayout><Templates /></AuthLayout>} />
+          <Route path="/templates/new" element={<AuthLayout><TemplateForm /></AuthLayout>} />
+          <Route path="/templates/:id/edit" element={<AuthLayout><TemplateForm /></AuthLayout>} />
+          <Route path="/reports" element={<AuthLayout><Reports /></AuthLayout>} />
+          <Route path="/guides" element={<AuthLayout><Guides /></AuthLayout>} />
           <Route path="/oauth/github/callback" element={<OAuthCallback />} />
           <Route path="/oauth/linkedin/callback" element={<OAuthCallback />} />
           <Route path="/oauth/apple/callback" element={<OAuthCallback />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
         </Routes>
+        <AuthWidgets />
+        <AccessibilityWidget />
       </Router>
     </DataProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   )
 }
 

@@ -15,10 +15,9 @@ export default function PostDetails() {
     const init = async () => {
       try {
         await authAPI.refresh()
-        const res = await groupsService.getPublicationHistory()
+        const res = await groupsService.getPublication(id)
         if (res.data.success) {
-          const found = res.data.history.find(h => h.id === id)
-          setPublication(found || null)
+          setPublication(res.data.publication)
         }
       } catch {
         navigate('/login')

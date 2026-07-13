@@ -52,11 +52,10 @@ export default function MyGroups() {
         setError('לא נמצאו קבוצות')
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.message
-      if (msg === 'FACEBOOK_SESSION_REQUIRED') {
+      if (err.response?.data?.error === 'FACEBOOK_SESSION_REQUIRED') {
         setError('נדרש חיבור לפייסבוק. אנא התחבר מחדש.')
       } else {
-        setError(`שגיאה: ${msg}`)
+        setError(err.userMessage || 'שגיאה בלתי צפויה')
       }
     } finally {
       setRefreshing(false)
@@ -68,6 +67,25 @@ export default function MyGroups() {
       <div className="page-header">
         <BackButton />
         <h2>👥 הקבוצות שלי</h2>
+      </div>
+
+      {/* Profile Publishing Section */}
+      <div className="profile-publish-section">
+        <div className="profile-publish-card">
+          <div className="profile-publish-info">
+            <span className="profile-publish-icon">👤</span>
+            <div>
+              <h3>פרסום בפרופיל האישי</h3>
+              <p>פרסם פוסט ישירות בפרופיל הפייסבוק שלך</p>
+            </div>
+          </div>
+          <button
+            className="profile-publish-btn"
+            onClick={() => navigate('/create', { state: { publishToProfile: true } })}
+          >
+            ✍️ צור פוסט לפרופיל
+          </button>
+        </div>
       </div>
 
       <div className="groups-actions">
