@@ -207,7 +207,7 @@ describe('GroupDetails page', () => {
       fireEvent.click(screen.getByText(/Capture/));
 
       await waitFor(() => {
-        expect(screen.getByText(/Error:.*Timeout/)).toBeInTheDocument();
+        expect(screen.getByText('שגיאה בלתי צפויה')).toBeInTheDocument();
       });
     });
   });
@@ -277,7 +277,7 @@ describe('GroupDetails page', () => {
       fireEvent.click(screen.getByText(/^Publish$/i));
 
       await waitFor(() => {
-        expect(screen.getByText(/Error:.*Browser error/)).toBeInTheDocument();
+        expect(screen.getByText('שגיאה בלתי צפויה')).toBeInTheDocument();
       });
     });
 
