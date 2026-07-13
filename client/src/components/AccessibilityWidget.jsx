@@ -46,7 +46,7 @@ export default function AccessibilityWidget() {
     root.classList.toggle('a11y-big-cursor', settings.bigCursor)
 
     // Save to localStorage
-    try { localStorage.setItem(A11Y_STORAGE_KEY, JSON.stringify(settings)) } catch {}
+    try { localStorage.setItem(A11Y_STORAGE_KEY, JSON.stringify(settings)) } catch { /* ignore */ }
   }, [settings])
 
   const toggleSetting = (key) => {

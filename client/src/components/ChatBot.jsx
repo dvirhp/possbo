@@ -268,15 +268,15 @@ export default function ChatBot() {
 
   // Persist state to sessionStorage
   useEffect(() => {
-    try { sessionStorage.setItem('chatbot-open', open ? 'true' : 'false') } catch {}
+    try { sessionStorage.setItem('chatbot-open', open ? 'true' : 'false') } catch { /* ignore */ }
   }, [open])
 
   useEffect(() => {
-    try { sessionStorage.setItem('chatbot-messages', JSON.stringify(messages)) } catch {}
+    try { sessionStorage.setItem('chatbot-messages', JSON.stringify(messages)) } catch { /* ignore */ }
   }, [messages])
 
   useEffect(() => {
-    try { if (currentTopic) sessionStorage.setItem('chatbot-topic', currentTopic) } catch {}
+    try { if (currentTopic) sessionStorage.setItem('chatbot-topic', currentTopic) } catch { /* ignore */ }
   }, [currentTopic])
 
   useEffect(() => {

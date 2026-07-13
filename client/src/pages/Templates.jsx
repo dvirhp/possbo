@@ -55,7 +55,7 @@ export default function Templates() {
       const res = await templatesService.getAll()
       if (res.data.success) {
         setTemplates(res.data.templates)
-        try { localStorage.setItem('postit_templates', JSON.stringify(res.data.templates)) } catch {}
+        try { localStorage.setItem('postit_templates', JSON.stringify(res.data.templates)) } catch { /* ignore */ }
       }
     } catch {
       // silent

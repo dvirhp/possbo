@@ -157,7 +157,7 @@ describe("imageFileFilter", () => {
 });
 
 describe("MAX_FILE_SIZE", () => {
-  it("should be 5MB", () => {
-    expect(MAX_FILE_SIZE).toBe(5 * 1024 * 1024);
+  it("should be 50MB", () => {
+    expect(MAX_FILE_SIZE).toBe(50 * 1024 * 1024);
   });
 });
