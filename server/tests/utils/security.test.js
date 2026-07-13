@@ -57,9 +57,9 @@ describe("isValidFacebookGroupUrl", () => {
     expect(
       isValidFacebookGroupUrl("https://www.facebook.com/groups/12345"),
     ).toBe(true);
-    expect(
-      isValidFacebookGroupUrl("https://facebook.com/groups/mygroup"),
-    ).toBe(true);
+    expect(isValidFacebookGroupUrl("https://facebook.com/groups/mygroup")).toBe(
+      true,
+    );
   });
 
   it("should reject non-group Facebook URLs", () => {
