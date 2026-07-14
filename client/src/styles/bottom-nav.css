@@ -7,10 +7,8 @@
   display: none;
   position: fixed;
   bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 20px);
-  max-width: 420px;
+  left: 10px;
+  right: 10px;
   z-index: 900;
 }
 
@@ -59,13 +57,13 @@
   stroke-width: 2;
 }
 
-/* Active state — gradient icon + purple text */
+/* Active state — gradient icon + indigo text */
 .bottom-nav-item.active svg {
   stroke: url(#bnav-gradient);
-  color: #a78bfa;
+  color: #818cf8;
 }
 .bottom-nav-item.active {
-  color: #a78bfa;
+  color: #818cf8;
 }
 /* Remove old active indicator bar */
 .bottom-nav-item.active::before {
@@ -79,7 +77,7 @@
   color: #AEB6CA;
 }
 .bottom-nav-item.active .bottom-nav-label {
-  color: #a78bfa;
+  color: #818cf8;
 }
 
 /* ─── Center Publish Button — Premium Dark Circle ─── */
@@ -94,18 +92,18 @@
   margin-top: 2px;
 }
 .bottom-nav-center.active .bottom-nav-label {
-  color: #a78bfa;
+  color: #818cf8;
 }
 .bottom-nav-center-ring {
   width: 60px;
   height: 60px;
   border-radius: 50%;
   background: radial-gradient(circle, #1C2331, #141A25);
-  border: 2px solid rgba(139,92,246,0.4);
+  border: 2px solid rgba(99,102,241,0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 25px rgba(139,92,246,0.2);
+  box-shadow: 0 0 20px rgba(99,102,241,0.25);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .bottom-nav-center-ring img {
@@ -115,11 +113,11 @@
 }
 .bottom-nav-center:hover .bottom-nav-center-ring {
   transform: scale(1.06);
-  box-shadow: 0 0 35px rgba(139,92,246,0.35);
+  box-shadow: 0 0 30px rgba(99,102,241,0.4);
 }
 .bottom-nav-center.active .bottom-nav-center-ring {
-  box-shadow: 0 0 30px rgba(139,92,246,0.3);
-  border-color: rgba(139,92,246,0.6);
+  box-shadow: 0 0 25px rgba(99,102,241,0.35);
+  border-color: rgba(99,102,241,0.6);
 }
 
 /* Press animation on center button */

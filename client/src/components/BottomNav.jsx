@@ -96,7 +96,7 @@ export default function BottomNav() {
       <svg width="0" height="0" style={{ position: 'absolute' }}>
         <defs>
           <linearGradient id="bnav-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#a78bfa" />
+            <stop offset="0%" stopColor="#818cf8" />
             <stop offset="100%" stopColor="#6366f1" />
           </linearGradient>
         </defs>
