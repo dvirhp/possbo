@@ -86,7 +86,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--indigo, #6366f1), #818cf8);
+  background: linear-gradient(135deg, var(--indigo, #6366f1), var(--indigo));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -106,7 +106,7 @@
 
 .chatbot-status {
   font-size: 11px;
-  color: #34d399;
+  color: var(--emerald);
 }
 
 .chatbot-close {
@@ -149,7 +149,7 @@
   height: 26px;
   min-width: 26px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--indigo, #6366f1), #818cf8);
+  background: linear-gradient(135deg, var(--indigo, #6366f1), var(--indigo));
   display: flex;
   align-items: center;
   justify-content: center;

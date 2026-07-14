@@ -19,15 +19,15 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #16181d;
-  color: #a3adb8;
+  background: var(--bg-deep);
+  color: var(--text-secondary);
   min-height: 100vh;
   transition: background 0.2s ease;
 }
 
 [data-theme="light"] body {
-  background: #f5f7fa;
-  color: #4a5568;
+  background: var(--bg-deep);
+  color: var(--text-secondary);
 }
 
 #root {

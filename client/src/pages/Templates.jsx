@@ -6,7 +6,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { Plus, Pencil, Trash2, Rocket, FileText, Calendar, Users, Search, LayoutGrid, List, Eye, MoreVertical } from 'lucide-react'
 import '../styles/templates.css'
 
-const API_HOST = 'http://localhost:5001'
+const API_HOST = 'http://localhost:8000'
 const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
 
 function formatNumber(n) {

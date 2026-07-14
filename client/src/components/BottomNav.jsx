@@ -187,8 +187,8 @@ export default function BottomNav() {
             <span>התראות</span>
           </button>
           <button className="mobile-drawer-item" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-            {theme === 'dark' ? <Moon size={20} strokeWidth={1.8} /> : <Sun size={20} strokeWidth={1.8} />}
-            <span>{theme === 'dark' ? 'מצב כהה' : 'מצב בהיר'}</span>
+            {theme === 'dark' ? <Sun size={20} strokeWidth={1.8} /> : <Moon size={20} strokeWidth={1.8} />}
+            <span>{theme === 'dark' ? 'עבור למצב בהיר' : 'עבור למצב כהה'}</span>
           </button>
           <button className="mobile-drawer-item logout" onClick={() => { logout(); navigate('/login'); setDrawerOpen(false) }}>
             <LogOut size={20} strokeWidth={1.8} />

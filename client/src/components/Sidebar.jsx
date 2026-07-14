@@ -131,8 +131,8 @@ export default function Sidebar({ activeTab, onTabChange }) {
 
         {/* Bottom actions */}
         <div className="sidebar-bottom-actions">
-          <button className="sidebar-bottom-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'מצב בהיר' : 'מצב כהה'}>
-            {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
+          <button className="sidebar-bottom-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'עבור למצב בהיר' : 'עבור למצב כהה'}>
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
           <button className="sidebar-bottom-btn" onClick={() => navigate('/dashboard?tab=settings')} title="הגדרות">
             <Settings size={18} />

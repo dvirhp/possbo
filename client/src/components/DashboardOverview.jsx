@@ -683,7 +683,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
           </div>
           <div className="ov2-engagement-chart">
             {exposure?.data?.length > 0 ? (
-              <ResponsiveContainer width="100%" height={120}>
+              <ResponsiveContainer width="100%" height={150}>
                 {engChartType === 'area' ? (
                   <AreaChart data={exposure.data.map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                     <defs>

@@ -1,6 +1,6 @@
 .post-details-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--bg-deep);
   padding: 0 16px 16px;
   max-width: 900px;
   margin: 0 auto;
@@ -13,11 +13,12 @@
 }
 
 .post-detail-card {
-  background: white;
+  background: var(--bg-card);
   border-radius: 16px;
   padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
   margin-bottom: 16px;
+  border: 1px solid var(--border);
 }
 
 .post-detail-meta {
@@ -30,7 +31,7 @@
 .post-detail-group {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .post-detail-status {
@@ -41,23 +42,23 @@
 }
 
 .post-detail-status.success {
-  background: #dcfce7;
-  color: #16a34a;
+  background: var(--emerald-soft);
+  color: var(--emerald);
 }
 
 .post-detail-status.failed {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--rose-soft);
+  color: var(--rose);
 }
 
 .post-detail-status.pending {
-  background: #fef9c3;
-  color: #ca8a04;
+  background: var(--amber-soft);
+  color: var(--amber);
 }
 
 .post-detail-date {
   font-size: 13px;
-  color: #666;
+  color: var(--text-muted);
   margin-bottom: 16px;
 }
 
@@ -67,29 +68,29 @@
 
 .post-detail-content h4 {
   font-size: 14px;
-  color: #666;
+  color: var(--text-muted);
   margin-bottom: 8px;
 }
 
 .post-detail-content p {
   font-size: 15px;
   line-height: 1.7;
-  color: #333;
+  color: var(--text-primary);
   white-space: pre-wrap;
-  background: #f8f9fa;
+  background: var(--bg-elevated);
   padding: 14px;
   border-radius: 10px;
 }
 
 .post-detail-location {
   font-size: 14px;
-  color: #555;
+  color: var(--text-secondary);
   margin-bottom: 12px;
 }
 
 .post-detail-link {
   display: inline-block;
-  color: #667eea;
+  color: var(--indigo);
   font-weight: 600;
   text-decoration: none;
   font-size: 14px;
@@ -109,7 +110,7 @@
   padding: 15px;
   border: none;
   border-radius: 14px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--gradient-main);
   color: white;
   font-size: 16px;
   font-weight: 700;

@@ -460,7 +460,7 @@
 }
 
 .fb-cp-icon-photo { color: #6ee7b7; }
-.fb-cp-icon-tag { color: #818cf8; }
+.fb-cp-icon-tag { color: var(--indigo); }
 .fb-cp-icon-emoji { color: #fcd34d; }
 .fb-cp-icon-location { color: #fda4af; }
 .fb-cp-icon-more { color: var(--text-dim, #4a5260); }

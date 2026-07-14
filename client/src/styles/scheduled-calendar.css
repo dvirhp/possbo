@@ -9,6 +9,10 @@
   color: var(--text-secondary, #a3adb8);
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 /* ─── Top Bar ─── */
@@ -83,6 +87,14 @@
   margin: 0 auto;
   padding: 24px 20px;
   width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .sc-month-view {
+    max-width: 100%;
+    padding: 16px;
+  }
 }
 
 .sc-month-header {
@@ -266,10 +278,9 @@
 
 /* ═══════════ DAY VIEW ═══════════ */
 .sc-day-view {
-  max-width: 700px;
-  margin: 0 auto;
-  padding: 20px;
   width: 100%;
+  padding: 20px 24px;
+  box-sizing: border-box;
 }
 
 .sc-day-header {
@@ -352,6 +363,8 @@
   overflow: hidden;
   max-height: calc(100vh - 220px);
   overflow-y: auto;
+  width: 100%;
+  box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--bg-elevated, #2a2f3a) transparent;
 }
@@ -394,11 +407,13 @@
 
 .sc-hour-content {
   flex: 1;
-  padding: 6px 12px;
+  padding: 6px 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   justify-content: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Event card */
@@ -412,6 +427,8 @@
   border-right: 3px solid var(--indigo, #818cf8);
   border-radius: 8px;
   transition: 0.15s;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .sc-event-card:hover {
@@ -458,6 +475,15 @@
 }
 
 /* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .sc-day-view {
+    padding: 16px;
+  }
+  .sc-topbar {
+    padding: 12px 16px;
+  }
+}
+
 @media (max-width: 600px) {
   .sc-topbar {
     padding: 10px 12px;
@@ -527,7 +553,7 @@
   }
 
   .sc-day-view {
-    padding: 12px 8px;
+    padding: 12px 16px;
   }
 
   .sc-day-header {
@@ -587,9 +613,9 @@
   display: inline-block;
   flex-shrink: 0;
 }
-.dot-published { background: #10B981; }
-.dot-pending   { background: #6366F1; }
-.dot-failed    { background: #EF4444; }
+.dot-published { background: var(--emerald); }
+.dot-pending   { background: var(--indigo); }
+.dot-failed    { background: var(--rose); }
 
 /* ═══ Calendar cell dots ═══ */
 .sc-cell-dots {
@@ -867,16 +893,16 @@
   white-space: nowrap;
 }
 .sc-badge-published {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10B981;
+  background: var(--emerald-soft);
+  color: var(--emerald);
 }
 .sc-badge-pending {
-  background: rgba(99, 102, 241, 0.15);
-  color: #818cf8;
+  background: var(--indigo-soft);
+  color: var(--indigo);
 }
 .sc-badge-failed {
-  background: rgba(239, 68, 68, 0.15);
-  color: #EF4444;
+  background: var(--rose-soft);
+  color: var(--rose);
 }
 
 /* ═══ Event card status colors ═══ */
@@ -890,18 +916,18 @@
   height: 8px;
   border-radius: 50%;
 }
-.sc-ev-dot.dot-published { background: #10B981; }
-.sc-ev-dot.dot-pending   { background: #6366F1; }
-.sc-ev-dot.dot-failed    { background: #EF4444; }
+.sc-ev-dot.dot-published { background: var(--emerald); }
+.sc-ev-dot.dot-pending   { background: var(--indigo); }
+.sc-ev-dot.dot-failed    { background: var(--rose); }
 
 .sc-event-card.sc-event-published {
-  border-inline-start: 3px solid #10B981;
+  border-inline-start: 3px solid var(--emerald);
 }
 .sc-event-card.sc-event-pending {
-  border-inline-start: 3px solid #6366F1;
+  border-inline-start: 3px solid var(--indigo);
 }
 .sc-event-card.sc-event-failed {
-  border-inline-start: 3px solid #EF4444;
+  border-inline-start: 3px solid var(--rose);
 }
 
 /* ═══ Create button ═══ */

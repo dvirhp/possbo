@@ -1,6 +1,6 @@
 .my-groups-page {
   min-height: 100vh;
-  background: var(--bg-deep, #f5f7fa);
+  background: var(--bg-deep);
   padding: 0 16px 16px;
   max-width: 900px;
   margin: 0 auto;
@@ -29,7 +29,7 @@
   padding: 12px 24px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--gradient-main);
   color: white;
   font-weight: bold;
   font-size: 15px;
@@ -39,7 +39,7 @@
 
 .refresh-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+  box-shadow: var(--shadow-glow);
 }
 
 .refresh-btn:disabled {
@@ -48,12 +48,13 @@
 }
 
 .error-message {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--rose-soft);
+  color: var(--rose);
   padding: 14px;
   border-radius: 10px;
   margin-bottom: 16px;
   font-size: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.15);
 }
 
 /* Profile Publish Section */

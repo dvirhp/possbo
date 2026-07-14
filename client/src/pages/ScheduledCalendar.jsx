@@ -81,7 +81,7 @@ export default function ScheduledCalendar() {
     }
 
     // Recurring campaigns (blue dots on future matching days)
-    const recurringCampaigns = (allCampaigns || []).filter(c => c.campaignType === 'RECURRING' && !c.isPaused)
+    const recurringCampaigns = (allCampaigns || []).filter(c => (c.campaignType === 'RECURRING' || c.campaignType === 'BOTH') && !c.isPaused)
     if (recurringCampaigns.length > 0) {
       const now = new Date()
       // Look ahead 60 days for recurring

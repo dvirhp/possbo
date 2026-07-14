@@ -305,7 +305,7 @@ export default function Reports() {
     // Campaigns with scheduledAt that haven't been fully published
     if (campaigns?.length) {
       campaigns.forEach(c => {
-        if (c.scheduledAt && (c.status === 'scheduled' || c.status === 'recurring' || c.status === 'active') && !c.isPaused) {
+        if (c.scheduledAt && (c.status === 'scheduled' || c.status === 'recurring' || c.status === 'both' || c.status === 'active') && !c.isPaused) {
           const key = `campaign-${c.id}`
           if (!seen.has(key)) {
             // Don't add if we already have jobs for this campaign
@@ -627,7 +627,7 @@ export default function Reports() {
             {/* Images */}
             {selectedItem.images?.length > 0 && (
               <div className="reports-detail-images">
-                <img src={selectedItem.images[0]?.startsWith('/uploads') ? `http://localhost:5001${selectedItem.images[0]}` : selectedItem.images[0]} alt="" />
+                <img src={selectedItem.images[0]?.startsWith('/uploads') ? `http://localhost:8000${selectedItem.images[0]}` : selectedItem.images[0]} alt="" />
                 {selectedItem.images.length > 1 && (
                   <span className="reports-detail-img-count">+{selectedItem.images.length - 1}</span>
                 )}
