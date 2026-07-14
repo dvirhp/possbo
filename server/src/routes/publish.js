@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
+import { PrismaClient } from "@prisma/client";
 import {
   publishToGroup,
   publishToProfile,
@@ -20,6 +21,7 @@ import {
 import { asyncHandler } from "../utils/async-handler.js";
 import { createLogger } from "../utils/logger.js";
 
+const prisma = new PrismaClient();
 const log = createLogger("publish");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -100,7 +102,45 @@ router.post(
 
       res.json({ ...result, savedPost: saved });
     } catch (err) {
-      // Only delete images on error - otherwise they're kept for PostMedia records
+      // Record failed publication in history
+      try {
+        let group = await prisma.group.findFirst({ where: { url: groupUrl } });
+        if (!group) {
+          group = await prisma.group.create({
+            data: { name: groupName || groupUrl, url: groupUrl },
+          });
+        }
+        // Create a post record for the failed attempt
+        const post = await prisma.post.create({
+          data: {
+            userId: req.user.id,
+            title: title || null,
+            content: sanitizedText,
+            status: "FAILED",
+            isAnonymous: isAnonymous,
+            location: sanitizedLocation || null,
+          },
+        });
+        const postGroup = await prisma.postGroup.create({
+          data: { postId: post.id, groupId: group.id, userId: req.user.id },
+        });
+        await prisma.publicationHistory.create({
+          data: {
+            postId: post.id,
+            groupId: group.id,
+            userId: req.user.id,
+            postGroupId: postGroup.id,
+            publishedAt: new Date(),
+            status: "FAILED",
+            errorMessage: err.message || "Unknown error",
+          },
+        });
+      } catch (dbErr) {
+        log.error("Failed to record failed publication", {
+          error: dbErr.message,
+        });
+      }
+      // Clean up images
       for (const p of imagePaths) {
         if (fs.existsSync(p)) fs.unlinkSync(p);
       }
@@ -164,6 +204,49 @@ router.post(
 
       res.json({ ...result, savedPost: saved });
     } catch (err) {
+      // Record failed profile publication
+      try {
+        let group = await prisma.group.findFirst({
+          where: { url: "https://www.facebook.com/profile" },
+        });
+        if (!group) {
+          group = await prisma.group.create({
+            data: {
+              name: "פרופיל אישי",
+              url: "https://www.facebook.com/profile",
+            },
+          });
+        }
+        const post = await prisma.post.create({
+          data: {
+            userId: req.user.id,
+            title: title || null,
+            content: sanitizedText,
+            status: "FAILED",
+            isAnonymous: false,
+            location: sanitizedLocation || null,
+          },
+        });
+        const postGroup = await prisma.postGroup.create({
+          data: { postId: post.id, groupId: group.id, userId: req.user.id },
+        });
+        await prisma.publicationHistory.create({
+          data: {
+            postId: post.id,
+            groupId: group.id,
+            userId: req.user.id,
+            postGroupId: postGroup.id,
+            targetType: "PROFILE",
+            publishedAt: new Date(),
+            status: "FAILED",
+            errorMessage: err.message || "Unknown error",
+          },
+        });
+      } catch (dbErr) {
+        log.error("Failed to record failed profile publication", {
+          error: dbErr.message,
+        });
+      }
       for (const p of imagePaths) {
         if (fs.existsSync(p)) fs.unlinkSync(p);
       }

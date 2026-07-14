@@ -132,7 +132,7 @@ function ReportsDatePicker({ initialFrom, initialTo, onApply, onCancel, period, 
 
 export default function Reports() {
   const navigate = useNavigate()
-  const { user, authChecked, posts, campaigns, groups, jobs } = useAppData()
+  const { user, authChecked, posts, campaigns, groups, jobs, ensureFresh } = useAppData()
   const [period, setPeriod] = useState('weekly')
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -146,6 +146,11 @@ export default function Reports() {
   useEffect(() => {
     if (authChecked && !user) navigate('/login')
   }, [authChecked, user, navigate])
+
+  // Ensure data is fresh when opening reports
+  useEffect(() => {
+    ensureFresh()
+  }, [])
 
   // Close date picker on outside click
   useEffect(() => {

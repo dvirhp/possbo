@@ -72,16 +72,24 @@ export default function Dashboard() {
   const [groupFilter, setGroupFilter] = useState('all')
   const [groupFilterOpen, setGroupFilterOpen] = useState(false)
   const [groupFilterSearch, setGroupFilterSearch] = useState('')
+  const [templateFilter, setTemplateFilter] = useState('all')
+  const [templateFilterOpen, setTemplateFilterOpen] = useState(false)
+  const [templateFilterSearch, setTemplateFilterSearch] = useState('')
   const [sortBy, setSortBy] = useState('date')
 
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [refreshingGroups, setRefreshingGroups] = useState(false)
   const [filterSheetOpen, setFilterSheetOpen] = useState(false)
+  const [sheetGroupExpand, setSheetGroupExpand] = useState(false)
+  const [sheetTemplateExpand, setSheetTemplateExpand] = useState(false)
+  const [sheetGroupSearch, setSheetGroupSearch] = useState('')
+  const [sheetTemplateSearch, setSheetTemplateSearch] = useState('')
   const [bootstrapping, setBootstrapping] = useState(false)
   const [dashDateRange, setDashDateRange] = useState({ from: '', to: '' })
   const [showDashDatePicker, setShowDashDatePicker] = useState(false)
   const groupFilterRef = useRef(null)
+  const templateFilterRef = useRef(null)
   const dashDateRef = useRef(null)
 
   // Close group filter dropdown on outside click
@@ -95,6 +103,18 @@ export default function Dashboard() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [groupFilterOpen])
+
+  // Close template filter dropdown on outside click
+  useEffect(() => {
+    if (!templateFilterOpen) return
+    const handler = (e) => {
+      if (templateFilterRef.current && !templateFilterRef.current.contains(e.target)) {
+        setTemplateFilterOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [templateFilterOpen])
 
   // Close dash date picker on outside click
   useEffect(() => {
@@ -221,6 +241,7 @@ export default function Dashboard() {
     setGroupFilter('all')
     setGroupFilterOpen(false)
     setGroupFilterSearch('')
+    setTemplateFilter('all')
     setSortBy(activeTab === 'groups' ? 'name' : 'date')
     setFilterSheetOpen(false)
     const urlSubTab = searchParams.get('subTab')
@@ -228,13 +249,13 @@ export default function Dashboard() {
     window.scrollTo(0, 0)
   }, [activeTab])
 
-  const hasActiveFilters = statusFilter !== 'all' || groupFilter !== 'all' || sortBy !== 'date'
+  const hasActiveFilters = statusFilter !== 'all' || groupFilter !== 'all' || templateFilter !== 'all' || sortBy !== 'date'
 
   const resetFilters = () => {
     setStatusFilter('all')
     setGroupFilter('all')
+    setTemplateFilter('all')
     setSortBy(activeTab === 'groups' ? 'name' : 'date')
-    setFilterSheetOpen(false)
   }
 
   const filteredJobs = useMemo(() => {
@@ -281,13 +302,20 @@ export default function Dashboard() {
     if (groupFilter !== 'all') {
       list = list.filter(c => c.groupNames?.includes(groupFilter))
     }
+    if (templateFilter !== 'all') {
+      if (templateFilter === '__none__') {
+        list = list.filter(c => !c.templateName)
+      } else {
+        list = list.filter(c => c.templateName === templateFilter)
+      }
+    }
     if (sortBy === 'date') {
       list = [...list].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     } else if (sortBy === 'name') {
       list = [...list].sort((a, b) => (a.title || a.content || '').localeCompare(b.title || b.content || ''))
     }
     return list
-  }, [campaigns, search, statusFilter, groupFilter, sortBy, dashDateRange])
+  }, [campaigns, search, statusFilter, groupFilter, templateFilter, sortBy, dashDateRange])
 
   const filteredGroups = useMemo(() => {
     let list = groups
@@ -363,6 +391,23 @@ export default function Dashboard() {
     const counts = {}
     campaigns.forEach(c => {
       (c.groupNames || []).forEach(name => { counts[name] = (counts[name] || 0) + 1 })
+    })
+    return counts
+  }, [campaigns])
+
+  const campaignTemplateNames = useMemo(() => {
+    const names = [...new Set(campaigns.map(c => c.templateName).filter(Boolean))]
+    return names.sort((a, b) => a.localeCompare(b))
+  }, [campaigns])
+
+  const campaignTemplateCounts = useMemo(() => {
+    const counts = { '__none__': 0 }
+    campaigns.forEach(c => {
+      if (c.templateName) {
+        counts[c.templateName] = (counts[c.templateName] || 0) + 1
+      } else {
+        counts['__none__']++
+      }
     })
     return counts
   }, [campaigns])
@@ -658,7 +703,7 @@ export default function Dashboard() {
                         {campaignStatusCounts['recurring'] && <option value="recurring">חוזר ({campaignStatusCounts['recurring']})</option>}
                         {campaignStatusCounts['paused'] && <option value="paused">מושהה ({campaignStatusCounts['paused']})</option>}
                         {campaignStatusCounts['draft'] && <option value="draft">טיוטה ({campaignStatusCounts['draft']})</option>}
-                        {campaignStatusCounts['one-time'] && <option value="one-time">חד-פעמי ({campaignStatusCounts['one-time']})</option>}
+
                       </select>
                     )}
 
@@ -699,6 +744,56 @@ export default function Dashboard() {
                                     onClick={() => { setGroupFilter(name); setGroupFilterOpen(false); setGroupFilterSearch('') }}
                                   >
                                     {name} ({campaignGroupCounts[name] || 0})
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {activeTab === 'campaigns' && campaignTemplateNames.length > 0 && (
+                      <div className="group-filter-wrap" ref={templateFilterRef}>
+                        <button
+                          className={`filter-select group-filter-btn ${templateFilter !== 'all' ? 'active' : ''}`}
+                          onClick={() => setTemplateFilterOpen(!templateFilterOpen)}
+                        >
+                          {templateFilter === 'all' ? `📝 כל הטמפלייטים` : templateFilter === '__none__' ? '📝 ללא טמפלייט' : `📝 ${templateFilter}`}
+                        </button>
+                        {templateFilterOpen && (
+                          <div className="group-filter-dropdown">
+                            <div className="group-filter-search">
+                              <input
+                                type="text"
+                                placeholder="חפש טמפלייט..."
+                                value={templateFilterSearch}
+                                onChange={e => setTemplateFilterSearch(e.target.value)}
+                                autoFocus
+                              />
+                            </div>
+                            <div className="group-filter-list">
+                              <button
+                                className={`group-filter-item ${templateFilter === 'all' ? 'active' : ''}`}
+                                onClick={() => { setTemplateFilter('all'); setTemplateFilterOpen(false); setTemplateFilterSearch('') }}
+                              >
+                                כל הטמפלייטים
+                              </button>
+                              <button
+                                className={`group-filter-item ${templateFilter === '__none__' ? 'active' : ''}`}
+                                onClick={() => { setTemplateFilter('__none__'); setTemplateFilterOpen(false); setTemplateFilterSearch('') }}
+                              >
+                                ללא טמפלייט
+                              </button>
+                              {campaignTemplateNames
+                                .filter(name => !templateFilterSearch || name.toLowerCase().includes(templateFilterSearch.toLowerCase()))
+                                .map(name => (
+                                  <button
+                                    key={name}
+                                    className={`group-filter-item ${templateFilter === name ? 'active' : ''}`}
+                                    onClick={() => { setTemplateFilter(name); setTemplateFilterOpen(false); setTemplateFilterSearch('') }}
+                                  >
+                                    {name}
                                   </button>
                                 ))
                               }
@@ -770,14 +865,12 @@ export default function Dashboard() {
 
                   {/* View toggle */}
                   {(activeTab === 'campaigns' || activeTab === 'posts' || activeTab === 'groups') && (
-                    <div className="view-toggle-bar">
-                      <button className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')} title="תצוגת ריבועים">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                      </button>
-                      <button className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} title="תצוגת שורות">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                      </button>
-                    </div>
+                    <button className="view-toggle-btn active" onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} title={viewMode === 'grid' ? 'תצוגת שורות' : 'תצוגת ריבועים'}>
+                      {viewMode === 'grid'
+                        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                      }
+                    </button>
                   )}
 
                   {/* Groups refresh button */}
@@ -795,10 +888,13 @@ export default function Dashboard() {
               {/* ─── MOBILE FILTER SHEET ─── */}
               {filterSheetOpen && (
                 <>
-                  <div className="filter-sheet-overlay" onClick={() => setFilterSheetOpen(false)} />
+                  <div className="filter-sheet-overlay" onClick={() => { setFilterSheetOpen(false); setSheetGroupExpand(false); setSheetTemplateExpand(false) }} />
                   <div className="filter-sheet">
                     <div className="filter-sheet-handle" />
-                    <h3 className="filter-sheet-title">סינון ומיון</h3>
+                    <div className="filter-sheet-header">
+                      <h3 className="filter-sheet-title">סינון ומיון</h3>
+                      <button className="filter-sheet-reset" onClick={resetFilters}>איפוס</button>
+                    </div>
 
                     {/* Status filter */}
                     {(activeTab === 'campaigns' || activeTab === 'posts') && (
@@ -812,7 +908,7 @@ export default function Dashboard() {
                             { value: 'recurring', label: 'חוזר', count: campaignStatusCounts['recurring'] },
                             { value: 'paused', label: 'מושהה', count: campaignStatusCounts['paused'] },
                             { value: 'draft', label: 'טיוטה', count: campaignStatusCounts['draft'] },
-                            { value: 'one-time', label: 'חד-פעמי', count: campaignStatusCounts['one-time'] },
+
                           ].filter(opt => opt.value === 'all' || opt.count > 0).map(opt => (
                             <button
                               key={opt.value}
@@ -844,34 +940,31 @@ export default function Dashboard() {
                     {activeTab === 'campaigns' && campaignGroupNames.length > 1 && (
                       <div className="filter-sheet-section">
                         <label className="filter-sheet-label">קבוצה</label>
-                        <div className="filter-sheet-group-search">
-                          <input
-                            type="text"
-                            placeholder="חפש קבוצה..."
-                            value={groupFilterSearch}
-                            onChange={e => setGroupFilterSearch(e.target.value)}
-                          />
-                        </div>
-                        <div className="filter-sheet-chips filter-sheet-groups">
-                          <button
-                            className={`filter-chip ${groupFilter === 'all' ? 'active' : ''}`}
-                            onClick={() => { setGroupFilter('all'); setGroupFilterSearch('') }}
-                          >
-                            כל הקבוצות ({campaigns.length})
-                          </button>
-                          {campaignGroupNames
-                            .filter(name => !groupFilterSearch || name.toLowerCase().includes(groupFilterSearch.toLowerCase()))
-                            .map(name => (
-                              <button
-                                key={name}
-                                className={`filter-chip ${groupFilter === name ? 'active' : ''}`}
-                                onClick={() => { setGroupFilter(name); setGroupFilterSearch('') }}
-                              >
-                                {name} ({campaignGroupCounts[name] || 0})
+                        <button className="filter-sheet-select-btn" onClick={() => { setSheetGroupExpand(!sheetGroupExpand); setSheetGroupSearch('') }}>
+                          <span className="filter-sheet-select-value">{groupFilter === 'all' ? 'כל הקבוצות' : groupFilter}</span>
+                          <svg className={`filter-sheet-chevron ${sheetGroupExpand ? 'open' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        {sheetGroupExpand && (
+                          <div className="filter-sheet-select-panel">
+                            <div className="filter-sheet-select-search">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                              <input type="text" placeholder="חפש קבוצה..." value={sheetGroupSearch} onChange={e => setSheetGroupSearch(e.target.value)} autoFocus />
+                            </div>
+                            <div className="filter-sheet-select-list">
+                              <button className={`filter-sheet-select-item ${groupFilter === 'all' ? 'active' : ''}`} onClick={() => { setGroupFilter('all'); setSheetGroupExpand(false); setSheetGroupSearch('') }}>
+                                <span>כל הקבוצות</span><span className="filter-sheet-select-count">{campaigns.length}</span>
                               </button>
-                            ))
-                          }
-                        </div>
+                              {campaignGroupNames
+                                .filter(name => !sheetGroupSearch || name.toLowerCase().includes(sheetGroupSearch.toLowerCase()))
+                                .map(name => (
+                                  <button key={name} className={`filter-sheet-select-item ${groupFilter === name ? 'active' : ''}`} onClick={() => { setGroupFilter(name); setSheetGroupExpand(false); setSheetGroupSearch('') }}>
+                                    <span>{name}</span><span className="filter-sheet-select-count">{campaignGroupCounts[name] || 0}</span>
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -879,34 +972,68 @@ export default function Dashboard() {
                     {activeTab === 'posts' && postGroupNames.length > 1 && (
                       <div className="filter-sheet-section">
                         <label className="filter-sheet-label">קבוצה</label>
-                        <div className="filter-sheet-group-search">
-                          <input
-                            type="text"
-                            placeholder="חפש קבוצה..."
-                            value={groupFilterSearch}
-                            onChange={e => setGroupFilterSearch(e.target.value)}
-                          />
-                        </div>
-                        <div className="filter-sheet-chips filter-sheet-groups">
-                          <button
-                            className={`filter-chip ${groupFilter === 'all' ? 'active' : ''}`}
-                            onClick={() => { setGroupFilter('all'); setGroupFilterSearch('') }}
-                          >
-                            כל הקבוצות ({posts.length})
-                          </button>
-                          {postGroupNames
-                            .filter(name => !groupFilterSearch || name.toLowerCase().includes(groupFilterSearch.toLowerCase()))
-                            .map(name => (
-                              <button
-                                key={name}
-                                className={`filter-chip ${groupFilter === name ? 'active' : ''}`}
-                                onClick={() => { setGroupFilter(name); setGroupFilterSearch('') }}
-                              >
-                                {name} ({postGroupCounts[name] || 0})
+                        <button className="filter-sheet-select-btn" onClick={() => { setSheetGroupExpand(!sheetGroupExpand); setSheetGroupSearch('') }}>
+                          <span className="filter-sheet-select-value">{groupFilter === 'all' ? 'כל הקבוצות' : groupFilter}</span>
+                          <svg className={`filter-sheet-chevron ${sheetGroupExpand ? 'open' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        {sheetGroupExpand && (
+                          <div className="filter-sheet-select-panel">
+                            <div className="filter-sheet-select-search">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                              <input type="text" placeholder="חפש קבוצה..." value={sheetGroupSearch} onChange={e => setSheetGroupSearch(e.target.value)} autoFocus />
+                            </div>
+                            <div className="filter-sheet-select-list">
+                              <button className={`filter-sheet-select-item ${groupFilter === 'all' ? 'active' : ''}`} onClick={() => { setGroupFilter('all'); setSheetGroupExpand(false); setSheetGroupSearch('') }}>
+                                <span>כל הקבוצות</span><span className="filter-sheet-select-count">{posts.length}</span>
                               </button>
-                            ))
-                          }
-                        </div>
+                              {postGroupNames
+                                .filter(name => !sheetGroupSearch || name.toLowerCase().includes(sheetGroupSearch.toLowerCase()))
+                                .map(name => (
+                                  <button key={name} className={`filter-sheet-select-item ${groupFilter === name ? 'active' : ''}`} onClick={() => { setGroupFilter(name); setSheetGroupExpand(false); setSheetGroupSearch('') }}>
+                                    <span>{name}</span><span className="filter-sheet-select-count">{postGroupCounts[name] || 0}</span>
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Template filter for campaigns */}
+                    {activeTab === 'campaigns' && (
+                      <div className="filter-sheet-section">
+                        <label className="filter-sheet-label">טמפלייט</label>
+                        <button className="filter-sheet-select-btn" onClick={() => { setSheetTemplateExpand(!sheetTemplateExpand); setSheetTemplateSearch('') }}>
+                          <span className="filter-sheet-select-value">{templateFilter === 'all' ? 'כל הטמפלייטים' : templateFilter === '__none__' ? 'ללא טמפלייט' : templateFilter}</span>
+                          <svg className={`filter-sheet-chevron ${sheetTemplateExpand ? 'open' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        {sheetTemplateExpand && (
+                          <div className="filter-sheet-select-panel">
+                            {campaignTemplateNames.length > 5 && (
+                              <div className="filter-sheet-select-search">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" placeholder="חפש טמפלייט..." value={sheetTemplateSearch} onChange={e => setSheetTemplateSearch(e.target.value)} autoFocus />
+                              </div>
+                            )}
+                            <div className="filter-sheet-select-list">
+                              <button className={`filter-sheet-select-item ${templateFilter === 'all' ? 'active' : ''}`} onClick={() => { setTemplateFilter('all'); setSheetTemplateExpand(false); setSheetTemplateSearch('') }}>
+                                <span>כל הטמפלייטים</span><span className="filter-sheet-select-count">{campaigns.length}</span>
+                              </button>
+                              <button className={`filter-sheet-select-item ${templateFilter === '__none__' ? 'active' : ''}`} onClick={() => { setTemplateFilter('__none__'); setSheetTemplateExpand(false); setSheetTemplateSearch('') }}>
+                                <span>ללא טמפלייט</span><span className="filter-sheet-select-count">{campaignTemplateCounts['__none__'] || 0}</span>
+                              </button>
+                              {campaignTemplateNames
+                                .filter(name => !sheetTemplateSearch || name.toLowerCase().includes(sheetTemplateSearch.toLowerCase()))
+                                .map(name => (
+                                  <button key={name} className={`filter-sheet-select-item ${templateFilter === name ? 'active' : ''}`} onClick={() => { setTemplateFilter(name); setSheetTemplateExpand(false); setSheetTemplateSearch('') }}>
+                                    <span>{name}</span><span className="filter-sheet-select-count">{campaignTemplateCounts[name] || 0}</span>
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -922,15 +1049,6 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="filter-sheet-actions">
-                      <button className="filter-sheet-reset" onClick={resetFilters}>
-                        אפס סינון
-                      </button>
-                      <button className="filter-sheet-apply" onClick={() => setFilterSheetOpen(false)}>
-                        החל
-                      </button>
-                    </div>
                   </div>
                 </>
               )}
@@ -1052,7 +1170,6 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
     recurring: 'חוזר',
     active: 'פעיל',
     published: 'פורסם',
-    'one-time': 'חד-פעמי',
   }
 
   const STATUS_CLASSES = {
@@ -1062,7 +1179,6 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
     recurring: 'badge-recurring',
     active: 'badge-active',
     published: 'badge-published',
-    'one-time': 'badge-onetime',
   }
 
   const DAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
@@ -1300,7 +1416,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
               </div>
               {/* Status */}
               <div className="cl-col cl-col-status">
-                <span className={`cl-status-badge ${STATUS_CLASSES[campaign.status] || 'badge-onetime'}`}>
+                <span className={`cl-status-badge ${STATUS_CLASSES[campaign.status] || 'badge-active'}`}>
                   {STATUS_LABELS[campaign.status] || campaign.status}
                 </span>
               </div>
@@ -1344,7 +1460,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
                       {campaign.status !== 'draft' && (
                         <button onClick={() => handleEdit(campaign)}>ערוך</button>
                       )}
-                      {campaign.status !== 'draft' && (campaign.isPaused || campaign.status === 'one-time' ? (
+                      {campaign.status !== 'draft' && (campaign.isPaused ? (
                         <button onClick={() => handleRestart(campaign)}>הפעל מחדש</button>
                       ) : (
                         <button onClick={() => handlePause(campaign)}>השהה</button>
@@ -1394,7 +1510,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
                   </svg>
                 </div>
             }
-            <span className={`campaign-badge ${STATUS_CLASSES[campaign.status] || 'badge-onetime'}`}>
+            <span className={`campaign-badge ${STATUS_CLASSES[campaign.status] || 'badge-active'}`}>
               {STATUS_LABELS[campaign.status] || campaign.status}
             </span>
           </div>
@@ -1415,7 +1531,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
                         ערוך
                       </button>
                     )}
-                    {campaign.status !== 'draft' && (campaign.isPaused || campaign.status === 'one-time' ? (
+                    {campaign.status !== 'draft' && (campaign.isPaused ? (
                       <button onClick={() => handleRestart(campaign)}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                         הפעל מחדש
@@ -3308,7 +3424,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
 
   const STATUS_LABELS = {
     scheduled: 'מתוזמן', paused: 'מושהה', draft: 'טיוטה',
-    recurring: 'חוזר', active: 'פעיל', published: 'פורסם', 'one-time': 'חד-פעמי',
+    recurring: 'חוזר', active: 'פעיל', published: 'פורסם',
   }
   const DAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
 

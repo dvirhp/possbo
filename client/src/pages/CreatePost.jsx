@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { groupsService } from '../services/groupsService'
@@ -13,10 +13,213 @@ import OptimalTimesHint from '../components/OptimalTimesHint'
 import '../styles/create-post.css'
 import '../styles/templates.css'
 
+function toDateStr(d) {
+  return d.toISOString().split('T')[0]
+}
+
+function RecurringDateRange({ startDate, endDate, onStartChange, onEndChange, minDate, initialMonth }) {
+  const [open, setOpen] = useState(false)
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = initialMonth || new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
+  const [hoverDate, setHoverDate] = useState(null)
+
+  const year = calMonth.getFullYear()
+  const month = calMonth.getMonth()
+  const monthName = calMonth.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+  const days = useMemo(() => {
+    const arr = []
+    for (let i = 0; i < firstDay; i++) arr.push(null)
+    for (let d = 1; d <= daysInMonth; d++) arr.push(d)
+    return arr
+  }, [firstDay, daysInMonth])
+
+  const dayToStr = (day) => toDateStr(new Date(year, month, day))
+
+  const isInRange = (day) => {
+    if (!day) return false
+    const ds = dayToStr(day)
+    const start = startDate
+    const end = endDate || hoverDate || ''
+    if (!start) return false
+    if (!end) return ds === start
+    const min = start < end ? start : end
+    const max = start < end ? end : start
+    return ds >= min && ds <= max
+  }
+
+  const isStart = (day) => day && dayToStr(day) === startDate
+  const isEnd = (day) => day && dayToStr(day) === (endDate || hoverDate)
+  const isDisabled = (day) => day && minDate && dayToStr(day) < minDate
+
+  const handleDayClick = (day) => {
+    if (isDisabled(day)) return
+    const ds = dayToStr(day)
+    if (!startDate || endDate) {
+      onStartChange(ds)
+      onEndChange('')
+    } else {
+      let from = startDate, to = ds
+      if (from > to) [from, to] = [to, from]
+      onStartChange(from)
+      onEndChange(to)
+      setOpen(false)
+    }
+  }
+
+  const handleDayHover = (day) => {
+    if (startDate && !endDate && day && !isDisabled(day)) {
+      setHoverDate(dayToStr(day))
+    }
+  }
+
+  const handleClear = () => {
+    onStartChange('')
+    onEndChange('')
+    setOpen(false)
+  }
+
+  const formatDate = (d) => new Date(d + 'T00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })
+
+  return (
+    <div className="cp-range-wrap">
+      {/* Trigger button / summary */}
+      {!open && (
+        <button type="button" className="cp-range-trigger" onClick={() => setOpen(true)}>
+          {startDate ? (
+            <span className="cp-range-trigger-text">
+              📅 {formatDate(startDate)}{endDate ? ` — ${formatDate(endDate)}` : ' (ללא הגבלה)'}
+            </span>
+          ) : (
+            <span className="cp-range-trigger-text">📅 בחר תאריך</span>
+          )}
+          <span className="cp-range-trigger-edit">{startDate ? 'שנה' : ''}</span>
+        </button>
+      )}
+
+      {/* Calendar */}
+      {open && (
+        <>
+        <div className="cp-range-backdrop" onClick={() => setOpen(false)} />
+        <div className="cp-range-picker">
+          <div className="cp-range-nav">
+            <button type="button" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>›</button>
+            <span>{monthName}</span>
+            <button type="button" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>‹</button>
+          </div>
+          <div className="cp-range-grid">
+            {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map(d => (
+              <span key={d} className="cp-range-weekday">{d}</span>
+            ))}
+            {days.map((day, i) => (
+              <span
+                key={i}
+                className={`cp-range-day${!day ? ' empty' : ''}${day && isInRange(day) ? ' in-range' : ''}${day && isStart(day) ? ' range-start' : ''}${day && isEnd(day) ? ' range-end' : ''}${day && isDisabled(day) ? ' disabled' : ''}${day && dayToStr(day) === toDateStr(new Date()) ? ' today' : ''}`}
+                onClick={() => day && handleDayClick(day)}
+                onMouseEnter={() => handleDayHover(day)}
+              >
+                {day || ''}
+              </span>
+            ))}
+          </div>
+          <div className="cp-range-footer">
+            {startDate && !endDate && <span className="cp-range-hint">בחר תאריך סיום</span>}
+            {startDate && endDate && (
+              <span className="cp-range-selected">
+                {formatDate(startDate)} — {formatDate(endDate)}
+              </span>
+            )}
+            <div className="cp-range-actions">
+              {startDate && <button type="button" className="cp-range-clear" onClick={handleClear}>נקה</button>}
+              <button type="button" className="cp-range-close" onClick={() => setOpen(false)}>סגור</button>
+            </div>
+          </div>
+        </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function SingleDatePicker({ value, onChange, minDate }) {
+  const [open, setOpen] = useState(false)
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = value ? new Date(value) : new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
+
+  const year = calMonth.getFullYear()
+  const month = calMonth.getMonth()
+  const monthName = calMonth.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+  const days = useMemo(() => {
+    const arr = []
+    for (let i = 0; i < firstDay; i++) arr.push(null)
+    for (let d = 1; d <= daysInMonth; d++) arr.push(d)
+    return arr
+  }, [firstDay, daysInMonth])
+
+  const dayToStr = (day) => toDateStr(new Date(year, month, day))
+  const isDisabled = (day) => day && minDate && dayToStr(day) < minDate
+  const isSelected = (day) => day && dayToStr(day) === value
+
+  const handleDayClick = (day) => {
+    if (isDisabled(day)) return
+    onChange(dayToStr(day))
+    setOpen(false)
+  }
+
+  const formatDate = (d) => new Date(d + 'T00:00').toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
+
+  return (
+    <div className="cp-range-wrap">
+      <button type="button" className="cp-range-trigger" onClick={() => setOpen(!open)}>
+        <span className="cp-range-trigger-text">
+          {value ? `📅 ${formatDate(value)}` : '📅 בחר תאריך'}
+        </span>
+        {value && <span className="cp-range-trigger-edit">שנה</span>}
+      </button>
+
+      {open && (
+        <>
+        <div className="cp-range-backdrop" onClick={() => setOpen(false)} />
+        <div className="cp-range-picker">
+          <div className="cp-range-nav">
+            <button type="button" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>›</button>
+            <span>{monthName}</span>
+            <button type="button" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>‹</button>
+          </div>
+          <div className="cp-range-grid">
+            {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map(d => (
+              <span key={d} className="cp-range-weekday">{d}</span>
+            ))}
+            {days.map((day, i) => (
+              <span
+                key={i}
+                className={`cp-range-day${!day ? ' empty' : ''}${day && isSelected(day) ? ' range-start range-end' : ''}${day && isDisabled(day) ? ' disabled' : ''}${day && dayToStr(day) === toDateStr(new Date()) ? ' today' : ''}`}
+                onClick={() => day && handleDayClick(day)}
+              >
+                {day || ''}
+              </span>
+            ))}
+          </div>
+        </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function CreatePost() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, authChecked, groups: cachedGroups, forceRefresh, templates: cachedTemplates, recentCampaigns: cachedRecent } = useAppData()
+  const { user, authChecked, groups: cachedGroups, forceRefresh, templates: cachedTemplates, recentCampaigns: cachedRecent, dataReady } = useAppData()
 
   const preSelectedGroup = location.state?.group || null
   const republishData = location.state?.republish || null
@@ -100,8 +303,6 @@ export default function CreatePost() {
     }
     setSelectedTemplateName(tpl.name)
     setShowTemplateSelector(false)
-    // Mark usage
-    templatesService.markUsed(tpl.id).catch(() => {})
   }
 
   const clearTemplate = () => {
@@ -223,16 +424,17 @@ export default function CreatePost() {
           recurringStartDate,
           recurringEndDate: recurringEndDate || null,
           campaignType: scheduleMode === 'recurring' ? 'RECURRING' : 'SCHEDULED',
+          templateName: fromTemplate?.name || selectedTemplateName || null,
         }, postImages)
         if (res.data.success) {
-          setResults([{
-            group: `${selectedGroups.length} קבוצות`,
-            success: true,
-            postUrl: null,
-            scheduled: true,
-          }])
           forceRefresh()
           confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
+          // Mark template usage only on successful publish
+          if (fromTemplate?.id) {
+            templatesService.markUsed(fromTemplate.id).catch(() => {})
+          }
+          // Navigate back after short delay for confetti
+          setTimeout(() => navigate(-1), 1200)
         } else {
           setError(res.data.error || 'שגיאה ביצירת הקמפיין')
         }
@@ -256,7 +458,7 @@ export default function CreatePost() {
 
     // Navigate immediately — let user continue browsing
     window.dispatchEvent(new CustomEvent('postit-publish-start', { detail: { count: groupCount } }))
-    navigate('/dashboard')
+    navigate(-1)
 
     // Fire publish in background
     const publishResults = []
@@ -290,9 +492,12 @@ export default function CreatePost() {
     })
 
     Promise.all(promises).then(() => {
-      forceRefresh()
       const allSuccess = publishResults.length > 0 && publishResults.every(r => r.success)
-      // Dispatch custom event for dashboard to pick up
+      // Mark template usage only on successful publish
+      if (fromTemplate?.id && publishResults.some(r => r.success)) {
+        templatesService.markUsed(fromTemplate.id).catch(() => {})
+      }
+      // Dispatch custom event — DataProvider listens and triggers forceRefresh
       window.dispatchEvent(new CustomEvent('postit-publish-done', {
         detail: { allSuccess, total: publishResults.length, failed: publishResults.filter(r => !r.success).length }
       }))
@@ -346,17 +551,17 @@ export default function CreatePost() {
   const handleExitWizard = () => {
     // If already published/scheduled successfully, just go back
     if (results && results.some(r => r.success)) {
-      navigate('/dashboard')
+      navigate(-1)
       return
     }
     if (postText.trim() || selectedGroups.length > 0) {
       setConfirmAction({
         title: 'יציאה מיצירת קמפיין',
         message: 'האם אתה בטוח שברצונך לצאת? השינויים שלך לא יישמרו.',
-        action: () => navigate('/dashboard'),
+        action: () => navigate(-1),
       })
     } else {
-      navigate('/dashboard')
+      navigate(-1)
     }
   }
 
@@ -651,22 +856,32 @@ export default function CreatePost() {
 
           <div className="cp-wizard">
           {/* Restore / Continue / Template buttons */}
-          {!results && currentStep === 0 && !showRestore && (recentDrafts.length > 0 || recentHistory.length > 0 || templates.length > 0) && (
+          {!results && currentStep === 0 && (dataReady ? (recentDrafts.length > 0 || recentHistory.length > 0 || templates.length > 0) : true) && (
             <div className="cp-restore-bar">
-              {templates.length > 0 && (
-                <button type="button" className="cp-restore-btn cp-restore-template" onClick={() => setShowRestore('templates')}>
-                  📋 טען מטמפלייט ({templates.length})
-                </button>
-              )}
-              {recentDrafts.length > 0 && (
-                <button type="button" className="cp-restore-btn" onClick={() => setShowRestore('drafts')}>
-                  📝 המשך מאיפה שעצרתי ({recentDrafts.length})
-                </button>
-              )}
-              {recentHistory.length > 0 && (
-                <button type="button" className="cp-restore-btn cp-restore-history" onClick={() => setShowRestore('history')}>
-                  🔄 שחזור מהיסטוריה
-                </button>
+              {!dataReady ? (
+                <>
+                  <div className="cp-restore-card cp-restore-skeleton" />
+                  <div className="cp-restore-card cp-restore-skeleton" />
+                  <div className="cp-restore-card cp-restore-skeleton" />
+                </>
+              ) : (
+                <>
+                  {recentHistory.length > 0 && (
+                    <button type="button" className={`cp-restore-card ${showRestore === 'history' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'history' ? false : 'history')}>
+                      <span className="cp-restore-card-text">שחזור מהיסטוריה</span>
+                    </button>
+                  )}
+                  {templates.length > 0 && (
+                    <button type="button" className={`cp-restore-card ${showRestore === 'templates' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'templates' ? false : 'templates')}>
+                      <span className="cp-restore-card-text">טען מתמפלטים</span>
+                    </button>
+                  )}
+                  {recentDrafts.length > 0 && (
+                    <button type="button" className={`cp-restore-card ${showRestore === 'drafts' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'drafts' ? false : 'drafts')}>
+                      <span className="cp-restore-card-text">המשך מאיפה שעצרתי</span>
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -674,10 +889,6 @@ export default function CreatePost() {
           {/* Restore / Templates panel */}
           {showRestore && (
             <div className="cp-restore-panel">
-              <div className="cp-restore-header">
-                <h3>{showRestore === 'templates' ? '📋 טען מטמפלייט' : showRestore === 'drafts' ? '📝 טיוטות שנשמרו' : '🔄 שחזור מקמפיינים קודמים'}</h3>
-                <button type="button" className="cp-restore-close" onClick={() => setShowRestore(false)}>✕</button>
-              </div>
               {showRestore === 'templates' ? (
                 <div className="cp-restore-list">
                   {templates.map(tpl => (
@@ -746,13 +957,6 @@ export default function CreatePost() {
             {/* STEP 0: Content */}
             {currentStep === 0 && (
               <div className="cp-step-panel">
-                {/* Template badge */}
-                {selectedTemplateName && (
-                  <div className="tpl-selector-badge">
-                    📋 טמפלייט: {selectedTemplateName}
-                    <button onClick={clearTemplate}>✕</button>
-                  </div>
-                )}
                 <div className="cp-card">
                   <input
                     type="text"
@@ -846,42 +1050,44 @@ export default function CreatePost() {
 
                   {showWhatsapp && whatsappNumber && (
                     <div className="cp-whatsapp-wrap cp-whatsapp-active">
-                      <span>✓ קישור וואטסאפ יצורף: </span>
-                      <span className="cp-whatsapp-link" dir="ltr">wa.me/{whatsappNumber.replace(/[^0-9]/g, '')}{whatsappMessage ? '?text=...' : ''}</span>
-                      {whatsappMessage && <p className="cp-whatsapp-hint" style={{ marginTop: 4, fontSize: 11 }}>💬 הודעה: {whatsappMessage}</p>}
+                      <div className="cp-whatsapp-row">✓ קישור וואטסאפ</div>
+                      <div className="cp-whatsapp-row" dir="ltr">wa.me/{whatsappNumber.replace(/[^0-9]/g, '')}{whatsappMessage ? '?text=...' : ''}</div>
+                      {whatsappMessage && <div className="cp-whatsapp-row">💬 הודעה: {whatsappMessage}</div>}
                     </div>
                   )}
 
                   <div className="cp-options">
-                    <label className="cp-option">
-                      <span className="cp-option-icon">📷</span>
-                      <span>תמונות / סרטון</span>
-                      <input type="file" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onChange={handleImageSelect} hidden />
-                    </label>
+                    <label className="cp-options-label">● הוספות</label>
+                    <div className="cp-options-row">
+                      <label className="cp-option-card">
+                        <span className="cp-option-card-icon cp-icon-blue">🖼️</span>
+                        <span className="cp-option-card-text">תמונות / סרטון</span>
+                        <input type="file" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onChange={handleImageSelect} hidden />
+                      </label>
+                      <button
+                        type="button"
+                        className={`cp-option-card ${showLocationInput ? 'active' : ''}`}
+                        onClick={() => setShowLocationInput(!showLocationInput)}
+                      >
+                        <span className="cp-option-card-icon cp-icon-red">📍</span>
+                        <span className="cp-option-card-text">מיקום</span>
+                      </button>
+                      <label className={`cp-option-card ${isAnonymous ? 'active' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={isAnonymous}
+                          onChange={(e) => setIsAnonymous(e.target.checked)}
+                          hidden
+                        />
+                        <span className="cp-option-card-icon cp-icon-gray">👻</span>
+                        <span className="cp-option-card-text">אנונימי</span>
+                      </label>
+                    </div>
                     <button
                       type="button"
-                      className={`cp-option ${showLocationInput ? 'active' : ''}`}
-                      onClick={() => setShowLocationInput(!showLocationInput)}
-                    >
-                      <span className="cp-option-icon">📍</span>
-                      <span>מיקום</span>
-                    </button>
-                    <label className={`cp-option ${isAnonymous ? 'active' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={isAnonymous}
-                        onChange={(e) => setIsAnonymous(e.target.checked)}
-                        hidden
-                      />
-                      <span className="cp-option-icon">🕶️</span>
-                      <span>אנונימי</span>
-                    </label>
-                    <button
-                      type="button"
-                      className={`cp-option ${showWhatsapp ? 'active' : ''}`}
+                      className={`cp-option-whatsapp ${showWhatsapp ? 'active' : ''}`}
                       onClick={() => {
                         if (!whatsappNumber) {
-                          // Not linked yet — show inline linking
                           setWaLinking(true)
                         } else {
                           setShowWhatsapp(!showWhatsapp)
@@ -906,15 +1112,16 @@ export default function CreatePost() {
                 {/* Profile Publishing Toggle */}
                 <div className="cp-card cp-profile-toggle-card">
                   <label className="cp-profile-toggle">
+                    <span className="cp-profile-toggle-icon">👤</span>
+                    <span className="cp-profile-toggle-label">
+                      <span>פרסום בפרופיל האישי שלי</span>
+                      <span className="cp-profile-toggle-hint">הפוסט יפורסם גם בפרופיל האישי שלך</span>
+                    </span>
                     <input
                       type="checkbox"
                       checked={publishToProfile}
                       onChange={(e) => setPublishToProfile(e.target.checked)}
                     />
-                    <span className="cp-profile-toggle-label">
-                      <span>👤 פרסם בפרופיל האישי שלי</span>
-                      <span className="cp-profile-toggle-hint">הפוסט יפורסם גם בפיד האישי שלך</span>
-                    </span>
                   </label>
                 </div>
 
@@ -947,7 +1154,7 @@ export default function CreatePost() {
 
                   {selectedGroups.length > 0 && (
                     <div className="cp-exposure-counter">
-                      <span className="cp-exposure-icon">👁</span>
+                      <span className="cp-exposure-icon">👁️</span>
                       <span className="cp-exposure-number">
                         {selectedGroups.reduce((sum, g) => sum + (g.memberCount || 0), 0).toLocaleString()}
                       </span>
@@ -1053,11 +1260,10 @@ export default function CreatePost() {
                         <div className="schedule-row">
                           <div className="schedule-field">
                             <label>תאריך</label>
-                            <input
-                              type="date"
+                            <SingleDatePicker
                               value={scheduleDate}
-                              onChange={(e) => setScheduleDate(e.target.value)}
-                              min={new Date().toISOString().split('T')[0]}
+                              onChange={setScheduleDate}
+                              minDate={toDateStr(new Date())}
                             />
                           </div>
                           <div className="schedule-field">
@@ -1171,26 +1377,14 @@ export default function CreatePost() {
 
                         <div className="schedule-section">
                           <label className="schedule-section-label">תקופה</label>
-                          <div className="schedule-row">
-                            <div className="schedule-field">
-                              <label>מתאריך</label>
-                              <input
-                                type="date"
-                                value={recurringStartDate}
-                                onChange={(e) => setRecurringStartDate(e.target.value)}
-                                min={new Date().toISOString().split('T')[0]}
-                              />
-                            </div>
-                            <div className="schedule-field">
-                              <label>עד תאריך (אופציונלי)</label>
-                              <input
-                                type="date"
-                                value={recurringEndDate}
-                                onChange={(e) => setRecurringEndDate(e.target.value)}
-                                min={recurringStartDate || new Date().toISOString().split('T')[0]}
-                              />
-                            </div>
-                          </div>
+                          <RecurringDateRange
+                            startDate={recurringStartDate}
+                            endDate={recurringEndDate}
+                            onStartChange={setRecurringStartDate}
+                            onEndChange={setRecurringEndDate}
+                            minDate={toDateStr(new Date())}
+                            initialMonth={recurringStartDate ? new Date(recurringStartDate) : new Date()}
+                          />
                         </div>
 
                         {recurringDays.length > 0 && Object.values(dayTimes).some(ts => ts.some(t => t)) && recurringStartDate && (
@@ -1236,7 +1430,7 @@ export default function CreatePost() {
                     )}
 
                     <div className="cp-review-section">
-                      <span className="cp-review-label">יעד פרסום:</span>
+                      <span className="cp-review-label">קבוצות פרסום:</span>
                       <div className="cp-review-groups">
                         {publishToProfile && <span className="cp-review-chip cp-chip-profile">👤 פרופיל אישי</span>}
                         {selectedGroups.slice(0, 5).map(g => (
@@ -1256,12 +1450,7 @@ export default function CreatePost() {
                       </span>
                     </div>
 
-                    {whatsappNumber.trim() && (
-                      <div className="cp-review-section">
-                        <span className="cp-review-label">וואטסאפ:</span>
-                        <span className="cp-review-value">wa.me/{whatsappNumber.replace(/[^0-9]/g, '')}</span>
-                      </div>
-                    )}
+
 
                     {isAnonymous && (
                       <div className="cp-review-section">
@@ -1280,35 +1469,13 @@ export default function CreatePost() {
 
           {/* Navigation buttons */}
           <div className="cp-wizard-nav">
-            {currentStep < steps.length - 1 ? (
-              <button type="button" className="cp-nav-btn cp-nav-next" onClick={goNext}>
-                ← הבא
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="cp-publish-btn"
-                onClick={handlePublish}
-                disabled={publishing}
-              >
-                {publishing
-                  ? publishToProfile && selectedGroups.length === 0
-                    ? 'מפרסם בפרופיל...'
-                    : `מפרסם ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}...`
-                  : scheduleMode === 'recurring'
-                    ? publishToProfile && selectedGroups.length === 0
-                      ? '🔄 תזמן חוזר בפרופיל'
-                      : `🔄 תזמן חוזר ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
-                    : scheduleMode === 'scheduled'
-                      ? publishToProfile && selectedGroups.length === 0
-                        ? '📅 תזמן בפרופיל'
-                        : `📅 תזמן ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
-                      : publishToProfile && selectedGroups.length === 0
-                        ? '🚀 פרסם בפרופיל האישי'
-                        : `🚀 פרסם ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
-                }
+            {currentStep > 0 && (
+              <button type="button" className="cp-nav-btn cp-nav-back" onClick={goBack}>
+                → הקודם
               </button>
             )}
+
+            <div className="cp-nav-spacer" />
 
             <button
               type="button"
@@ -1318,11 +1485,36 @@ export default function CreatePost() {
               👁️ תצוגה מקדימה
             </button>
 
-            <div className="cp-nav-spacer" />
-
-            {currentStep > 0 && (
-              <button type="button" className="cp-nav-btn cp-nav-back" onClick={goBack}>
-                הקודם →
+            {currentStep < steps.length - 1 ? (
+              <button type="button" className="cp-nav-btn cp-nav-next" onClick={goNext}>
+                הבא ←
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="cp-publish-btn"
+                onClick={handlePublish}
+                disabled={publishing}
+              >
+                <span className="cp-publish-full">
+                  {publishing
+                    ? publishToProfile && selectedGroups.length === 0
+                      ? 'מפרסם בפרופיל...'
+                      : `מפרסם ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}...`
+                    : scheduleMode === 'recurring'
+                      ? publishToProfile && selectedGroups.length === 0
+                        ? '🔄 תזמן חוזר בפרופיל'
+                        : `🔄 תזמן חוזר ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
+                      : scheduleMode === 'scheduled'
+                        ? publishToProfile && selectedGroups.length === 0
+                          ? '📅 תזמן בפרופיל'
+                          : `📅 תזמן ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
+                        : publishToProfile && selectedGroups.length === 0
+                          ? '🚀 פרסם בפרופיל האישי'
+                          : `🚀 פרסם ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
+                  }
+                </span>
+                <span className="cp-publish-short">{publishing ? '⏳' : '🚀 פרסם'}</span>
               </button>
             )}
           </div>

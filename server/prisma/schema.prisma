@@ -280,6 +280,7 @@ model Post {
   dayTimes         Json?        @map("day_times")
   isPaused         Boolean      @default(false) @map("is_paused")
   publishToProfile Boolean      @default(false) @map("publish_to_profile")
+  templateName     String?      @map("template_name")
   imageUrl         String?      @map("image_url")
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")

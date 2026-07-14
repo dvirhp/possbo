@@ -351,12 +351,16 @@
 .app-layout .dash-topbar {
   display: none !important;
 }
+.app-layout .dash-body {
+  margin-top: 0 !important;
+  padding-top: 18px !important;
+}
 .app-layout .bottom-nav {
   display: none;
 }
 
 @media (max-width: 768px) {
   .app-layout .bottom-nav {
-    display: flex;
+    display: block;
   }
 }

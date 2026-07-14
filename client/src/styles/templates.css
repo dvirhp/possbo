@@ -49,7 +49,7 @@
 
 .tpl-title {
   flex: 1;
-  text-align: center;
+  text-align: right;
   font-size: 18px;
   font-weight: 700;
   color: var(--text-primary, #e8ecf0);
@@ -252,7 +252,7 @@
   background: var(--bg-card, #1e2128);
   border: 1px solid var(--border, rgba(255,255,255,0.06));
   border-radius: 14px;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -319,6 +319,7 @@
   height: 140px;
   overflow: hidden;
   position: relative;
+  border-radius: 14px 14px 0 0;
 }
 .tpl-collage-1 { grid-template-columns: 1fr; }
 .tpl-collage-2 { grid-template-columns: 1fr 1fr; }
@@ -438,7 +439,7 @@
   font-weight: 600;
 }
 
-.tpl-card-meta { display: flex; flex-wrap: wrap; gap: 4px; }
+.tpl-card-meta { display: flex; flex-wrap: nowrap; gap: 4px; overflow: visible; }
 
 .tpl-meta-tag {
   display: flex;
@@ -449,11 +450,47 @@
   border-radius: 5px;
   font-size: 10px;
   color: var(--text-muted, #6b7684);
+  position: relative;
+  cursor: pointer;
+}
+
+/* Tooltip popup */
+.tpl-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-base, #1c1f26);
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  color: var(--text-primary, #e8ecf0);
+  font-size: 11px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  white-space: pre-line;
+  max-width: 220px;
+  min-width: 100px;
+  z-index: 200;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  pointer-events: none;
+  line-height: 1.6;
+  text-align: right;
+  animation: tpl-tooltip-in 0.15s ease;
+}
+
+@keyframes tpl-tooltip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+[data-theme="light"] .tpl-tooltip {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.1);
+  color: #1a1a1a;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
 }
 
 .tpl-meta-usage {
-  color: var(--indigo, #6366f1);
-  background: rgba(99, 102, 241, 0.08);
+  color: var(--text-muted, #6b7684);
+  background: var(--bg-elevated, rgba(255,255,255,0.04));
 }
 
 .tpl-use-btn {
@@ -1121,8 +1158,9 @@
 
 /* ─── Mobile ─── */
 @media (max-width: 768px) {
-  .tpl-topbar { padding: 12px 16px; }
-  .tpl-content { padding: 16px; padding-bottom: 110px; }
+  .tpl-topbar { padding: 8px 16px 12px; margin-top: 0; }
+  .templates-page { padding-top: 14px; margin-top: 0; min-height: auto; }
+  .tpl-content { padding: 16px; padding-top: 10px; padding-bottom: 20px; }
   .tpl-grid { grid-template-columns: repeat(2, 1fr); }
   .tpl-card-name { font-size: 12px; }
   .tpl-card-content { font-size: 11px; -webkit-line-clamp: 2; }

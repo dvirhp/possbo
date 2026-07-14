@@ -265,6 +265,8 @@ export default function ChatBot() {
     try { return sessionStorage.getItem('chatbot-topic') || null } catch { return null }
   })
   const messagesEndRef = useRef(null)
+  const panelRef = useRef(null)
+  const fabRef = useRef(null)
 
   // Persist state to sessionStorage
   useEffect(() => {
@@ -278,6 +280,25 @@ export default function ChatBot() {
   useEffect(() => {
     try { if (currentTopic) sessionStorage.setItem('chatbot-topic', currentTopic) } catch { /* ignore */ }
   }, [currentTopic])
+
+  // Close chat when clicking outside
+  useEffect(() => {
+    if (!open) return
+    const handleClickOutside = (e) => {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target) &&
+        fabRef.current && !fabRef.current.contains(e.target)
+      ) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
+  }, [open])
 
   useEffect(() => {
     if (open && messages.length === 0) {
@@ -356,17 +377,15 @@ export default function ChatBot() {
 
   return (
     <>
-      {/* Floating button */}
-      {!open && (
-        <button className="chatbot-fab" onClick={() => setOpen(true)} title="צ'אט עזרה">
-          <MessageCircle size={22} />
-          <span className="chatbot-fab-pulse" />
-        </button>
-      )}
+      {/* Floating button — always visible */}
+      <button ref={fabRef} className="chatbot-fab" onClick={() => setOpen(!open)} title="צ'אט עזרה">
+        <MessageCircle size={22} />
+        {!open && <span className="chatbot-fab-pulse" />}
+      </button>
 
       {/* Chat panel */}
       {open && (
-        <div className="chatbot-panel">
+        <div className="chatbot-panel" ref={panelRef}>
           <div className="chatbot-header">
             <div className="chatbot-header-info">
               <div className="chatbot-avatar">

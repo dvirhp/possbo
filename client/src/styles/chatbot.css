@@ -44,7 +44,7 @@
 /* Chat Panel */
 .chatbot-panel {
   position: fixed;
-  bottom: 24px;
+  bottom: 90px;
   left: 24px;
   width: 420px;
   max-width: calc(100vw - 48px);
@@ -241,25 +241,21 @@
 
 /* Mobile */
 @media (max-width: 480px) {
-  .chatbot-panel {
-    bottom: 96px;
-    left: 12px;
-    right: 12px;
-    width: auto;
-    max-width: calc(100vw - 24px);
-    height: 55vh;
-    max-height: 55vh;
-    border-radius: 16px;
-  }
-  .chatbot-panel .chatbot-panel-inner,
-  .chatbot-panel {
-    max-width: 340px;
-  }
-
   .chatbot-fab {
     bottom: 96px;
     left: 16px;
     width: 44px;
     height: 44px;
+  }
+
+  .chatbot-panel {
+    bottom: 150px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: 340px;
+    height: 55vh;
+    max-height: 55vh;
+    border-radius: 16px;
   }
 }

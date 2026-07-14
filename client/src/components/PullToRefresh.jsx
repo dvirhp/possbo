@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
-const THRESHOLD = 80
+const THRESHOLD = 55
 
 export default function PullToRefresh({ onRefresh, children }) {
   const [pulling, setPulling] = useState(false)
@@ -52,20 +52,16 @@ export default function PullToRefresh({ onRefresh, children }) {
   }, [handleTouchStart, handleTouchMove, handleTouchEnd])
 
   return (
-    <>
+    <div ref={containerRef} style={{ transition: pulling ? 'none' : 'all 0.3s ease' }}>
       {(pullDistance > 0 || refreshing) && (
         <div className="ptr-indicator" style={{ height: refreshing ? THRESHOLD : pullDistance }}>
           <div className={`ptr-spinner ${refreshing ? 'ptr-spinning' : ''}`}
-               style={{ opacity: Math.min(pullDistance / THRESHOLD, 1), transform: `rotate(${pullDistance * 3}deg)` }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
+               style={{ opacity: Math.min(pullDistance / THRESHOLD, 1) }}>
+            <img src="/logo.svg" alt="" className="ptr-logo" />
           </div>
         </div>
       )}
-      <div ref={containerRef} style={{ transform: pullDistance > 0 && !refreshing ? `translateY(${pullDistance}px)` : undefined, transition: pulling ? 'none' : 'transform 0.3s ease' }}>
-        {children}
-      </div>
-    </>
+      {children}
+    </div>
   )
 }

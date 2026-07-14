@@ -6,9 +6,11 @@
 .bottom-nav {
   display: none;
   position: fixed;
-  bottom: 16px;
-  left: 16px;
-  right: 16px;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 400px;
   z-index: 900;
 }
 
@@ -18,13 +20,14 @@
 
 .bottom-nav-inner {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-around;
   background: linear-gradient(180deg, #171C27 0%, #11151E 100%);
   border: 1px solid rgba(255,255,255,0.05);
   border-radius: 24px;
-  padding: 12px 20px calc(env(safe-area-inset-bottom, 0px) + 12px);
-  box-shadow: 0 -2px 8px rgba(0,0,0,0.25), 0 18px 40px rgba(0,0,0,0.55);
+  height: 58px;
+  padding: 0 16px;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.25), 0 12px 30px rgba(0,0,0,0.5);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
 }
@@ -34,8 +37,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: 72px;
+  gap: 1px;
+  width: 56px;
   padding: 0;
   color: rgba(255,255,255,0.65);
   text-decoration: none;
@@ -52,18 +55,18 @@
 }
 
 .bottom-nav-item svg {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   stroke-width: 2;
 }
 
-/* Active state — gradient icon + cyan text */
+/* Active state — gradient icon + indigo text */
 .bottom-nav-item.active svg {
   stroke: url(#bnav-gradient);
-  color: #43E6FF;
+  color: #818cf8;
 }
 .bottom-nav-item.active {
-  color: #43E6FF;
+  color: #818cf8;
 }
 /* Remove old active indicator bar */
 .bottom-nav-item.active::before {
@@ -72,52 +75,52 @@
 
 .bottom-nav-label {
   font-weight: 500;
-  font-size: 13px;
+  font-size: 10px;
   white-space: nowrap;
   color: #AEB6CA;
 }
 .bottom-nav-item.active .bottom-nav-label {
-  color: #43E6FF;
+  color: #818cf8;
 }
 
 /* ─── Center Publish Button — Premium Dark Circle ─── */
 .bottom-nav-center {
   position: relative;
-  margin-top: -28px;
-  width: 88px;
+  margin-top: -18px;
+  width: 64px;
 }
 .bottom-nav-center .bottom-nav-label {
   color: #AEB6CA;
   font-weight: 600;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 .bottom-nav-center.active .bottom-nav-label {
-  color: #43E6FF;
+  color: #818cf8;
 }
 .bottom-nav-center-ring {
-  width: 88px;
-  height: 88px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   background: radial-gradient(circle, #1C2331, #141A25);
-  border: 2px solid rgba(80,180,255,0.35);
+  border: 2px solid rgba(99,102,241,0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 35px rgba(77,157,255,0.22);
+  box-shadow: 0 0 20px rgba(99,102,241,0.25);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .bottom-nav-center-ring img {
-  width: 42px;
-  height: 42px;
+  width: 30px;
+  height: 30px;
   filter: none;
 }
 .bottom-nav-center:hover .bottom-nav-center-ring {
   transform: scale(1.06);
-  box-shadow: 0 0 45px rgba(77,157,255,0.3);
+  box-shadow: 0 0 30px rgba(99,102,241,0.4);
 }
 .bottom-nav-center.active .bottom-nav-center-ring {
-  box-shadow: 0 0 40px rgba(77,157,255,0.28);
-  border-color: rgba(80,180,255,0.5);
+  box-shadow: 0 0 25px rgba(99,102,241,0.35);
+  border-color: rgba(99,102,241,0.6);
 }
 
 /* Press animation on center button */
@@ -289,6 +292,114 @@
 /* ─── Safe area for bottom nav ─── */
 @media (max-width: 768px) {
   .app-main {
-    padding-bottom: 110px;
+    padding-bottom: 85px;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Light Mode Overrides
+   ══════════════════════════════════════════════════════════════ */
+[data-theme="light"] .bottom-nav-inner {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255,255,255,0.4);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+[data-theme="light"] .bottom-nav-item {
+  color: #1a1a1a;
+}
+[data-theme="light"] .bottom-nav-item:hover {
+  color: #000000;
+}
+[data-theme="light"] .bottom-nav-item.active {
+  color: #6366f1;
+}
+[data-theme="light"] .bottom-nav-item.active svg {
+  color: #6366f1;
+}
+
+[data-theme="light"] .bottom-nav-label {
+  color: #1a1a1a;
+}
+[data-theme="light"] .bottom-nav-item.active .bottom-nav-label {
+  color: #6366f1;
+}
+
+[data-theme="light"] .bottom-nav-center .bottom-nav-label {
+  color: #1a1a1a;
+}
+[data-theme="light"] .bottom-nav-center.active .bottom-nav-label {
+  color: #6366f1;
+}
+
+[data-theme="light"] .bottom-nav-center-ring {
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px solid rgba(99,102,241,0.5);
+  box-shadow: 0 0 16px rgba(99,102,241,0.15);
+}
+[data-theme="light"] .bottom-nav-center:hover .bottom-nav-center-ring {
+  box-shadow: 0 0 24px rgba(99,102,241,0.3);
+}
+[data-theme="light"] .bottom-nav-center.active .bottom-nav-center-ring {
+  box-shadow: 0 0 20px rgba(99,102,241,0.3);
+  border-color: rgba(99,102,241,0.7);
+}
+
+[data-theme="light"] .mobile-drawer-overlay {
+  background: rgba(0,0,0,0.2);
+}
+
+[data-theme="light"] .mobile-drawer {
+  background: rgba(255, 255, 255, 0.92);
+  border-left: 1px solid rgba(0,0,0,0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+[data-theme="light"] .mobile-drawer-header {
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+[data-theme="light"] .mobile-drawer-avatar {
+  background: #f0f0f5;
+}
+
+[data-theme="light"] .mobile-drawer-name {
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .mobile-drawer-email {
+  color: #6b7280;
+}
+
+[data-theme="light"] .mobile-drawer-close {
+  color: #6b7280;
+}
+[data-theme="light"] .mobile-drawer-close:hover {
+  color: #1a1a1a;
+  background: rgba(0,0,0,0.05);
+}
+
+[data-theme="light"] .mobile-drawer-item {
+  color: #374151;
+}
+[data-theme="light"] .mobile-drawer-item:hover {
+  background: rgba(0,0,0,0.04);
+  color: #1a1a1a;
+}
+[data-theme="light"] .mobile-drawer-item.active {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+[data-theme="light"] .mobile-drawer-item.logout {
+  color: #dc2626;
+}
+[data-theme="light"] .mobile-drawer-item.logout:hover {
+  background: rgba(220, 38, 38, 0.06);
+}
+
+[data-theme="light"] .mobile-drawer-divider {
+  background: rgba(0,0,0,0.08);
 }
