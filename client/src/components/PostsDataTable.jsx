@@ -7,6 +7,7 @@ const STATUS_CONFIG = {
   active: { label: 'פעיל', color: '#60A5FA', bg: 'rgba(59,130,246,0.15)', border: '#3B82F6', Icon: CheckCircle2 },
   scheduled: { label: 'מתוזמן', color: '#60A5FA', bg: 'rgba(59,130,246,0.15)', border: '#3B82F6', Icon: Clock3 },
   recurring: { label: 'חוזר', color: '#A78BFA', bg: 'rgba(139,92,246,0.15)', border: '#8B5CF6', Icon: Clock3 },
+  both: { label: 'חד-פעמי + חוזר', color: '#34D399', bg: 'rgba(52,211,153,0.15)', border: '#10B981', Icon: Calendar },
   draft: { label: 'טיוטה', color: '#E5E7EB', bg: '#374151', border: '#374151', Icon: FileEdit },
   published: { label: 'פורסם', color: '#4ADE80', bg: 'rgba(34,197,94,0.15)', border: '#22C55E', Icon: CheckCircle2 },
   paused: { label: 'מושהה', color: '#F59E0B', bg: 'rgba(245,158,11,0.15)', border: '#F59E0B', Icon: CircleAlert },
@@ -18,6 +19,7 @@ const BORDER_COLORS = {
   active: '#3B82F6',
   scheduled: '#3B82F6',
   recurring: '#8B5CF6',
+  both: '#10B981',
   draft: '#64748B',
   published: '#22C55E',
   paused: '#F59E0B',
@@ -33,6 +35,12 @@ function formatDate(dateStr) {
   const month = months[d.getMonth()]
   const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
   return { date: `${day} ${month}`, time }
+}
+
+function formatExposure(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
+  return String(n)
 }
 
 export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) {
@@ -94,6 +102,7 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
         <span className="pdt-col pdt-col-post">פוסט</span>
         <span className="pdt-col pdt-col-groups">קבוצות</span>
         <span className="pdt-col pdt-col-status">סטטוס</span>
+        <span className="pdt-col pdt-col-exposure">חשיפה</span>
         <span className="pdt-col pdt-col-time">זמן מתוזמן</span>
         <span className="pdt-col pdt-col-actions"></span>
       </div>
@@ -103,7 +112,7 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
         {campaigns.map(campaign => {
           const status = (campaign.status || 'draft').toLowerCase()
           const type = (campaign.campaignType || '').toLowerCase()
-          const statusKey = type === 'recurring' ? 'recurring' : type === 'one-time' ? 'one-time' : status
+          const statusKey = type === 'both' ? 'both' : type === 'recurring' ? 'recurring' : type === 'one-time' ? 'one-time' : status
           const statusConf = STATUS_CONFIG[statusKey] || STATUS_CONFIG[status] || STATUS_CONFIG.draft
           const borderColor = BORDER_COLORS[statusKey] || BORDER_COLORS[status] || '#64748B'
           const StatusIcon = statusConf.Icon
@@ -123,7 +132,7 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
               {/* Post column */}
               <div className="pdt-col pdt-col-post">
                 <div className="pdt-thumb">
-                  {image ? <img src={image.startsWith('http') ? image : `http://localhost:5001${image}`} alt="" onError={e => e.target.style.display='none'} /> : <div className="pdt-thumb-placeholder"><Image size={20} /></div>}
+                  {image ? <img src={image.startsWith('http') ? image : `http://localhost:8000${image}`} alt="" onError={e => e.target.style.display='none'} /> : <div className="pdt-thumb-placeholder"><Image size={20} /></div>}
                 </div>
                 <div className="pdt-post-info">
                   <span className="pdt-post-title">{title}</span>
@@ -164,6 +173,11 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
                   <StatusIcon size={13} />
                   {statusConf.label}
                 </span>
+              </div>
+
+              {/* Exposure column */}
+              <div className="pdt-col pdt-col-exposure">
+                <span className="pdt-exposure-val">{campaign.totalExposure ? formatExposure(campaign.totalExposure) : '0'}</span>
               </div>
 
               {/* Time column */}

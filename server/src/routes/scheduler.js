@@ -393,12 +393,16 @@ router.post(
 
     // Determine scheduled datetime
     let scheduledAt = null;
-    if (scheduleMode === "scheduled" && scheduleDate && scheduleTime) {
+    let recurringScheduledAt = null;
+
+    if ((scheduleMode === "scheduled" || scheduleMode === "both") && scheduleDate && scheduleTime) {
       scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00`);
       if (scheduledAt <= new Date()) {
         return res.status(400).json({ error: "תאריך התזמון חייב להיות בעתיד" });
       }
-    } else if (scheduleMode === "recurring") {
+    }
+
+    if (scheduleMode === "recurring" || scheduleMode === "both") {
       // Use the first available time from recurringTimes array or fallback to recurringTime
       const effectiveTime =
         (recurringTimes?.length && recurringTimes[0]) || recurringTime;
@@ -412,7 +416,7 @@ router.post(
       if (recurringStartDate) {
         const startDate = new Date(`${recurringStartDate}T${effectiveTime}:00`);
         if (startDate > new Date()) {
-          scheduledAt = startDate;
+          recurringScheduledAt = startDate;
         } else {
           // Start date is today or past — find next occurrence from today
           const now = new Date();
@@ -432,9 +436,9 @@ router.post(
               if (daysUntil === 0) daysUntil = 7;
             }
           }
-          scheduledAt = new Date(now);
-          scheduledAt.setDate(scheduledAt.getDate() + daysUntil);
-          scheduledAt.setHours(hours, minutes, 0, 0);
+          recurringScheduledAt = new Date(now);
+          recurringScheduledAt.setDate(recurringScheduledAt.getDate() + daysUntil);
+          recurringScheduledAt.setHours(hours, minutes, 0, 0);
         }
       } else {
         // No start date — compute next occurrence from now
@@ -453,9 +457,14 @@ router.post(
             if (daysUntil === 0) daysUntil = 7;
           }
         }
-        scheduledAt = new Date(now);
-        scheduledAt.setDate(scheduledAt.getDate() + daysUntil);
-        scheduledAt.setHours(hours, minutes, 0, 0);
+        recurringScheduledAt = new Date(now);
+        recurringScheduledAt.setDate(recurringScheduledAt.getDate() + daysUntil);
+        recurringScheduledAt.setHours(hours, minutes, 0, 0);
+      }
+
+      // For pure recurring mode (not both), use recurringScheduledAt as the primary
+      if (scheduleMode === "recurring") {
+        scheduledAt = recurringScheduledAt;
       }
     }
 
@@ -465,7 +474,7 @@ router.post(
         userId,
         title: title || null,
         content: text,
-        status: scheduledAt ? "ACTIVE" : "DRAFT",
+        status: (scheduledAt || recurringScheduledAt) ? "ACTIVE" : "DRAFT",
         isAnonymous: anonymous || false,
         location: location || null,
         publishToProfile: publishToProfile || false,
@@ -548,7 +557,45 @@ router.post(
       });
 
       // Create schedule
-      if (scheduledAt) {
+      if (scheduleMode === "both") {
+        // Create ONE-TIME schedule + job
+        if (scheduledAt) {
+          await prisma.postGroupSchedule.create({
+            data: {
+              postGroupId: postGroup.id,
+              frequencyType: "ONCE",
+              startAt: scheduledAt,
+              nextRunAt: scheduledAt,
+              isActive: true,
+            },
+          });
+          await prisma.publicationJob.create({
+            data: {
+              postGroupId: postGroup.id,
+              scheduledAt,
+            },
+          });
+        }
+
+        // Create RECURRING schedule + job
+        if (recurringScheduledAt) {
+          await prisma.postGroupSchedule.create({
+            data: {
+              postGroupId: postGroup.id,
+              frequencyType: "WEEKLY",
+              startAt: recurringScheduledAt,
+              nextRunAt: recurringScheduledAt,
+              isActive: true,
+            },
+          });
+          await prisma.publicationJob.create({
+            data: {
+              postGroupId: postGroup.id,
+              scheduledAt: recurringScheduledAt,
+            },
+          });
+        }
+      } else if (scheduledAt) {
         const frequencyType = campaignType === "RECURRING" ? "WEEKLY" : "ONCE";
         await prisma.postGroupSchedule.create({
           data: {
@@ -573,22 +620,47 @@ router.post(
     }
 
     // Create a profile publication job if publishToProfile is true
-    if (publishToProfile && scheduledAt) {
-      await prisma.publicationJob.create({
-        data: {
-          postId: post.id,
-          scheduledAt,
-          targetType: "PROFILE",
-        },
-      });
+    if (publishToProfile) {
+      if (scheduleMode === "both") {
+        // One-time profile job
+        if (scheduledAt) {
+          await prisma.publicationJob.create({
+            data: {
+              postId: post.id,
+              scheduledAt,
+              targetType: "PROFILE",
+            },
+          });
+        }
+        // Recurring profile job
+        if (recurringScheduledAt) {
+          await prisma.publicationJob.create({
+            data: {
+              postId: post.id,
+              scheduledAt: recurringScheduledAt,
+              targetType: "PROFILE",
+            },
+          });
+        }
+      } else if (scheduledAt) {
+        await prisma.publicationJob.create({
+          data: {
+            postId: post.id,
+            scheduledAt,
+            targetType: "PROFILE",
+          },
+        });
+      }
     }
 
     res.json({
       success: true,
       postId: post.id,
-      message: scheduledAt
-        ? `הקמפיין תוזמן ל-${scheduledAt.toLocaleString("he-IL")}`
-        : "הקמפיין נוצר כטיוטה",
+      message: scheduleMode === "both"
+        ? `הקמפיין תוזמן: חד-פעמי ב-${scheduledAt?.toLocaleString("he-IL")} + חוזר`
+        : scheduledAt
+          ? `הקמפיין תוזמן ל-${scheduledAt.toLocaleString("he-IL")}`
+          : "הקמפיין נוצר כטיוטה",
       scheduled: results.length,
     });
   }),
@@ -670,7 +742,9 @@ router.get(
       recurringStart: p.recurringStart,
       recurringEnd: p.recurringEnd,
       scheduleMode:
-        p.campaignType === "RECURRING"
+        p.campaignType === "BOTH"
+          ? "both"
+          : p.campaignType === "RECURRING"
           ? "recurring"
           : p.postGroups?.some((pg) => pg.schedules?.length > 0)
             ? "scheduled"
@@ -743,6 +817,7 @@ router.get(
       let displayStatus;
       if (post.isPaused) displayStatus = "paused";
       else if (post.status === "DRAFT") displayStatus = "draft";
+      else if (post.campaignType === "BOTH") displayStatus = "both";
       else if (post.campaignType === "RECURRING") displayStatus = "recurring";
       else if (hasPendingJob || hasActiveSchedule) displayStatus = "scheduled";
       else if (hasPublished) displayStatus = "published";

@@ -5,6 +5,10 @@
   flex-direction: column;
   gap: 24px;
   padding: 24px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* Header - reuse existing */
@@ -12,6 +16,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 .overview-title {
   font-size: 24px;
@@ -27,8 +33,10 @@
 .overview-header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   position: relative;
+  flex-shrink: 1;
+  flex-wrap: wrap;
 }
 .overview-date-range {
   display: flex;
@@ -119,7 +127,7 @@
   gap: 8px;
   padding: 0 24px;
   height: 48px;
-  background: linear-gradient(135deg, #6366F1, #7C3AED);
+  background: var(--gradient-main);
   color: white;
   border: none;
   border-radius: 14px;
@@ -138,7 +146,7 @@
 /* KPI Cards */
 .overview-kpis {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr));
   gap: 16px;
 }
 .overview-kpi-card {
@@ -151,6 +159,8 @@
   border: 1px solid var(--border);
   cursor: pointer;
   transition: transform 250ms ease, box-shadow 250ms ease;
+  min-width: 0;
+  overflow: hidden;
 }
 .overview-kpi-card:hover {
   transform: translateY(-2px) scale(1.02);
@@ -165,10 +175,10 @@
   justify-content: center;
   flex-shrink: 0;
 }
-.kpi-orange .overview-kpi-icon { background: #F97316; color: #fff; }
-.kpi-blue .overview-kpi-icon { background: #3B82F6; color: #fff; }
-.kpi-green .overview-kpi-icon { background: #10B981; color: #fff; }
-.kpi-red .overview-kpi-icon { background: #EF4444; color: #fff; }
+.kpi-orange .overview-kpi-icon { background: var(--amber); color: #fff; }
+.kpi-blue .overview-kpi-icon { background: var(--blue); color: #fff; }
+.kpi-green .overview-kpi-icon { background: var(--emerald); color: #fff; }
+.kpi-red .overview-kpi-icon { background: var(--rose); color: #fff; }
 .kpi-pink .overview-kpi-icon { background: #EC4899; color: #fff; }
 .overview-kpi-data {
   display: flex;
@@ -181,12 +191,18 @@
   color: var(--text-primary);
   letter-spacing: -1px;
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .overview-kpi-label {
   font-size: 13px;
   color: var(--text-muted);
   font-weight: 500;
   margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .overview-kpi-change {
   display: flex;
@@ -195,14 +211,19 @@
   font-size: 12px;
   font-weight: 500;
   margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.overview-kpi-change.up { color: #22C55E; }
-.overview-kpi-change.down { color: #EF4444; }
+.overview-kpi-change.up { color: var(--emerald); }
+.overview-kpi-change.down { color: var(--rose); }
 .kpi-change-label {
   font-size: 11px;
   color: var(--text-muted);
   font-weight: 400;
   margin-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 3-Panel Layout */
@@ -210,6 +231,8 @@
   display: grid;
   grid-template-columns: 1.6fr 1fr;
   gap: 20px;
+  width: 100%;
+  min-width: 0;
 }
 
 /* Left: Upcoming Posts */
@@ -220,6 +243,8 @@
   padding: 24px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
 }
 .ov2-upcoming-header {
   display: flex;
@@ -246,8 +271,8 @@
   height: 24px;
   padding: 0 8px;
   border-radius: 12px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #818cf8;
+  background: var(--indigo-soft);
+  color: var(--indigo);
   font-size: 12px;
   font-weight: 700;
 }
@@ -340,8 +365,8 @@
   font-weight: 600;
   padding: 4px 12px;
   border-radius: 20px;
-  background: rgba(52, 211, 153, 0.12);
-  color: #34d399;
+  background: var(--emerald-soft);
+  color: var(--emerald);
 }
 .ov2-post-action {
   background: none;
@@ -375,6 +400,8 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Calendar */
@@ -449,7 +476,7 @@
   border-radius: 8px;
 }
 .ov2-calendar-day.today {
-  background: #6366F1;
+  background: var(--indigo);
   color: white;
   font-weight: 700;
   border-radius: 50%;
@@ -469,8 +496,8 @@
   height: 5px;
   border-radius: 50%;
 }
-.dot.scheduled { background: #818cf8; }
-.dot.published { background: #10B981; }
+.dot.scheduled { background: var(--indigo); }
+.dot.published { background: var(--emerald); }
 .ov2-calendar-day.today .dot.scheduled { background: #c7d2fe; }
 .ov2-calendar-day.today .dot.published { background: #6ee7b7; }
 .ov2-calendar-legend {
@@ -640,15 +667,292 @@
 }
 
 /* Responsive */
-@media (max-width: 1024px) {
-  .overview-kpis { grid-template-columns: repeat(3, 1fr); }
-  .ov2-layout { grid-template-columns: 1fr; }
+@media (max-width: 1280px) {
+  .overview-kpis { gap: 12px; }
+  .overview-kpi-card { padding: 18px 14px; gap: 12px; }
+  .overview-kpi-value { font-size: 26px; }
+  .overview-kpi-icon { width: 44px; height: 44px; }
+  .ov2-wrapper { padding: 18px; gap: 20px; }
 }
-@media (max-width: 600px) {
-  .ov2-wrapper { padding: 16px; gap: 16px; }
-  .overview-kpis { grid-template-columns: repeat(2, 1fr); }
-  .overview-header { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .ov2-post-row { flex-wrap: wrap; gap: 10px; }
+@media (max-width: 1024px) {
+  .overview-kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .overview-kpi-card { padding: 14px 12px; gap: 10px; border-radius: 14px; }
+  .overview-kpi-value { font-size: 22px; }
+  .overview-kpi-icon { width: 38px; height: 38px; border-radius: 10px; }
+  .overview-kpi-icon svg { width: 18px; height: 18px; }
+  .ov2-layout { grid-template-columns: 1fr; }
+  .ov2-wrapper { padding: 14px; gap: 16px; }
+  .ov2-engagement-content { flex-direction: column; gap: 14px; }
+  .ov2-engagement-stats { width: 100%; }
+  .ov2-engagement-chart { width: 100%; min-width: 0; flex-grow: 0; }
+  .overview-header { flex-direction: column; align-items: stretch; gap: 10px; }
+  .overview-header-actions { justify-content: space-between; width: 100%; }
+  .overview-create-btn { height: 40px; padding: 0 18px; font-size: 13px; }
+  .ov2-upcoming-card { padding: 16px; }
+  .ov2-upcoming-header { margin-bottom: 12px; }
+}
+@media (max-width: 768px) {
+  .ov2-wrapper { padding: 12px; gap: 14px; padding-bottom: 0; overflow-x: hidden; }
+  .overview-kpis {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .overview-kpi-card {
+    padding: 14px 12px;
+    gap: 10px;
+    border-radius: 14px;
+  }
+  .overview-kpi-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+  }
+  .overview-kpi-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+  .overview-kpi-value {
+    font-size: 22px;
+  }
+  .overview-kpi-label {
+    font-size: 11px;
+  }
+  .overview-kpi-change {
+    font-size: 10px;
+  }
+  .kpi-change-label {
+    display: none;
+  }
+  .overview-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .overview-subtitle {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .overview-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    flex-direction: row;
+  }
+  .overview-date-wrap {
+    position: relative;
+  }
+  .overview-date-range {
+    font-size: 12px;
+    padding: 8px 12px;
+    gap: 6px;
+    border-radius: 10px;
+  }
+  .overview-date-range span {
+    white-space: nowrap;
+  }
+  .overview-create-btn {
+    height: 38px;
+    padding: 0 22px;
+    font-size: 13px;
+    border-radius: 12px;
+    box-shadow: none;
+    white-space: nowrap;
+  }
+  .overview-title {
+    font-size: 18px;
+  }
+  /* Date range dropdown - open below the date button */
+  .overview-date-wrap .drp-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: auto;
+    bottom: auto;
+    margin-top: 4px;
+    min-width: 280px;
+    max-width: calc(100vw - 24px);
+    border-radius: 14px;
+    z-index: 10000;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .ov2-layout {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .ov2-upcoming-card {
+    padding: 0 !important;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .ov2-upcoming-header {
+    padding: 12px 12px 8px !important;
+    margin-bottom: 0;
+  }
+  .ov2-upcoming-title-row h2 {
+    font-size: 15px;
+  }
+  .ov2-post-row {
+    gap: 10px;
+    padding: 10px 8px;
+  }
+  .ov2-post-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+  }
+  .ov2-post-title {
+    font-size: 12px;
+  }
+  .ov2-post-groups {
+    font-size: 10px;
+  }
+  .ov2-post-schedule {
+    display: none;
+  }
+  .ov2-right-col {
+    gap: 14px;
+  }
+  /* Calendar - full width on mobile */
+  .ov2-calendar {
+    padding: 14px;
+    border-radius: 12px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .ov2-calendar-header h3 {
+    font-size: 14px;
+  }
+  .ov2-calendar-grid {
+    width: 100%;
+  }
+  .ov2-calendar-day {
+    font-size: 11px;
+    padding: 6px 0;
+    min-height: 30px;
+  }
+  .ov2-calendar-day.today {
+    width: 28px;
+    height: 28px;
+  }
+  .ov2-calendar-weekday {
+    font-size: 10px;
+  }
+  .ov2-cal-tooltip {
+    display: none;
+  }
+  .ov2-calendar-legend {
+    gap: 10px;
+    font-size: 10px;
+  }
+  /* Top posts - fix overflow */
+  .ov2-top-posts-card {
+    padding: 14px;
+    border-radius: 12px;
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .ov2-top-posts-header {
+    margin-bottom: 10px;
+  }
+  .ov2-top-posts-header h3 {
+    font-size: 14px;
+  }
+  .ov2-top-post-row {
+    gap: 10px;
+    padding: 8px 4px;
+    overflow: hidden;
+  }
+  .ov2-top-post-thumb {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .ov2-top-post-info {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .ov2-top-post-title {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ov2-top-post-engagement {
+    flex-shrink: 0;
+  }
+  .ov2-engagement-value {
+    font-size: 14px;
+  }
+}
+@media (max-width: 480px) {
+  .ov2-wrapper { padding: 8px; gap: 12px; }
+  .overview-kpis {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .overview-kpi-card {
+    padding: 12px 10px;
+    gap: 8px;
+    border-radius: 12px;
+  }
+  .overview-kpi-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+  .overview-kpi-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .overview-kpi-value {
+    font-size: 18px;
+  }
+  .overview-kpi-label {
+    font-size: 10px;
+  }
+  .overview-kpi-change {
+    display: none;
+  }
+  .overview-header-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .overview-create-btn {
+    padding: 0 10px;
+    font-size: 11px;
+    height: 32px;
+  }
+  .overview-date-range {
+    font-size: 10px;
+  }
+  .overview-date-range span {
+    max-width: 80px;
+  }
+  .ov2-post-row { flex-wrap: wrap; gap: 8px; }
+  .ov2-post-info {
+    flex: 1;
+    min-width: 0;
+    max-width: calc(100vw - 120px);
+  }
+  /* Engagement stats - 3 columns on small screens */
+  .ov2-engagement-stat {
+    padding: 8px 6px;
+  }
+  .ov2-stat-value {
+    font-size: 14px;
+  }
+  .ov2-stat-label {
+    font-size: 9px;
+  }
+  .ov2-stat-change {
+    display: none;
+  }
 }
 
 
@@ -660,6 +964,9 @@
   padding: 24px;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 .ov2-engagement-card:hover {
   transform: translateY(-2px);
@@ -728,11 +1035,14 @@
   font-size: 12px;
   font-weight: 500;
 }
-.ov2-stat-change.up { color: #22C55E; }
-.ov2-stat-change.down { color: #EF4444; }
+.ov2-stat-change.up { color: var(--emerald); }
+.ov2-stat-change.down { color: var(--rose); }
 .ov2-engagement-chart {
-  flex: 1;
-  min-width: 0;
+  flex-grow: 1;
+  width: 0;
+  min-width: 150px;
+  height: 150px;
+  overflow: hidden;
 }
 .ov2-engagement-chart .recharts-wrapper,
 .ov2-engagement-chart .recharts-surface {
@@ -755,32 +1065,64 @@
   transition: color 0.15s;
 }
 .ov2-engagement-cta:hover {
-  color: #a5b4fc;
+  color: var(--indigo);
 }
 @media (max-width: 768px) {
   .ov2-engagement-content {
     flex-direction: column;
+    gap: 14px;
   }
   .ov2-engagement-stats {
-    flex-wrap: wrap;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
     gap: 8px;
+    width: 100%;
   }
   .ov2-engagement-stat {
-    min-width: 80px;
-    padding: 10px 12px;
+    min-width: 0;
+    flex: 1;
+    padding: 10px 8px;
+    text-align: center;
+    align-items: center;
+  }
+  .ov2-stat-label {
+    font-size: 10px;
   }
   .ov2-stat-value {
-    font-size: 18px;
+    font-size: 16px;
+  }
+  .ov2-stat-change {
+    font-size: 10px;
   }
   .ov2-engagement-chart {
     width: 100%;
-    min-height: 180px;
+    min-width: 0;
+    height: 160px;
+    flex-grow: 0;
   }
   .ov2-engagement-card {
-    padding: 16px;
+    padding: 14px;
+    border-radius: 12px;
+    overflow-x: hidden;
+    overflow-y: visible;
+  }
+  .ov2-engagement-header {
+    margin-bottom: 12px;
   }
   .ov2-engagement-header h3 {
     font-size: 14px;
+  }
+  /* Move chart type toggle next to chart, hide period from header */
+  .ov2-engagement-header-actions {
+    gap: 6px;
+  }
+  .ov2-engagement-period {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+  .chart-type-toggle.small {
+    order: 0;
   }
 }
 
@@ -926,7 +1268,7 @@
 .drp-presets button:hover {
   background: rgba(99, 102, 241, 0.1);
   border-color: #6366F1;
-  color: #818cf8;
+  color: var(--indigo);
 }
 
 /* Actions */

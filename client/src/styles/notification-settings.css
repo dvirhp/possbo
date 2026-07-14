@@ -173,8 +173,8 @@
   color: var(--text-secondary, #a3adb8);
 }
 
-.notif-opt-icon.success { color: #34d399; }
-.notif-opt-icon.failed { color: #f87171; }
+.notif-opt-icon.success { color: var(--emerald); }
+.notif-opt-icon.failed { color: var(--rose); }
 .notif-opt-icon.schedule { color: var(--indigo, #6366f1); }
 
 /* Save button */
@@ -192,7 +192,7 @@
   cursor: pointer;
   transition: 0.2s;
 }
-.notif-save-btn:hover:not(:disabled) { background: #818cf8; }
+.notif-save-btn:hover:not(:disabled) { background: var(--indigo); }
 .notif-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* Mobile */

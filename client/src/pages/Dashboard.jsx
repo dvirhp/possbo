@@ -437,14 +437,14 @@ export default function Dashboard() {
 
   const kpiData = {
     campaigns: filteredCampaigns.length,
-    scheduled: filteredCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring').length,
+    scheduled: filteredCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring' || c.status === 'both').length,
     published: filteredCampaigns.reduce((sum, c) => sum + (c.publishedCount || 0), 0),
     groups: groups.length,
   }
 
   const campaignSubTabCounts = useMemo(() => ({
     all: filteredCampaigns.length,
-    scheduled: filteredCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring').length,
+    scheduled: filteredCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring' || c.status === 'both').length,
     published: filteredCampaigns.filter(c => c.status === 'published' || c.publishedCount > 0).length,
   }), [filteredCampaigns])
 
@@ -1184,7 +1184,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
   const DAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
 
   const subTabCampaigns = useMemo(() => {
-    if (subTab === 'scheduled') return localCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring')
+    if (subTab === 'scheduled') return localCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring' || c.status === 'both')
     if (subTab === 'published') return localCampaigns.filter(c => c.status === 'published' || c.publishedCount > 0)
     return localCampaigns
   }, [localCampaigns, subTab])
@@ -1378,7 +1378,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
         </div>
         {sortedCampaigns.map(campaign => {
           const allImages = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
-          const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url
+          const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url
           const thumbImages = allImages.slice(0, 4)
           const extraImgs = allImages.length - 4
           return (
@@ -1486,7 +1486,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
       <div className="campaigns-grid">
       {sortedCampaigns.map(campaign => {
         const allImages = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
-        const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url
+        const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url
         const handleImgError = (e) => { e.target.style.display = 'none'; e.target.parentElement.classList.add('card-img-broken') }
         const cardImages = allImages.slice(0, 3)
         const extraImgs = allImages.length - 3
@@ -1931,7 +1931,7 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
     </div>
   )
 
-  const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url
+  const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url
   const handleImgError2 = (e) => { e.target.style.display = 'none'; e.target.parentElement.classList.add('card-img-broken') }
 
   return (
@@ -3067,7 +3067,7 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
   const [whatsappMessage, setWhatsappMessage] = useState(campaign.whatsappMessage || '')
   const [showWhatsapp, setShowWhatsapp] = useState(!!(campaign.whatsappNumber))
   const existingEditImgs = (campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : []))
-    .map(url => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url)
+    .map(url => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url)
   const [imagePreviews, setImagePreviews] = useState(existingEditImgs)
 
   const selectedGroupObjects = groups.filter(g => selectedGroups.includes(g.id))
@@ -3279,7 +3279,7 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
   const [location, setLocation] = useState(post.post?.location || '')
   const [newImages, setNewImages] = useState([])
   const existingImages = (post.post?.images || post.images || [])
-    .map(url => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url)
+    .map(url => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url)
   const [imagePreviews, setImagePreviews] = useState(existingImages)
 
   const handleImageSelect = (e) => {
@@ -3405,7 +3405,7 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
 
 // ─── Campaign Detail Modal ─────────────────────────────────
 
-const API_HOST = 'http://localhost:5001'
+const API_HOST = 'http://localhost:8000'
 
 function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, onDelete, groups, loading, onSave, initialEditing }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -3472,7 +3472,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
   const [whatsappMessage, setWhatsappMessage] = useState(campaign.whatsappMessage || '')
   const [showWhatsapp, setShowWhatsapp] = useState(!!(campaign.whatsappNumber))
   const existingDetailImgs = (campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : []))
-    .map(url => url?.startsWith('/uploads') ? `http://localhost:5001${url}` : url)
+    .map(url => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url)
   const [imagePreviews, setImagePreviews] = useState(existingDetailImgs)
 
   const selectedGroupObjects = groups.filter(g => selectedGroups.includes(g.id))

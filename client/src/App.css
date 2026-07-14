@@ -39,8 +39,8 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
-  background: #16181d;
-  color: #a3adb8;
+  background: var(--bg-deep);
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
@@ -70,7 +70,7 @@ html, body {
 .page-header .back-button {
   background: none;
   border: none;
-  color: #58a6ff;
+  color: var(--indigo);
   padding: 6px 0;
   cursor: pointer;
   font-size: 14px;
@@ -91,14 +91,14 @@ html, body {
 
 .page-header h2 {
   font-size: 22px;
-  color: #f0f4f8;
+  color: var(--text-primary);
   margin: 0;
   font-weight: 700;
 }
 
 /* ─── Loading ─────────────────────────────────────── */
 .loading-text {
-  color: #7d8894;
+  color: var(--text-muted);
   text-align: center;
   padding: 30px;
   font-size: 14px;
@@ -170,9 +170,9 @@ button, a {
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 .global-banner-progress {
-  background: rgba(30, 32, 44, 0.95);
-  border: 1px solid var(--indigo, #818cf8);
-  color: var(--indigo, #818cf8);
+  background: var(--bg-card);
+  border: 1px solid var(--indigo);
+  color: var(--indigo);
 }
 .global-banner-success {
   background: rgba(16, 185, 129, 0.15);

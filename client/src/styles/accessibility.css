@@ -52,8 +52,8 @@
   max-width: calc(100vw - 48px);
   max-height: 80vh;
   overflow-y: auto;
-  background: #1c1f26;
-  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--bg-base);
+  border: 1px solid var(--border);
   border-left: none;
   border-radius: 0 16px 16px 0;
   z-index: 950;
@@ -76,7 +76,7 @@
 .a11y-panel-header h3 {
   font-size: 16px;
   font-weight: 700;
-  color: #e8ecf0;
+  color: var(--text-primary);
   margin: 0;
 }
 .a11y-close {
@@ -84,15 +84,15 @@
   height: 28px;
   border: none;
   border-radius: 50%;
-  background: rgba(255,255,255,0.08);
-  color: #a3adb8;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.a11y-close:hover { color: #fff; }
+.a11y-close:hover { color: var(--text-primary); }
 
 /* Options */
 .a11y-options {
@@ -107,17 +107,17 @@
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(255,255,255,0.03);
-  color: #e8ecf0;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
   transition: 0.15s;
   text-align: right;
 }
-.a11y-option:hover { background: rgba(255,255,255,0.08); }
+.a11y-option:hover { background: var(--bg-hover); }
 .a11y-option.active {
   background: rgba(30, 136, 229, 0.12);
   border-color: rgba(30, 136, 229, 0.3);
@@ -128,9 +128,9 @@
 .a11y-option-value {
   font-size: 11px;
   padding: 2px 8px;
-  background: rgba(255,255,255,0.08);
+  background: var(--bg-hover);
   border-radius: 4px;
-  color: #a3adb8;
+  color: var(--text-muted);
 }
 .a11y-option-status { color: #34d399; font-weight: 700; font-size: 16px; min-width: 20px; text-align: center; }
 
@@ -138,17 +138,17 @@
 .a11y-reset {
   width: 100%;
   padding: 8px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: transparent;
-  color: #a3adb8;
+  color: var(--text-muted);
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
   transition: 0.15s;
   margin-bottom: 10px;
 }
-.a11y-reset:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.a11y-reset:hover { background: var(--bg-elevated); color: var(--text-primary); }
 
 /* Footer */
 .a11y-footer {
@@ -156,7 +156,7 @@
 }
 .a11y-footer p {
   font-size: 10px;
-  color: #6b7684;
+  color: var(--text-dim);
   line-height: 1.4;
   margin: 0;
 }

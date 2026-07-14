@@ -72,7 +72,7 @@
   transition: 0.2s;
 }
 .tpl-create-btn:hover {
-  background: #818cf8;
+  background: var(--indigo);
   transform: translateY(-1px);
 }
 
@@ -236,7 +236,7 @@
   cursor: pointer;
   transition: 0.2s;
 }
-.tpl-empty-btn:hover { background: #818cf8; }
+.tpl-empty-btn:hover { background: var(--indigo); }
 
 /* ══════════════════════════════════════════════════════════════
    Grid View
@@ -308,8 +308,8 @@
   color: var(--text-primary, #e8ecf0);
 }
 .tpl-delete:hover {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  color: var(--rose);
+  background: var(--rose-soft);
 }
 
 /* ─── Image Collage ─── */
@@ -397,8 +397,8 @@
   color: var(--text-primary, #e8ecf0);
 }
 .tpl-dropdown-danger:hover {
-  color: #f87171 !important;
-  background: rgba(248, 113, 113, 0.1) !important;
+  color: var(--rose) !important;
+  background: var(--rose-soft) !important;
 }
 
 .tpl-card-body { padding: 10px 14px 14px; flex: 1; }
@@ -646,7 +646,7 @@
   transition: 0.15s;
   white-space: nowrap;
 }
-.tpl-list-use-btn:hover { background: #818cf8; }
+.tpl-list-use-btn:hover { background: var(--indigo); }
 
 /* ══════════════════════════════════════════════════════════════
    Template Form
@@ -667,7 +667,7 @@
   background: rgba(248, 113, 113, 0.1);
   border: 1px solid rgba(248, 113, 113, 0.3);
   border-radius: 10px;
-  color: #f87171;
+  color: var(--rose);
   font-size: 13px;
   text-align: center;
 }
@@ -840,7 +840,7 @@
   padding: 0;
   transition: 0.15s;
 }
-.tpl-chip-remove:hover { color: #f87171; }
+.tpl-chip-remove:hover { color: var(--rose); }
 
 .tpl-selected-more {
   padding: 4px 10px;
@@ -1069,7 +1069,7 @@
   font-size: 12px;
   cursor: pointer;
 }
-.tpl-time-remove:hover { color: #f87171; }
+.tpl-time-remove:hover { color: var(--rose); }
 
 .tpl-time-add {
   padding: 4px 10px;
@@ -1147,7 +1147,7 @@
   font-size: 13px;
   padding: 0 2px;
 }
-.tpl-selector-badge button:hover { color: #f87171; }
+.tpl-selector-badge button:hover { color: var(--rose); }
 
 /* ─── Restore Template Button ─── */
 .cp-restore-template {

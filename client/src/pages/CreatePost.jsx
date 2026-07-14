@@ -24,6 +24,8 @@ function RecurringDateRange({ startDate, endDate, onStartChange, onEndChange, mi
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
   const [hoverDate, setHoverDate] = useState(null)
+  const triggerRef = useRef(null)
+  const [pickerStyle, setPickerStyle] = useState({})
 
   const year = calMonth.getFullYear()
   const month = calMonth.getMonth()
@@ -85,31 +87,42 @@ function RecurringDateRange({ startDate, endDate, onStartChange, onEndChange, mi
 
   const formatDate = (d) => new Date(d + 'T00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })
 
+  const handleOpen = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const pickerHeight = 360
+      if (spaceBelow >= pickerHeight + 8) {
+        setPickerStyle({ top: rect.bottom + 8, left: '50%', transform: 'translateX(-50%)' })
+      } else {
+        setPickerStyle({ bottom: window.innerHeight - rect.top + 8, left: '50%', transform: 'translateX(-50%)' })
+      }
+    }
+    setOpen(true)
+  }
+
   return (
     <div className="cp-range-wrap">
       {/* Trigger button / summary */}
-      {!open && (
-        <button type="button" className="cp-range-trigger" onClick={() => setOpen(true)}>
-          {startDate ? (
-            <span className="cp-range-trigger-text">
-              📅 {formatDate(startDate)}{endDate ? ` — ${formatDate(endDate)}` : ' (ללא הגבלה)'}
-            </span>
-          ) : (
-            <span className="cp-range-trigger-text">📅 בחר תאריך</span>
-          )}
-          <span className="cp-range-trigger-edit">{startDate ? 'שנה' : ''}</span>
-        </button>
-      )}
+      <button type="button" className="cp-range-trigger" ref={triggerRef} onClick={handleOpen}>
+        {startDate ? (
+          <span className="cp-range-trigger-text">
+            📅 {formatDate(startDate)}{endDate ? ` — ${formatDate(endDate)}` : ''}
+          </span>
+        ) : (
+          <span className="cp-range-trigger-text">📅 בחר תאריך</span>
+        )}
+      </button>
 
       {/* Calendar */}
       {open && (
         <>
         <div className="cp-range-backdrop" onClick={() => setOpen(false)} />
-        <div className="cp-range-picker">
+        <div className="cp-range-picker" style={pickerStyle}>
           <div className="cp-range-nav">
-            <button type="button" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>›</button>
+            <button type="button" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>›</button>
             <span>{monthName}</span>
-            <button type="button" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>‹</button>
+            <button type="button" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>‹</button>
           </div>
           <div className="cp-range-grid">
             {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map(d => (
@@ -151,6 +164,8 @@ function SingleDatePicker({ value, onChange, minDate }) {
     const d = value ? new Date(value) : new Date()
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
+  const triggerRef = useRef(null)
+  const [pickerStyle, setPickerStyle] = useState({})
 
   const year = calMonth.getFullYear()
   const month = calMonth.getMonth()
@@ -175,25 +190,38 @@ function SingleDatePicker({ value, onChange, minDate }) {
     setOpen(false)
   }
 
+  const handleOpen = () => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const pickerHeight = 320
+      if (spaceBelow >= pickerHeight + 8) {
+        setPickerStyle({ top: rect.bottom + 8, left: '50%', transform: 'translateX(-50%)' })
+      } else {
+        setPickerStyle({ bottom: window.innerHeight - rect.top + 8, left: '50%', transform: 'translateX(-50%)' })
+      }
+    }
+    setOpen(!open)
+  }
+
   const formatDate = (d) => new Date(d + 'T00:00').toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
     <div className="cp-range-wrap">
-      <button type="button" className="cp-range-trigger" onClick={() => setOpen(!open)}>
+      <button type="button" className="cp-range-trigger" ref={triggerRef} onClick={handleOpen}>
         <span className="cp-range-trigger-text">
           {value ? `📅 ${formatDate(value)}` : '📅 בחר תאריך'}
         </span>
-        {value && <span className="cp-range-trigger-edit">שנה</span>}
       </button>
 
       {open && (
         <>
         <div className="cp-range-backdrop" onClick={() => setOpen(false)} />
-        <div className="cp-range-picker">
+        <div className="cp-range-picker" style={pickerStyle}>
           <div className="cp-range-nav">
-            <button type="button" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>›</button>
+            <button type="button" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>›</button>
             <span>{monthName}</span>
-            <button type="button" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>‹</button>
+            <button type="button" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>‹</button>
           </div>
           <div className="cp-range-grid">
             {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map(d => (
@@ -682,13 +710,13 @@ export default function CreatePost() {
     if (newErrors[2]) {
       if (scheduleMode === 'now') { delete newErrors[2] }
       else if (scheduleMode === 'scheduled' && scheduleDate && scheduleTime) { delete newErrors[2] }
-      else if (scheduleMode === 'recurring' && recurringDays.length > 0 && recurringDays.some(d => dayTimes[d]?.some(t => t.trim())) && recurringStartDate) { delete newErrors[2] }
+      else if (scheduleMode === 'recurring' && recurringDays.length > 0 && recurringDays.every(d => dayTimes[d]?.some(t => t.trim())) && recurringStartDate && recurringEndDate) { delete newErrors[2] }
     }
     if (JSON.stringify(newErrors) !== JSON.stringify(stepErrors)) {
       setStepErrors(newErrors)
       if (Object.keys(newErrors).length === 0) setError(null)
     }
-  }, [postText, selectedGroups, scheduleMode, scheduleDate, scheduleTime, recurringDays, dayTimes, recurringStartDate])
+  }, [postText, selectedGroups, scheduleMode, scheduleDate, scheduleTime, recurringDays, dayTimes, recurringStartDate, recurringEndDate])
 
   const steps = [
     { id: 'content', label: 'תוכן', icon: '✏️' },
@@ -712,8 +740,9 @@ export default function CreatePost() {
       }
       if (scheduleMode === 'recurring') {
         if (recurringDays.length === 0) errors[2] = 'יש לבחור לפחות יום אחד'
-        else if (!recurringDays.some(d => dayTimes[d]?.some(t => t.trim()))) errors[2] = 'יש לבחור לפחות שעה אחת'
+        else if (!recurringDays.every(d => dayTimes[d]?.some(t => t.trim()))) errors[2] = 'יש לבחור שעה לכל יום שנבחר'
         else if (!recurringStartDate) errors[2] = 'יש לבחור תאריך התחלה'
+        else if (!recurringEndDate) errors[2] = 'יש לבחור תאריך סיום'
       }
     }
     return errors
@@ -774,11 +803,19 @@ export default function CreatePost() {
         )}
         <div className="cp-topbar-spacer" />
         <h1 className="cp-title">קמפיין חדש</h1>
-        <button className="cp-back" onClick={handleExitWizard}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
-          </svg>
-        </button>
+        {currentStep > 0 ? (
+          <button className="cp-back" onClick={goBack}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </button>
+        ) : (
+          <button className="cp-back" onClick={handleExitWizard}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        )}
       </header>
 
       {results ? (
@@ -1170,7 +1207,7 @@ export default function CreatePost() {
                       <Link to="/dashboard?tab=groups">סנכרן קבוצות מפייסבוק</Link>
                     </div>
                   ) : (
-                    <div className="cp-groups-panel" style={{ display: 'block' }}>
+                    <div className="cp-groups-panel">
                       <div className="cp-group-search">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -1225,11 +1262,11 @@ export default function CreatePost() {
                         <span className="schedule-tab-icon">⚡</span>
                         <span>פרסם עכשיו</span>
                       </button>
-                      <button type="button" className={`schedule-tab ${scheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => setScheduleMode('scheduled')}>
+                      <button type="button" className={`schedule-tab ${scheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setScheduleMode('scheduled'); setRecurringDays([]); setDayTimes({}); setRecurringStartDate(''); setRecurringEndDate('') }}>
                         <span className="schedule-tab-icon">📅</span>
                         <span>פרסום חד-פעמי</span>
                       </button>
-                      <button type="button" className={`schedule-tab ${scheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => setScheduleMode('recurring')}>
+                      <button type="button" className={`schedule-tab ${scheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setScheduleMode('recurring'); setScheduleDate(''); setScheduleTime('') }}>
                         <span className="schedule-tab-icon">🔄</span>
                         <span>פרסום קבוע</span>
                       </button>
@@ -1257,7 +1294,7 @@ export default function CreatePost() {
                     {scheduleMode === 'scheduled' && (
                       <div className="schedule-fields">
                         <p className="schedule-desc">בחר תאריך ושעה לפרסום חד-פעמי בעתיד</p>
-                        <div className="schedule-row">
+                        <div className="schedule-row-centered">
                           <div className="schedule-field">
                             <label>תאריך</label>
                             <SingleDatePicker
@@ -1266,13 +1303,27 @@ export default function CreatePost() {
                               minDate={toDateStr(new Date())}
                             />
                           </div>
-                          <div className="schedule-field">
+                          <div className="schedule-field schedule-field-time-wrap">
                             <label>שעה</label>
-                            <input
-                              type="time"
-                              value={scheduleTime}
-                              onChange={(e) => setScheduleTime(e.target.value)}
-                            />
+                            <div
+                              className="time-input-wrapper"
+                              onClick={(e) => {
+                                if (!scheduleDate) {
+                                  e.preventDefault()
+                                  e.currentTarget.classList.add('show-tooltip')
+                                  setTimeout(() => e.currentTarget.classList.remove('show-tooltip'), 2000)
+                                }
+                              }}
+                            >
+                              <input
+                                type="time"
+                                value={scheduleTime}
+                                onChange={(e) => setScheduleTime(e.target.value)}
+                                disabled={!scheduleDate}
+                                className={!scheduleDate ? 'disabled-input' : ''}
+                              />
+                              <span className="time-tooltip">נא לבחור תאריך קודם</span>
+                            </div>
                           </div>
                         </div>
                         {scheduleDate && scheduleTime && (
@@ -1286,6 +1337,18 @@ export default function CreatePost() {
                     {scheduleMode === 'recurring' && (
                       <div className="schedule-fields">
                         <p className="schedule-desc">בחר ימים והגדר שעות לכל יום, הפוסט יפורסם באופן קבוע</p>
+
+                        <div className="schedule-section">
+                          <label className="schedule-section-label">תקופה</label>
+                          <RecurringDateRange
+                            startDate={recurringStartDate}
+                            endDate={recurringEndDate}
+                            onStartChange={setRecurringStartDate}
+                            onEndChange={setRecurringEndDate}
+                            minDate={toDateStr(new Date())}
+                            initialMonth={recurringStartDate ? new Date(recurringStartDate) : new Date()}
+                          />
+                        </div>
 
                         <div className="schedule-section">
                           <label className="schedule-section-label">באילו ימים?</label>
@@ -1314,6 +1377,27 @@ export default function CreatePost() {
                                 {day}
                               </button>
                             ))}
+                            <button
+                              type="button"
+                              className={`day-btn day-btn-all ${recurringDays.length === 7 ? 'active' : ''}`}
+                              onClick={() => {
+                                if (recurringDays.length === 7) {
+                                  setRecurringDays([])
+                                  setDayTimes({})
+                                } else {
+                                  setRecurringDays([0, 1, 2, 3, 4, 5, 6])
+                                  setDayTimes(dt => {
+                                    const copy = { ...dt }
+                                    for (let i = 0; i < 7; i++) {
+                                      if (!copy[i]) copy[i] = ['']
+                                    }
+                                    return copy
+                                  })
+                                }
+                              }}
+                            >
+                              כל יום
+                            </button>
                           </div>
                         </div>
 
@@ -1375,18 +1459,6 @@ export default function CreatePost() {
                           </div>
                         )}
 
-                        <div className="schedule-section">
-                          <label className="schedule-section-label">תקופה</label>
-                          <RecurringDateRange
-                            startDate={recurringStartDate}
-                            endDate={recurringEndDate}
-                            onStartChange={setRecurringStartDate}
-                            onEndChange={setRecurringEndDate}
-                            minDate={toDateStr(new Date())}
-                            initialMonth={recurringStartDate ? new Date(recurringStartDate) : new Date()}
-                          />
-                        </div>
-
                         {recurringDays.length > 0 && Object.values(dayTimes).some(ts => ts.some(t => t)) && recurringStartDate && (
                           <div className="schedule-summary">
                             🔄 לוח פרסום:
@@ -1396,7 +1468,7 @@ export default function CreatePost() {
                               return ts.length ? `\n• ${name}: ${ts.join(', ')}` : null
                             }).filter(Boolean).join('')}
                             {`\nהחל מ-${new Date(recurringStartDate).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })}`}
-                            {recurringEndDate ? ` עד ${new Date(recurringEndDate).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })}` : ' (ללא הגבלה)'}
+                            {recurringEndDate && ` עד ${new Date(recurringEndDate).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })}`}
                           </div>
                         )}
                       </div>
@@ -1469,12 +1541,6 @@ export default function CreatePost() {
 
           {/* Navigation buttons */}
           <div className="cp-wizard-nav">
-            {currentStep > 0 && (
-              <button type="button" className="cp-nav-btn cp-nav-back" onClick={goBack}>
-                → הקודם
-              </button>
-            )}
-
             <div className="cp-nav-spacer" />
 
             <button

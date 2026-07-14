@@ -114,14 +114,11 @@ export async function processPublicationJobs() {
       postGroup: {
         include: {
           post: {
-            include: { media: true },
+            include: { media: true, user: true },
           },
           group: true,
           user: true,
         },
-      },
-      post: {
-        include: { media: true, user: true },
       },
     },
     orderBy: { scheduledAt: "asc" },
@@ -137,7 +134,7 @@ export async function processPublicationJobs() {
   // Group jobs by user for per-user queue management
   const jobsByUser = new Map();
   for (const job of pendingJobs) {
-    const userId = job.postGroup?.user?.id || job.post?.user?.id;
+    const userId = job.postGroup?.user?.id;
     if (!userId) continue; // Skip invalid jobs
     if (!jobsByUser.has(userId)) jobsByUser.set(userId, []);
     jobsByUser.get(userId).push(job);
@@ -239,12 +236,11 @@ export async function processPublicationJobs() {
         continue;
       }
 
-      // Determine if this is a profile or group job
-      const isProfileJob = job.targetType === "PROFILE";
+      // Get post data from postGroup relation
       const postGroup = job.postGroup;
-      const post = isProfileJob ? job.post : postGroup?.post;
-      const group = isProfileJob ? null : postGroup?.group;
-      const user = isProfileJob ? job.post?.user : postGroup?.user;
+      const post = postGroup?.post;
+      const group = postGroup?.group;
+      const user = postGroup?.user;
 
       if (!post || !user) {
         await prisma.publicationJob.update({
