@@ -6,9 +6,9 @@
 .bottom-nav {
   display: none;
   position: fixed;
-  bottom: 16px;
-  left: 16px;
-  right: 16px;
+  bottom: 10px;
+  left: 12px;
+  right: 12px;
   z-index: 900;
 }
 
@@ -22,9 +22,9 @@
   justify-content: space-around;
   background: linear-gradient(180deg, #171C27 0%, #11151E 100%);
   border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 24px;
-  padding: 12px 20px calc(env(safe-area-inset-bottom, 0px) + 12px);
-  box-shadow: 0 -2px 8px rgba(0,0,0,0.25), 0 18px 40px rgba(0,0,0,0.55);
+  border-radius: 20px;
+  padding: 8px 12px calc(env(safe-area-inset-bottom, 0px) + 8px);
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.25), 0 12px 30px rgba(0,0,0,0.5);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
 }
@@ -34,8 +34,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: 72px;
+  gap: 3px;
+  width: 56px;
   padding: 0;
   color: rgba(255,255,255,0.65);
   text-decoration: none;
@@ -52,8 +52,8 @@
 }
 
 .bottom-nav-item svg {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   stroke-width: 2;
 }
 
@@ -72,7 +72,7 @@
 
 .bottom-nav-label {
   font-weight: 500;
-  font-size: 13px;
+  font-size: 10px;
   white-space: nowrap;
   color: #AEB6CA;
 }
@@ -83,32 +83,32 @@
 /* ─── Center Publish Button — Premium Dark Circle ─── */
 .bottom-nav-center {
   position: relative;
-  margin-top: -28px;
-  width: 88px;
+  margin-top: -18px;
+  width: 64px;
 }
 .bottom-nav-center .bottom-nav-label {
   color: #AEB6CA;
   font-weight: 600;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 .bottom-nav-center.active .bottom-nav-label {
   color: #43E6FF;
 }
 .bottom-nav-center-ring {
-  width: 88px;
-  height: 88px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   background: radial-gradient(circle, #1C2331, #141A25);
   border: 2px solid rgba(80,180,255,0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 35px rgba(77,157,255,0.22);
+  box-shadow: 0 0 25px rgba(77,157,255,0.18);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .bottom-nav-center-ring img {
-  width: 42px;
-  height: 42px;
+  width: 30px;
+  height: 30px;
   filter: none;
 }
 .bottom-nav-center:hover .bottom-nav-center-ring {
@@ -289,6 +289,6 @@
 /* ─── Safe area for bottom nav ─── */
 @media (max-width: 768px) {
   .app-main {
-    padding-bottom: 110px;
+    padding-bottom: 85px;
   }
 }

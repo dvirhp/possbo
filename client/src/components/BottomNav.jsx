@@ -15,8 +15,8 @@ const MAIN_ITEMS = [
   { id: 'menu', icon: Menu, label: 'תפריט', isMenu: true },
   { id: 'home', path: '/dashboard?tab=overview', match: '/dashboard', icon: Home, label: 'בית' },
   { id: 'publish', path: '/create-post', match: '/create-post', icon: null, label: 'פרסום', isCenter: true },
-  { id: 'campaigns', path: '/dashboard?tab=campaigns', match: null, icon: SquarePen, label: 'פוסטים', matchTab: 'campaigns' },
-  { id: 'templates', path: '/templates', match: '/templates', icon: LayoutTemplate, label: 'קמפיינים' },
+  { id: 'campaigns', path: '/dashboard?tab=campaigns', match: null, icon: SquarePen, label: 'קמפיינים', matchTab: 'campaigns' },
+  { id: 'templates', path: '/templates', match: '/templates', icon: LayoutTemplate, label: 'טמפלייטים' },
 ]
 
 const DRAWER_ITEMS = [
@@ -109,7 +109,7 @@ export default function BottomNav() {
           if (item.isMenu) {
             return (
               <button key={item.id} className={`bottom-nav-item bottom-nav-menu ${drawerOpen ? 'active' : ''}`} onClick={() => setDrawerOpen(!drawerOpen)}>
-                <Icon size={26} strokeWidth={2} />
+                <Icon size={22} strokeWidth={2} />
                 <span className="bottom-nav-label">{item.label}</span>
               </button>
             )
@@ -122,7 +122,7 @@ export default function BottomNav() {
                 onClick={() => { navigate(item.path); setDrawerOpen(false) }}
               >
                 <div className="bottom-nav-center-ring">
-                  <img src="/logo.svg" alt="" width="42" height="42" />
+                  <img src="/logo.svg" alt="" width="30" height="30" />
                 </div>
                 <span className="bottom-nav-label">{item.label}</span>
               </button>
@@ -134,7 +134,7 @@ export default function BottomNav() {
               className={`bottom-nav-item ${isActive(item) ? 'active' : ''}`}
               onClick={() => { navigate(item.path); setDrawerOpen(false) }}
             >
-              <Icon size={26} strokeWidth={2} />
+              <Icon size={22} strokeWidth={2} />
               <span className="bottom-nav-label">{item.label}</span>
             </button>
           )
