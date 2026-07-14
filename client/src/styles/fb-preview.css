@@ -1,7 +1,7 @@
 /* ─── Facebook Preview - Phone Frame ─── */
 .fbp-phone-frame {
-  width: 320px;
-  min-height: 520px;
+  width: 360px;
+  min-height: 580px;
   background: #fff;
   border-radius: 40px;
   border: 8px solid #1a1a2e;
@@ -366,6 +366,12 @@
   animation: scaleIn 0.2s ease;
 }
 
+.fbp-modal-content .fbp-phone-frame {
+  width: 92vw;
+  max-width: 380px;
+  min-height: 600px;
+}
+
 @keyframes scaleIn {
   from { transform: scale(0.9); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
@@ -424,6 +430,14 @@
     min-height: 460px;
     border-radius: 34px;
     border-width: 6px;
+  }
+
+  .fbp-modal-content .fbp-phone-frame {
+    width: 92vw;
+    max-width: 380px;
+    min-height: 560px;
+    border-radius: 36px;
+    border-width: 7px;
   }
 
   .fbp-post-text {

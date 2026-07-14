@@ -251,3 +251,63 @@ html.a11y-big-cursor * {
     to { opacity: 1; transform: translateY(-50%) translateX(0); }
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Light Mode — Accessibility Widget
+   ══════════════════════════════════════════════════════════════ */
+[data-theme="light"] .a11y-overlay {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .a11y-panel {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-left: none;
+  box-shadow: 4px 0 40px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+[data-theme="light"] .a11y-panel-header h3 {
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .a11y-close {
+  background: rgba(0,0,0,0.06);
+  color: #6b7280;
+}
+[data-theme="light"] .a11y-close:hover {
+  color: #1a1a1a;
+  background: rgba(0,0,0,0.1);
+}
+
+[data-theme="light"] .a11y-option {
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.03);
+  color: #1a1a1a;
+}
+[data-theme="light"] .a11y-option:hover {
+  background: rgba(0,0,0,0.06);
+}
+[data-theme="light"] .a11y-option.active {
+  background: rgba(30, 136, 229, 0.1);
+  border-color: rgba(30, 136, 229, 0.3);
+}
+
+[data-theme="light"] .a11y-option-value {
+  background: rgba(0,0,0,0.06);
+  color: #6b7280;
+}
+
+[data-theme="light"] .a11y-reset {
+  border: 1px solid rgba(0,0,0,0.1);
+  color: #6b7280;
+}
+[data-theme="light"] .a11y-reset:hover {
+  background: rgba(0,0,0,0.04);
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .a11y-footer p {
+  color: #9ca3af;
+}

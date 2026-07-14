@@ -6,11 +6,11 @@
 .bottom-nav {
   display: none;
   position: fixed;
-  bottom: 10px;
-  left: 0;
-  right: 0;
-  width: 96%;
-  margin: 0 auto;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 400px;
   z-index: 900;
 }
 
@@ -20,12 +20,13 @@
 
 .bottom-nav-inner {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-around;
   background: linear-gradient(180deg, #171C27 0%, #11151E 100%);
   border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 20px;
-  padding: 8px 12px calc(env(safe-area-inset-bottom, 0px) + 8px);
+  border-radius: 24px;
+  height: 58px;
+  padding: 0 16px;
   box-shadow: 0 -2px 8px rgba(0,0,0,0.25), 0 12px 30px rgba(0,0,0,0.5);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -36,7 +37,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 1px;
   width: 56px;
   padding: 0;
   color: rgba(255,255,255,0.65);
@@ -293,4 +294,112 @@
   .app-main {
     padding-bottom: 85px;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Light Mode Overrides
+   ══════════════════════════════════════════════════════════════ */
+[data-theme="light"] .bottom-nav-inner {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255,255,255,0.4);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+[data-theme="light"] .bottom-nav-item {
+  color: #1a1a1a;
+}
+[data-theme="light"] .bottom-nav-item:hover {
+  color: #000000;
+}
+[data-theme="light"] .bottom-nav-item.active {
+  color: #6366f1;
+}
+[data-theme="light"] .bottom-nav-item.active svg {
+  color: #6366f1;
+}
+
+[data-theme="light"] .bottom-nav-label {
+  color: #1a1a1a;
+}
+[data-theme="light"] .bottom-nav-item.active .bottom-nav-label {
+  color: #6366f1;
+}
+
+[data-theme="light"] .bottom-nav-center .bottom-nav-label {
+  color: #1a1a1a;
+}
+[data-theme="light"] .bottom-nav-center.active .bottom-nav-label {
+  color: #6366f1;
+}
+
+[data-theme="light"] .bottom-nav-center-ring {
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px solid rgba(99,102,241,0.5);
+  box-shadow: 0 0 16px rgba(99,102,241,0.15);
+}
+[data-theme="light"] .bottom-nav-center:hover .bottom-nav-center-ring {
+  box-shadow: 0 0 24px rgba(99,102,241,0.3);
+}
+[data-theme="light"] .bottom-nav-center.active .bottom-nav-center-ring {
+  box-shadow: 0 0 20px rgba(99,102,241,0.3);
+  border-color: rgba(99,102,241,0.7);
+}
+
+[data-theme="light"] .mobile-drawer-overlay {
+  background: rgba(0,0,0,0.2);
+}
+
+[data-theme="light"] .mobile-drawer {
+  background: rgba(255, 255, 255, 0.92);
+  border-left: 1px solid rgba(0,0,0,0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+[data-theme="light"] .mobile-drawer-header {
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+[data-theme="light"] .mobile-drawer-avatar {
+  background: #f0f0f5;
+}
+
+[data-theme="light"] .mobile-drawer-name {
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .mobile-drawer-email {
+  color: #6b7280;
+}
+
+[data-theme="light"] .mobile-drawer-close {
+  color: #6b7280;
+}
+[data-theme="light"] .mobile-drawer-close:hover {
+  color: #1a1a1a;
+  background: rgba(0,0,0,0.05);
+}
+
+[data-theme="light"] .mobile-drawer-item {
+  color: #374151;
+}
+[data-theme="light"] .mobile-drawer-item:hover {
+  background: rgba(0,0,0,0.04);
+  color: #1a1a1a;
+}
+[data-theme="light"] .mobile-drawer-item.active {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+[data-theme="light"] .mobile-drawer-item.logout {
+  color: #dc2626;
+}
+[data-theme="light"] .mobile-drawer-item.logout:hover {
+  background: rgba(220, 38, 38, 0.06);
+}
+
+[data-theme="light"] .mobile-drawer-divider {
+  background: rgba(0,0,0,0.08);
 }

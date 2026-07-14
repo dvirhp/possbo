@@ -360,6 +360,7 @@ router.post(
       recurringEndDate,
       campaignType,
       publishToProfile,
+      templateName,
     } = req.body;
 
     // Parse stringified arrays from FormData
@@ -468,6 +469,7 @@ router.post(
         isAnonymous: anonymous || false,
         location: location || null,
         publishToProfile: publishToProfile || false,
+        templateName: templateName || null,
         campaignType: campaignType || "ONE_TIME",
         recurringDays: recurringDays || [],
         recurringTime: recurringTime || recurringTimes?.[0] || null,
@@ -744,13 +746,13 @@ router.get(
       else if (post.campaignType === "RECURRING") displayStatus = "recurring";
       else if (hasPendingJob || hasActiveSchedule) displayStatus = "scheduled";
       else if (hasPublished) displayStatus = "published";
-      else if (post.status === "ACTIVE") displayStatus = "active";
-      else displayStatus = "one-time";
+      else displayStatus = "active";
 
       return {
         id: post.id,
         title: post.title,
         content: post.content,
+        templateName: post.templateName || null,
         imageUrl: post.imageUrl || post.media?.[0]?.url || null,
         imageCount: post.media?.length || (post.imageUrl ? 1 : 0),
         images:

@@ -128,8 +128,17 @@ export function DataProvider({ children }) {
       }
     }, POLL_INTERVAL)
 
+    // Listen for publish-done events to refresh immediately
+    const handlePublishDone = () => {
+      fetchInProgressRef.current = false
+      lastFetchRef.current = {}
+      fetchAll(true)
+    }
+    window.addEventListener('postit-publish-done', handlePublishDone)
+
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current)
+      window.removeEventListener('postit-publish-done', handlePublishDone)
     }
   }, [user, fetchAll])
 

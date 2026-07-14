@@ -45,7 +45,50 @@ router.get(
       where: { userId: req.user.id },
       orderBy: { updatedAt: "desc" },
     });
-    res.json({ success: true, templates });
+
+    // Collect all unique groupIds across templates
+    const allGroupIds = [
+      ...new Set(templates.flatMap((t) => t.groupIds || [])),
+    ];
+    let groups = [];
+    if (allGroupIds.length > 0) {
+      // groupIds may be internal UUIDs, external Facebook IDs, or URL-embedded IDs
+      groups = await prisma.group.findMany({
+        where: {
+          OR: [
+            { id: { in: allGroupIds } },
+            { externalGroupId: { in: allGroupIds } },
+            ...allGroupIds.map((gid) => ({
+              url: { contains: `/groups/${gid}` },
+            })),
+          ],
+        },
+        select: {
+          id: true,
+          externalGroupId: true,
+          url: true,
+          memberCount: true,
+        },
+      });
+    }
+    // Build map keyed by id, externalGroupId, and extracted URL ID
+    const memberMap = {};
+    for (const g of groups) {
+      memberMap[g.id] = g.memberCount || 0;
+      if (g.externalGroupId) memberMap[g.externalGroupId] = g.memberCount || 0;
+      const urlId = g.url?.match(/groups\/([^/?]+)/)?.[1];
+      if (urlId) memberMap[urlId] = g.memberCount || 0;
+    }
+
+    const enriched = templates.map((t) => ({
+      ...t,
+      totalReach: (t.groupIds || []).reduce(
+        (sum, id) => sum + (memberMap[id] || 0),
+        0,
+      ),
+    }));
+
+    res.json({ success: true, templates: enriched });
   }),
 );
 

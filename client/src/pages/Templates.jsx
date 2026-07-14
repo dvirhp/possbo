@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { templatesService } from '../services/templatesService'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -18,6 +18,7 @@ function formatNumber(n) {
 
 export default function Templates() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, authChecked, groups: cachedGroups } = useAppData()
   const [templates, setTemplates] = useState(() => {
     try {
@@ -32,6 +33,7 @@ export default function Templates() {
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState(() => window.innerWidth <= 768 ? 'grid' : 'grid')
   const [openMenuId, setOpenMenuId] = useState(null)
+  const [activeTooltip, setActiveTooltip] = useState(null)
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
 
   // Close dropdown on outside click
@@ -48,7 +50,16 @@ export default function Templates() {
       return
     }
     loadTemplates()
-  }, [authChecked, user])
+  }, [authChecked, user, location.key])
+
+  // Reload templates when publish completes in background
+  useEffect(() => {
+    const handlePublishDone = () => { loadTemplates() }
+    window.addEventListener('postit-publish-done', handlePublishDone)
+    return () => {
+      window.removeEventListener('postit-publish-done', handlePublishDone)
+    }
+  }, [])
 
   const loadTemplates = async () => {
     try {
@@ -75,11 +86,6 @@ export default function Templates() {
   }
 
   const handleUseTemplate = async (template) => {
-    try {
-      await templatesService.markUsed(template.id)
-    } catch {
-      // silent
-    }
     navigate('/create-post', {
       state: {
         fromTemplate: {
@@ -103,7 +109,7 @@ export default function Templates() {
   const resolveGroups = (groupIds) => {
     if (!groupIds?.length || !cachedGroups?.length) return []
     return groupIds
-      .map(id => cachedGroups.find(g => g.id === id))
+      .map(id => cachedGroups.find(g => g.id === id || g.externalId === id || g.url?.includes(`/groups/${id}`)))
       .filter(Boolean)
   }
 
@@ -184,18 +190,11 @@ export default function Templates() {
               <span className="tpl-count">{filtered.length} טמפלייטים</span>
               <div className="tpl-view-toggle">
                 <button
-                  className={`tpl-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                  onClick={() => setViewMode('grid')}
-                  title="תצוגת ריבועים"
+                  className="tpl-view-btn active"
+                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                  title={viewMode === 'grid' ? 'תצוגת שורות' : 'תצוגת ריבועים'}
                 >
-                  <LayoutGrid size={16} />
-                </button>
-                <button
-                  className={`tpl-view-btn ${viewMode === 'list' ? 'active' : ''}`}
-                  onClick={() => setViewMode('list')}
-                  title="תצוגת שורות"
-                >
-                  <List size={16} />
+                  {viewMode === 'grid' ? <List size={16} /> : <LayoutGrid size={16} />}
                 </button>
               </div>
             </div>
@@ -215,7 +214,7 @@ export default function Templates() {
                 </div>
                 {filtered.map(tpl => {
                   const groups = resolveGroups(tpl.groupIds)
-                  const reach = getTotalReach(tpl.groupIds)
+                  const reach = tpl.totalReach ?? getTotalReach(tpl.groupIds)
                   return (
                     <div key={tpl.id} className="tpl-list-row">
                       <div className="tpl-list-col tpl-list-col-name">
@@ -263,7 +262,8 @@ export default function Templates() {
               <div className="tpl-grid">
                 {filtered.map(tpl => {
                   const groups = resolveGroups(tpl.groupIds)
-                  const reach = getTotalReach(tpl.groupIds)
+                  const groupCount = tpl.groupIds?.length || 0
+                  const reach = tpl.totalReach ?? getTotalReach(tpl.groupIds)
                   return (
                     <div key={tpl.id} className="tpl-card">
                       {/* Image Collage */}
@@ -307,16 +307,32 @@ export default function Templates() {
 
                         {/* Meta tags */}
                         <div className="tpl-card-meta">
-                          {groups.length > 0 && (
-                            <span className="tpl-meta-tag">
+                          {groupCount > 0 && (
+                            <span
+                              className="tpl-meta-tag"
+                              onMouseEnter={() => setActiveTooltip(`groups-${tpl.id}`)}
+                              onMouseLeave={() => setActiveTooltip(null)}
+                              onClick={(e) => { e.stopPropagation(); setActiveTooltip(activeTooltip === `groups-${tpl.id}` ? null : `groups-${tpl.id}`) }}
+                            >
                               <Users size={12} />
-                              {groups.length} קבוצות
+                              {groupCount} קבוצות
+                              {activeTooltip === `groups-${tpl.id}` && groups.length > 0 && (
+                                <span className="tpl-tooltip">{groups.map(g => g.name).join('\n')}</span>
+                              )}
                             </span>
                           )}
-                          {reach > 0 && (
-                            <span className="tpl-meta-tag">
+                          {(reach > 0 || groupCount > 0) && (
+                            <span
+                              className="tpl-meta-tag"
+                              onMouseEnter={() => setActiveTooltip(`reach-${tpl.id}`)}
+                              onMouseLeave={() => setActiveTooltip(null)}
+                              onClick={(e) => { e.stopPropagation(); setActiveTooltip(activeTooltip === `reach-${tpl.id}` ? null : `reach-${tpl.id}`) }}
+                            >
                               <Eye size={12} />
                               {formatNumber(reach)} חשיפה
+                              {activeTooltip === `reach-${tpl.id}` && groups.length > 0 && (
+                                <span className="tpl-tooltip">{groups.map(g => `${g.name}: ${formatNumber(g.memberCount || 0)}`).join('\n')}</span>
+                              )}
                             </span>
                           )}
                           {tpl.scheduleMode && tpl.scheduleMode !== 'now' && (
@@ -325,8 +341,16 @@ export default function Templates() {
                               {scheduleModeLabel(tpl.scheduleMode)}
                             </span>
                           )}
-                          <span className="tpl-meta-tag tpl-meta-usage">
+                          <span
+                            className="tpl-meta-tag"
+                            onMouseEnter={() => setActiveTooltip(`usage-${tpl.id}`)}
+                            onMouseLeave={() => setActiveTooltip(null)}
+                            onClick={(e) => { e.stopPropagation(); setActiveTooltip(activeTooltip === `usage-${tpl.id}` ? null : `usage-${tpl.id}`) }}
+                          >
                             {tpl.usageCount} שימושים
+                            {activeTooltip === `usage-${tpl.id}` && (
+                              <span className="tpl-tooltip">שימוש {tpl.usageCount} פעמים בפרסום</span>
+                            )}
                           </span>
                         </div>
                       </div>
