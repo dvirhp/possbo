@@ -84,7 +84,7 @@ router.get(
       ...new Set(templates.flatMap((t) => t.groupIds || [])),
     ];
     const missingIds = allGroupIds.filter(
-      (id) => !memberMap.hasOwnProperty(id),
+      (id) => !Object.hasOwn(memberMap, id),
     );
     if (missingIds.length > 0) {
       const extraGroups = await prisma.group.findMany({

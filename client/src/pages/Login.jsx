@@ -110,7 +110,7 @@ export default function Login() {
         <OAuthButtons
           mode="login"
           onSuccess={(result) => {
-            if (result.user) setUser(result.user)
+            if (result.user) loginSuccess(result.user)
             setTimeout(() => navigate('/dashboard'), 0)
           }}
           onError={(msg) => setError(msg)}
