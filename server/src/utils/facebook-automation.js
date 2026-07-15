@@ -412,33 +412,48 @@ export async function scrapeMyGroups(userId) {
 
           // Try multiple patterns for member count
           // English: "1,234 members", "1.2K members", "1.2M members"
-          // Hebrew: "1,234 חברים", "1.2 אלף חברים", "12K חברים"
+          // Hebrew: "1,234 חברים", "1.2 אלף חברים", "12K חברים", "1 חבר"
           // Facebook compact: "12K", "1.2M", "1,234"
           const patterns = [
             {
-              re: /(\d[\d,.]*)\s*(?:M|m|מיליון)\s*(?:members?|חברי[ם]?|חברות)/i,
+              re: /(\d[\d,.]*)\s*(?:M|m|מיליון)\s*(?:members?|חבר[יו]?[ם]?[ת]?|חברות)/i,
               mult: 1000000,
             },
             {
-              re: /(\d[\d,.]*)\s*(?:K|k|אלף)\s*(?:members?|חברי[ם]?|חברות)/i,
+              re: /(\d[\d,.]*)\s*(?:K|k|אלף)\s*(?:members?|חבר[יו]?[ם]?[ת]?|חברות)/i,
               mult: 1000,
             },
-            { re: /(\d[\d,.]*)\s*(?:members?|חברי[ם]?|חברות)/i, mult: 1 },
             {
-              re: /(?:members?|חברי[ם]?|חברות)\s*[:\s]*(\d[\d,.]*)\s*(?:M|m|מיליון)/i,
+              re: /(\d[\d,.]*)\s*(?:members?|חבר[יו]?[ם]?[ת]?|חברות)/i,
+              mult: 1,
+            },
+            {
+              re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s*[:\s]*(\d[\d,.]*)\s*(?:M|m|מיליון)/i,
               mult: 1000000,
             },
             {
-              re: /(?:members?|חברי[ם]?|חברות)\s*[:\s]*(\d[\d,.]*)\s*(?:K|k|אלף)/i,
+              re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s*[:\s]*(\d[\d,.]*)\s*(?:K|k|אלף)/i,
               mult: 1000,
             },
-            { re: /(?:members?|חברי[ם]?|חברות)\s*[:\s]*(\d[\d,.]*)/i, mult: 1 },
+            {
+              re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s*[:\s]*(\d[\d,.]*)/i,
+              mult: 1,
+            },
             // Patterns without the word "members" - look for number + K/M near group context
             { re: /(\d[\d,.]*)\s*(?:M)\s/, mult: 1000000 },
             { re: /(\d[\d,.]*)\s*(?:K)\s/, mult: 1000 },
-            // Hebrew: "חברים: 1,234" or just "1,234 חברים"
-            { re: /(\d[\d,.]*)\s*חברי[ם]?/, mult: 1 },
-            { re: /חברי[ם]?\s*(\d[\d,.]*)/, mult: 1 },
+            // Hebrew: "חברים: 1,234" or just "1,234 חברים" or "1 חבר"
+            { re: /(\d[\d,.]*)\s*חבר[יו]?[ם]?[ת]?/, mult: 1 },
+            { re: /חבר[יו]?[ם]?[ת]?\s*(\d[\d,.]*)/, mult: 1 },
+            // Participant patterns (משתתפים/משתתף)
+            {
+              re: /(\d[\d,.]*)\s*(?:משתתפ[יו]?[ם]?[ת]?|participants?)/i,
+              mult: 1,
+            },
+            {
+              re: /(?:משתתפ[יו]?[ם]?[ת]?|participants?)\s*(\d[\d,.]*)/i,
+              mult: 1,
+            },
           ];
 
           // Helper: normalize number string handling comma-as-decimal (e.g. "98,8" → 98.8)
@@ -469,7 +484,7 @@ export async function scrapeMyGroups(userId) {
             const spans = container.querySelectorAll("span");
             for (const span of spans) {
               const spanText = span.textContent?.trim() || "";
-              if (/member|חברי/i.test(spanText) && /\d/.test(spanText)) {
+              if (/member|חבר/i.test(spanText) && /\d/.test(spanText)) {
                 const numMatch = spanText.match(
                   /([\d,.]+)\s*(?:K|k|M|m|אלף|מיליון)?/,
                 );
@@ -632,7 +647,10 @@ export async function captureGroupScreenshot(
 // ─── Publish to group ─────────────────────────────────────
 
 export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
-  const { anonymous = false, location = "", userId } = options;
+  const { anonymous = false, location = "", userId, images = [] } = options;
+  // Use images array if provided, otherwise fall back to single imagePath
+  const allImagePaths =
+    images.length > 0 ? images : imagePath ? [imagePath] : [];
   const storageState = await getStorageState(userId);
 
   const browser = await chromium.launch({
@@ -765,8 +783,9 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     await page.waitForTimeout(1000);
 
     // If image provided, upload it
-    if (imagePath && fs.existsSync(imagePath)) {
-      log.debug("Uploading image:", imagePath);
+    const existingImages = allImagePaths.filter((p) => fs.existsSync(p));
+    if (existingImages.length > 0) {
+      log.debug("Uploading images:", existingImages);
 
       const photoButtonSelectors = [
         'div[role="dialog"] div[role="button"] span:has-text("תמונה/סרטון")',
@@ -802,8 +821,10 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       const fileInput = page
         .locator('div[role="dialog"] input[type="file"]')
         .first();
-      await fileInput.setInputFiles(imagePath);
-      log.debug("Image file sent to input");
+      await fileInput.setInputFiles(
+        existingImages.length === 1 ? existingImages[0] : existingImages,
+      );
+      log.debug("Image file(s) sent to input");
 
       try {
         await page
@@ -887,6 +908,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
               const rCount = await results.count().catch(() => 0);
               if (rCount === 0) continue;
 
+              let firstResult = null;
               for (let ri = 0; ri < Math.min(rCount, 7); ri++) {
                 const resultEl = results.nth(ri);
                 const resultText = (
@@ -896,24 +918,34 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
                   `  location result[${ri}]: "${resultText.substring(0, 80)}"`,
                 );
 
-                const hasMatch = resultText.includes(locationLower);
+                if (!firstResult) firstResult = resultEl;
 
-                if (hasMatch) {
+                if (resultText.includes(locationLower)) {
                   await resultEl.click();
                   resultClicked = true;
                   log.debug(
-                    "Location EXACT matched and selected:",
+                    "Location matched and selected:",
                     resultText.substring(0, 60),
                   );
                   break;
                 }
               }
+
+              // If no exact match, select the first result (Facebook's best match)
+              if (!resultClicked && firstResult) {
+                await firstResult.click();
+                resultClicked = true;
+                log.debug(
+                  "No exact match — selected first Facebook suggestion",
+                );
+              }
+
               if (resultClicked) break;
             }
 
             if (!resultClicked) {
               log.debug(
-                "No matching location found, going back without location",
+                "No location results found, going back without location",
               );
               const backBtnSelectors = [
                 'div[role="dialog"] [aria-label*="Back"]',
@@ -1524,32 +1556,57 @@ export async function scrapeGroupsMetadata(userId, groups) {
 
               const memberPatterns = [
                 {
-                  re: /([\d,.]+)\s*K\s*(?:members?|חברי[ם]?|חברות)/i,
+                  re: /([\d,.]+)\s*K\s*(?:members?|חבר[יו]?[ם]?[ת]?|חברות)/i,
                   mult: 1000,
                 },
                 {
-                  re: /([\d,.]+)\s*M\s*(?:members?|חברי[ם]?|חברות)/i,
+                  re: /([\d,.]+)\s*M\s*(?:members?|חבר[יו]?[ם]?[ת]?|חברות)/i,
                   mult: 1000000,
                 },
                 {
-                  re: /([\d,.]+)\s*(?:אלף)\s*(?:חברי[ם]?|חברות|members?)/i,
+                  re: /([\d,.]+)\s*(?:אלף)\s*(?:חבר[יו]?[ם]?[ת]?|חברות|members?)/i,
                   mult: 1000,
                 },
                 {
-                  re: /([\d,.]+)\s*(?:מיליון)\s*(?:חברי[ם]?|חברות|members?)/i,
+                  re: /([\d,.]+)\s*(?:מיליון)\s*(?:חבר[יו]?[ם]?[ת]?|חברות|members?)/i,
                   mult: 1000000,
                 },
-                { re: /([\d,.]+)\s*(?:members?|חברי[ם]?|חברות)/i, mult: 1 },
                 {
-                  re: /(?:members?|חברי[ם]?|חברות)\s*[·•:]\s*([\d,.]+)\s*K/i,
+                  re: /([\d,.]+)\s*(?:members?|חבר[יו]?[ם]?[ת]?|חברות)/i,
+                  mult: 1,
+                },
+                {
+                  re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s*[·•:]\s*([\d,.]+)\s*K/i,
                   mult: 1000,
                 },
                 {
-                  re: /(?:members?|חברי[ם]?|חברות)\s*[·•:]\s*([\d,.]+)\s*M/i,
+                  re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s*[·•:]\s*([\d,.]+)\s*M/i,
                   mult: 1000000,
                 },
                 {
-                  re: /(?:members?|חברי[ם]?|חברות)\s*[·•:]\s*([\d,.]+)/i,
+                  re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s*[·•:]\s*([\d,.]+)/i,
+                  mult: 1,
+                },
+                // Word-first patterns WITHOUT separator (e.g. "חבר 1", "members 5")
+                {
+                  re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s+([\d,.]+)\s*K/i,
+                  mult: 1000,
+                },
+                {
+                  re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s+([\d,.]+)\s*M/i,
+                  mult: 1000000,
+                },
+                {
+                  re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s+([\d,.]+)/i,
+                  mult: 1,
+                },
+                // Participant patterns (משתתפים/משתתף)
+                {
+                  re: /([\d,.]+)\s*(?:משתתפ[יו]?[ם]?[ת]?|משתתפות|participants?)/i,
+                  mult: 1,
+                },
+                {
+                  re: /(?:משתתפ[יו]?[ם]?[ת]?|משתתפות|participants?)\s*[·•:\s]\s*([\d,.]+)/i,
                   mult: 1,
                 },
               ];
@@ -1567,7 +1624,7 @@ export async function scrapeGroupsMetadata(userId, groups) {
 
               for (const el of allSpans) {
                 const text = el.textContent?.trim() || "";
-                if (text.length < 3 || text.length > 100) continue;
+                if (text.length < 1 || text.length > 100) continue;
 
                 if (!memberCount) {
                   for (const { re, mult } of memberPatterns) {
@@ -1604,22 +1661,39 @@ export async function scrapeGroupsMetadata(userId, groups) {
                 if (!memberCount) {
                   const bodyPatterns = [
                     {
-                      re: /([\d,.]+)\s*K\s*(?:members?|חברי[ם]?|חברות)/i,
+                      re: /([\d,.]+)\s*K\s*(?:members?|חבר[יו]?[ם]?[ת]?|חברות)/i,
                       mult: 1000,
                     },
                     {
-                      re: /([\d,.]+)\s*M\s*(?:members?|חברי[ם]?|חברות)/i,
+                      re: /([\d,.]+)\s*M\s*(?:members?|חבר[יו]?[ם]?[ת]?|חברות)/i,
                       mult: 1000000,
                     },
                     {
-                      re: /([\d,.]+)\s*(?:אלף)\s*(?:חברי[ם]?|חברות|members?)/i,
+                      re: /([\d,.]+)\s*(?:אלף)\s*(?:חבר[יו]?[ם]?[ת]?|חברות|members?)/i,
                       mult: 1000,
                     },
                     {
-                      re: /([\d,.]+)\s*(?:מיליון)\s*(?:חברי[ם]?|חברות|members?)/i,
+                      re: /([\d,.]+)\s*(?:מיליון)\s*(?:חבר[יו]?[ם]?[ת]?|חברות|members?)/i,
                       mult: 1000000,
                     },
-                    { re: /([\d,.]+)\s*(?:members?|חברי[ם]?|חברות)/i, mult: 1 },
+                    {
+                      re: /([\d,.]+)\s*(?:members?|חבר[יו]?[ם]?[ת]?|חברות)/i,
+                      mult: 1,
+                    },
+                    // Word-first patterns (e.g. "חבר 1", "members 5")
+                    {
+                      re: /(?:members?|חבר[יו]?[ם]?[ת]?|חברות)\s+([\d,.]+)/i,
+                      mult: 1,
+                    },
+                    // Participant patterns (משתתפים/משתתף)
+                    {
+                      re: /([\d,.]+)\s*(?:משתתפ[יו]?[ם]?[ת]?|participants?)/i,
+                      mult: 1,
+                    },
+                    {
+                      re: /(?:משתתפ[יו]?[ם]?[ת]?|participants?)\s*[·•:\s]\s*([\d,.]+)/i,
+                      mult: 1,
+                    },
                   ];
                   for (const { re, mult } of bodyPatterns) {
                     const m = bodyText.match(re);

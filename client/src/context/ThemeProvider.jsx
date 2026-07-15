@@ -4,7 +4,7 @@ const ThemeContext = createContext()
 
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(() => {
-    return localStorage.getItem('postit-theme') || 'dark'
+    return localStorage.getItem('postit-theme') || 'light'
   })
 
   useEffect(() => {

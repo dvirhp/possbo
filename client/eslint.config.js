@@ -35,6 +35,8 @@ export default [
         sessionStorage: "readonly",
         AbortController: "readonly",
         global: "readonly",
+        Event: "readonly",
+        ResizeObserver: "readonly",
       },
     },
     settings: {

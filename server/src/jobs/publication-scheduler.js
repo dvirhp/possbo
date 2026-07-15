@@ -1,9 +1,14 @@
 import { PrismaClient } from "@prisma/client";
+import path from "path";
+import { fileURLToPath } from "url";
 import {
   publishToGroup,
   publishToProfile,
 } from "../utils/facebook-automation.js";
 import { createLogger } from "../utils/logger.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 
 const prisma = new PrismaClient();
 const log = createLogger("pub-scheduler");
@@ -120,6 +125,9 @@ export async function processPublicationJobs() {
           user: true,
         },
       },
+      post: {
+        include: { media: true, user: true },
+      },
     },
     orderBy: { scheduledAt: "asc" },
     take: 20,
@@ -134,7 +142,7 @@ export async function processPublicationJobs() {
   // Group jobs by user for per-user queue management
   const jobsByUser = new Map();
   for (const job of pendingJobs) {
-    const userId = job.postGroup?.user?.id;
+    const userId = job.postGroup?.user?.id || job.post?.user?.id;
     if (!userId) continue; // Skip invalid jobs
     if (!jobsByUser.has(userId)) jobsByUser.set(userId, []);
     jobsByUser.get(userId).push(job);
@@ -236,11 +244,12 @@ export async function processPublicationJobs() {
         continue;
       }
 
-      // Get post data from postGroup relation
+      // Get post data from postGroup relation or direct post relation (profile jobs)
       const postGroup = job.postGroup;
-      const post = postGroup?.post;
+      const post = postGroup?.post || job.post;
       const group = postGroup?.group;
-      const user = postGroup?.user;
+      const user = postGroup?.user || job.post?.user;
+      const isProfileJob = job.targetType === "PROFILE" || !group;
 
       if (!post || !user) {
         await prisma.publicationJob.update({
@@ -263,8 +272,12 @@ export async function processPublicationJobs() {
           throw new Error("SESSION_EXPIRED");
         }
 
-        // Get image path if there's media
-        const imagePath = post.media?.[0]?.url || null;
+        // Get image paths — convert relative URLs to absolute filesystem paths
+        const mediaPaths = (post.media || [])
+          .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+          .map((m) => path.join(uploadsDir, path.basename(m.url)))
+          .filter((p) => p);
+        const imagePath = mediaPaths[0] || null;
 
         let result;
         if (isProfileJob) {
@@ -283,6 +296,7 @@ export async function processPublicationJobs() {
             userId: user.id,
             isAnonymous: post.isAnonymous,
             location: post.location,
+            images: mediaPaths,
           });
         }
 
@@ -482,6 +496,94 @@ export async function processPublicationJobs() {
   });
 
   return { processed: pendingJobs.length, succeeded, failed };
+}
+
+// ─── Recover Stale Jobs on Startup ────────────────────────
+
+/**
+ * Recover jobs that were in RUNNING state when the server crashed.
+ * Jobs locked for more than 10 minutes are considered stale.
+ * - If max retries exceeded → mark FAILED and create history entry
+ * - Otherwise → reset to PENDING for retry
+ */
+export async function recoverStaleJobs() {
+  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000); // 10 min ago
+
+  const staleJobs = await prisma.publicationJob.findMany({
+    where: {
+      status: "RUNNING",
+      lockedAt: { lt: staleThreshold },
+    },
+    include: {
+      postGroup: {
+        include: {
+          post: { select: { id: true, title: true } },
+          group: { select: { id: true, name: true } },
+          user: { select: { id: true } },
+        },
+      },
+    },
+  });
+
+  if (staleJobs.length === 0) return;
+
+  log.warn("Recovering stale RUNNING jobs from server crash", {
+    count: staleJobs.length,
+  });
+
+  for (const job of staleJobs) {
+    const userId = job.postGroup?.user?.id;
+    const newAttempts = job.attempts + 1;
+
+    if (newAttempts >= job.maxAttempts) {
+      // Max retries exceeded — mark as FAILED
+      await prisma.publicationJob.update({
+        where: { id: job.id },
+        data: {
+          status: "FAILED",
+          lastError: "השרת קרס במהלך הפרסום — נוצלו כל הניסיונות החוזרים",
+          completedAt: new Date(),
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+
+      // Create failure history entry
+      if (userId) {
+        await prisma.publicationHistory.create({
+          data: {
+            postId: job.postGroup.post?.id || null,
+            groupId: job.postGroup.group?.id || null,
+            userId,
+            postGroupId: job.postGroupId,
+            publicationJobId: job.id,
+            publishedAt: new Date(),
+            status: "FAILED",
+            errorMessage: "השרת קרס במהלך הפרסום — הפרסום לא הושלם",
+          },
+        });
+      }
+
+      log.info("Stale job marked as FAILED", { jobId: job.id });
+    } else {
+      // Reset to PENDING for retry
+      await prisma.publicationJob.update({
+        where: { id: job.id },
+        data: {
+          status: "PENDING",
+          attempts: newAttempts,
+          lastError: "השרת קרס — ממתין לניסיון חוזר",
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+
+      log.info("Stale job reset to PENDING", {
+        jobId: job.id,
+        attempt: newAttempts,
+      });
+    }
+  }
 }
 
 // ─── Schedule Job Generator ───────────────────────────────

@@ -311,3 +311,259 @@ html.a11y-big-cursor * {
 [data-theme="light"] .a11y-footer p {
   color: #9ca3af;
 }
+
+/* ─── Zoom-Responsive Overrides ─── */
+/* When font zoom is active, ensure layouts don't overflow on any screen size */
+
+/* Global: prevent text overflow everywhere when zoomed */
+html.a11y-font-large,
+html.a11y-font-largest {
+  overflow-x: hidden;
+}
+html.a11y-font-large *,
+html.a11y-font-largest * {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* ── Desktop with zoom: treat 1280px as if it were smaller ── */
+@media (max-width: 1440px) {
+  html.a11y-font-largest .overview-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+  html.a11y-font-largest .reports-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 1280px) {
+  html.a11y-font-large .overview-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+  html.a11y-font-large .reports-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+}
+
+/* ── Tablet range: grids should collapse sooner ── */
+@media (max-width: 1100px) {
+  html.a11y-font-largest .overview-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  html.a11y-font-largest .reports-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  html.a11y-font-largest .ov2-layout { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .dash-posts-table-header,
+  html.a11y-font-largest .dash-posts-table-row { display: flex !important; flex-wrap: wrap; gap: 8px; }
+  html.a11y-font-largest .tpl-list-header,
+  html.a11y-font-largest .tpl-list-row { display: flex !important; flex-wrap: wrap; gap: 8px; }
+}
+
+@media (max-width: 1024px) {
+  html.a11y-font-large .overview-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  html.a11y-font-large .reports-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  html.a11y-font-large .ov2-layout { grid-template-columns: 1fr !important; }
+  html.a11y-font-large .dash-posts-table-header,
+  html.a11y-font-large .dash-posts-table-row { display: flex !important; flex-wrap: wrap; gap: 8px; }
+  html.a11y-font-large .tpl-list-header,
+  html.a11y-font-large .tpl-list-row { display: flex !important; flex-wrap: wrap; gap: 8px; }
+}
+
+/* ── Medium screens (768-1024): reduce padding, simplify layouts ── */
+@media (max-width: 900px) {
+  html.a11y-font-large .cp-layout,
+  html.a11y-font-large .cp-wizard-layout {
+    padding: 14px 10px 70px !important;
+  }
+  html.a11y-font-large .dash-body { padding: 14px 12px !important; }
+  html.a11y-font-large .ov2-wrapper { padding: 12px !important; }
+  html.a11y-font-large .reports-body { padding: 14px 12px !important; }
+
+  html.a11y-font-largest .cp-layout,
+  html.a11y-font-largest .cp-wizard-layout {
+    padding: 12px 8px 70px !important;
+  }
+  html.a11y-font-largest .dash-body { padding: 12px 8px !important; }
+  html.a11y-font-largest .ov2-wrapper { padding: 10px !important; }
+  html.a11y-font-largest .reports-body { padding: 12px 8px !important; }
+}
+
+/* ── Mobile: reduce everything, force single-column where needed ── */
+@media (max-width: 768px) {
+  html.a11y-font-large .cp-layout,
+  html.a11y-font-large .cp-wizard-layout {
+    padding: 12px 8px 60px !important;
+  }
+  html.a11y-font-large .overview-kpis { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+  html.a11y-font-large .reports-kpis { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+  html.a11y-font-large .tpl-grid { grid-template-columns: 1fr !important; }
+  html.a11y-font-large .sc-page { padding: 12px 8px !important; }
+
+  html.a11y-font-largest .cp-layout,
+  html.a11y-font-largest .cp-wizard-layout {
+    padding: 10px 6px 60px !important;
+  }
+  html.a11y-font-largest .overview-kpis { grid-template-columns: 1fr !important; gap: 8px !important; }
+  html.a11y-font-largest .reports-kpis { grid-template-columns: 1fr !important; gap: 8px !important; }
+  html.a11y-font-largest .tpl-grid { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .sc-page { padding: 10px 6px !important; }
+  html.a11y-font-largest .dash-posts-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ── Small phone: extreme zoom safeguards ── */
+@media (max-width: 480px) {
+  html.a11y-font-large .overview-kpis { grid-template-columns: 1fr !important; }
+  html.a11y-font-large .reports-kpis { grid-template-columns: 1fr !important; }
+  html.a11y-font-large .dash-section-header { flex-wrap: wrap; gap: 8px; }
+  html.a11y-font-large .reports-topbar { flex-wrap: wrap; gap: 8px; }
+  html.a11y-font-large .cp-stepper { gap: 0; }
+  html.a11y-font-large .cp-step-label { font-size: 9px !important; }
+
+  html.a11y-font-largest .overview-kpis { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .reports-kpis { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .dash-section-header { flex-wrap: wrap; gap: 6px; }
+  html.a11y-font-largest .reports-topbar { flex-wrap: wrap; gap: 6px; }
+  html.a11y-font-largest .cp-stepper { gap: 0; }
+  html.a11y-font-largest .cp-step-label { font-size: 8px !important; }
+  html.a11y-font-largest .dash-posts-grid { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .sc-calendar-grid { font-size: 10px !important; }
+}
+
+/* ── Modals & Panels: always fit viewport when zoomed ── */
+html.a11y-font-large .tpl-detail-modal,
+html.a11y-font-large .reports-detail-modal,
+html.a11y-font-large .reports-popup,
+html.a11y-font-large .notif-panel,
+html.a11y-font-large .confirm-dialog,
+html.a11y-font-large .post-details-modal {
+  max-width: calc(100vw - 24px) !important;
+  max-height: calc(100vh - 24px) !important;
+  overflow: auto;
+}
+html.a11y-font-largest .tpl-detail-modal,
+html.a11y-font-largest .reports-detail-modal,
+html.a11y-font-largest .reports-popup,
+html.a11y-font-largest .notif-panel,
+html.a11y-font-largest .confirm-dialog,
+html.a11y-font-largest .post-details-modal {
+  max-width: calc(100vw - 16px) !important;
+  max-height: calc(100vh - 16px) !important;
+  overflow: auto;
+}
+
+/* ── Tables: horizontal scroll instead of overflow ── */
+html.a11y-font-large .pdt-table-wrapper,
+html.a11y-font-large .reports-table-container,
+html.a11y-font-largest .pdt-table-wrapper,
+html.a11y-font-largest .reports-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Flex containers: allow wrapping when zoomed ── */
+html.a11y-font-large .overview-header-actions,
+html.a11y-font-large .dash-section-actions,
+html.a11y-font-large .tpl-topbar-actions,
+html.a11y-font-large .reports-topbar-actions,
+html.a11y-font-largest .overview-header-actions,
+html.a11y-font-largest .dash-section-actions,
+html.a11y-font-largest .tpl-topbar-actions,
+html.a11y-font-largest .reports-topbar-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── Sidebar: shrink or hide sidebar collapsed at larger breakpoint ── */
+@media (max-width: 1024px) {
+  html.a11y-font-largest .sidebar {
+    display: none !important;
+  }
+  html.a11y-font-largest .app-main {
+    margin-right: 0 !important;
+    max-width: 100vw;
+  }
+}
+@media (max-width: 900px) {
+  html.a11y-font-large .sidebar {
+    display: none !important;
+  }
+  html.a11y-font-large .app-main {
+    margin-right: 0 !important;
+    max-width: 100vw;
+  }
+}
+
+/* ── Facebook Preview: scale down when zoomed on small screens ── */
+@media (max-width: 768px) {
+  html.a11y-font-large .fbp-phone-frame,
+  html.a11y-font-largest .fbp-phone-frame {
+    width: 100% !important;
+    max-width: 320px !important;
+    margin: 0 auto;
+  }
+}
+
+/* ── Calendar: ensure cells don't overflow ── */
+html.a11y-font-large .sc-calendar-grid,
+html.a11y-font-largest .sc-calendar-grid {
+  overflow-x: auto;
+}
+@media (max-width: 768px) {
+  html.a11y-font-large .sc-calendar-grid,
+  html.a11y-font-largest .sc-calendar-grid {
+    font-size: 11px;
+  }
+  html.a11y-font-largest .sc-calendar-grid {
+    font-size: 10px;
+  }
+}
+
+/* ── Group details & My Groups: force wrapping ── */
+html.a11y-font-large .mg-group-card,
+html.a11y-font-largest .mg-group-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Landing page: ensure hero text doesn't overflow ── */
+@media (max-width: 768px) {
+  html.a11y-font-large .landing-hero-title { font-size: 24px !important; }
+  html.a11y-font-large .landing-hero-subtitle { font-size: 14px !important; }
+  html.a11y-font-largest .landing-hero-title { font-size: 20px !important; }
+  html.a11y-font-largest .landing-hero-subtitle { font-size: 13px !important; }
+}
+
+/* ── Generic: prevent any container from causing horizontal scroll ── */
+html.a11y-font-large .app-main,
+html.a11y-font-largest .app-main {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* ── Buttons & inputs: ensure they don't clip text ── */
+html.a11y-font-large button,
+html.a11y-font-large input,
+html.a11y-font-large select,
+html.a11y-font-largest button,
+html.a11y-font-largest input,
+html.a11y-font-largest select {
+  min-height: 1.5em;
+  overflow: visible;
+}
+
+/* ── Topbar: prevent action buttons from overflowing ── */
+html.a11y-font-large .cp-topbar,
+html.a11y-font-largest .cp-topbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── Posts Data Table: cards view on mobile when zoomed ── */
+@media (max-width: 768px) {
+  html.a11y-font-large .pdt-table-header,
+  html.a11y-font-largest .pdt-table-header {
+    display: none !important;
+  }
+  html.a11y-font-large .pdt-table-row,
+  html.a11y-font-largest .pdt-table-row {
+    display: flex !important;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px !important;
+    border-bottom: 1px solid var(--border, #2a2f3a);
+  }
+}
+
+/* ── Notification settings panel ── */
+html.a11y-font-large .notif-settings-panel,
+html.a11y-font-largest .notif-settings-panel {
+  max-width: calc(100vw - 20px) !important;
+}

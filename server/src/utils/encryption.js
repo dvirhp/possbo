@@ -2,7 +2,6 @@ import crypto from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
-const TAG_LENGTH = 16;
 const SALT_LENGTH = 32;
 const KEY_LENGTH = 32;
 const ITERATIONS = 100000;
@@ -24,7 +23,13 @@ function getEncryptionKey() {
 export function encrypt(plaintext) {
   const masterKey = getEncryptionKey();
   const salt = crypto.randomBytes(SALT_LENGTH);
-  const key = crypto.pbkdf2Sync(masterKey, salt, ITERATIONS, KEY_LENGTH, "sha512");
+  const key = crypto.pbkdf2Sync(
+    masterKey,
+    salt,
+    ITERATIONS,
+    KEY_LENGTH,
+    "sha512",
+  );
   const iv = crypto.randomBytes(IV_LENGTH);
 
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
@@ -51,7 +56,13 @@ export function decrypt(encryptedData) {
   const salt = Buffer.from(saltHex, "hex");
   const iv = Buffer.from(ivHex, "hex");
   const tag = Buffer.from(tagHex, "hex");
-  const key = crypto.pbkdf2Sync(masterKey, salt, ITERATIONS, KEY_LENGTH, "sha512");
+  const key = crypto.pbkdf2Sync(
+    masterKey,
+    salt,
+    ITERATIONS,
+    KEY_LENGTH,
+    "sha512",
+  );
 
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(tag);

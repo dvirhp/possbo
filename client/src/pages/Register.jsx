@@ -23,7 +23,7 @@ export default function Register() {
   const [agreedToTerms, setAgreedToTerms] = useState(false)
 
   const navigate = useNavigate()
-  const { checkAuth, setUser, user, authChecked } = useAppData()
+  const { checkAuth, loginSuccess, user, authChecked } = useAppData()
 
   useEffect(() => {
     if (!authChecked) return
@@ -59,8 +59,8 @@ export default function Register() {
       if (res.data?.requiresVerification) {
         setVerificationStep(true)
       } else if (res.data?.user) {
-        setUser(res.data.user)
-        setTimeout(() => navigate('/dashboard'), 0)
+        loginSuccess(res.data.user)
+        navigate('/dashboard')
       }
     } catch (err) {
       if (!navigator.onLine || err.code === 'ERR_NETWORK') {
@@ -84,8 +84,8 @@ export default function Register() {
     try {
       const res = await authAPI.verifyEmail({ email, code: verificationCode })
       if (res.data?.user) {
-        setUser(res.data.user)
-        setTimeout(() => navigate('/dashboard'), 0)
+        loginSuccess(res.data.user)
+        navigate('/dashboard')
       } else {
         await checkAuth()
         navigate('/dashboard')
@@ -232,8 +232,8 @@ export default function Register() {
         <OAuthButtons
           mode="register"
           onSuccess={(result) => {
-            if (result.user) setUser(result.user)
-            setTimeout(() => navigate('/dashboard'), 0)
+            if (result.user) loginSuccess(result.user)
+            navigate('/dashboard')
           }}
           onError={(msg) => setError(msg)}
         />

@@ -414,6 +414,7 @@ model PublicationHistory {
   @@index([groupId])
   @@index([userId])
   @@index([publishedAt])
+  @@index([userId, status, publishedAt])
   @@map("publication_history")
 }
 
@@ -430,6 +431,7 @@ model PublicationMetric {
   publicationHistory PublicationHistory @relation(fields: [publicationHistoryId], references: [id], onDelete: Cascade)
 
   @@index([publicationHistoryId])
+  @@index([publicationHistoryId, collectedAt])
   @@map("publication_metrics")
 }
 

@@ -17,12 +17,58 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=Heebo:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <title>PostIt</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script>
+      (function(){
+        var t=localStorage.getItem('postit-theme')||'dark';
+        var bg=t==='light'?'#f8fafc':'#0a0a0a';
+        document.documentElement.style.background=bg;
+        document.write('<style>body{margin:0;background:'+bg+'}#root{background:'+bg+';min-height:100vh}#splash{background:'+bg+'}</style>');
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Inline splash – shown until React mounts, then overwritten -->
+      <div
+        id="splash"
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+        "
+      >
+        <img
+          src="/logo.svg"
+          alt=""
+          width="80"
+          height="80"
+          style="
+            animation: sp 1.6s ease-in-out infinite;
+            filter: drop-shadow(0 0 20px rgba(129, 140, 248, 0.5));
+          "
+        />
+      </div>
+      <style>
+        @keyframes sp {
+          0%,
+          100% {
+            transform: scale(0.85);
+            opacity: 0.6;
+          }
+          50% {
+            transform: scale(1.2);
+            opacity: 1;
+          }
+        }
+      </style>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

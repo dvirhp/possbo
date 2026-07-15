@@ -15,6 +15,7 @@ function buildFormData(data, images) {
 }
 
 export const groupsService = {
+  getDashboardData: () => api.get("/scheduler/dashboard-data"),
   getSavedGroups: () => api.get("/groups/saved"),
   scrapeMyGroups: () =>
     api.get("/groups/scrape-my-groups", { timeout: 120000 }),

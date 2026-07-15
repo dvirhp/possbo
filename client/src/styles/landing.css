@@ -39,7 +39,26 @@
 
 .nav-buttons {
   display: flex;
+  align-items: center;
   gap: 10px;
+}
+
+.nav-theme-toggle {
+  background: none;
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.nav-theme-toggle:hover {
+  background: var(--bg-elevated, rgba(255,255,255,0.05));
+  transform: scale(1.1);
 }
 
 .nav-btn {

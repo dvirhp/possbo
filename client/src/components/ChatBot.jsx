@@ -1,20 +1,24 @@
 import { useState, useRef, useEffect } from 'react'
-import { MessageCircle, X, Send, Bot, ChevronLeft } from 'lucide-react'
+import { X, Send, ChevronLeft } from 'lucide-react'
 import '../styles/chatbot.css'
 
 const AGENT_NAME = 'פוסטי'
 const SUPPORT_EMAIL = 'support@postit-app.co.il'
 
+function getTimeStr() {
+  return new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+}
+
 // Knowledge base - organized by topic with nested categories
 const TOPICS = [
   {
     id: 'welcome',
-    label: 'איך אפשר לעזור?',
+    label: 'בחרו נושא לעזרה:',
     options: [
-      { id: 'getting-started', label: '🚀 התחלה מהירה' },
-      { id: 'features', label: '✨ תכונות המערכת' },
-      { id: 'troubleshoot', label: '🔧 פתרון בעיות' },
-      { id: 'contact', label: '📧 צור קשר' },
+      { id: 'getting-started', label: '🚀 התחלה מהירה', desc: 'לומדים את הבסיס במהירות' },
+      { id: 'features', label: '✨ תכונות המערכת', desc: 'גלו את כל האפשרויות' },
+      { id: 'troubleshoot', label: '🔧 פתרון בעיות', desc: 'עזרה בבעיות נפוצות' },
+      { id: 'contact', label: '💬 צור קשר', desc: 'דברו עם התמיכה שלנו' },
     ]
   },
   {
@@ -268,6 +272,13 @@ export default function ChatBot() {
   const panelRef = useRef(null)
   const fabRef = useRef(null)
 
+  // Listen for external 'open-chatbot' event (from sidebar / nav)
+  useEffect(() => {
+    const handleOpen = () => setOpen(true)
+    window.addEventListener('open-chatbot', handleOpen)
+    return () => window.removeEventListener('open-chatbot', handleOpen)
+  }, [])
+
   // Persist state to sessionStorage
   useEffect(() => {
     try { sessionStorage.setItem('chatbot-open', open ? 'true' : 'false') } catch { /* ignore */ }
@@ -302,12 +313,22 @@ export default function ChatBot() {
 
   useEffect(() => {
     if (open && messages.length === 0) {
-      // Initial greeting
-      setMessages([{
-        type: 'bot',
-        text: `שלום! 👋 אני **${AGENT_NAME}**, הסוכן החכם שלך.\nאיך אפשר לעזור לך היום?`,
-        options: TOPICS.find(t => t.id === 'welcome')?.options || []
-      }])
+      // Initial greeting — split into greeting bubble + options card
+      const t = getTimeStr()
+      setMessages([
+        {
+          type: 'bot',
+          time: t,
+          text: `שלום! 👋 אני **${AGENT_NAME}**,\nהסוכן החכם שלך.\nאיך אפשר לעזור לך היום?`,
+          style: 'greeting'
+        },
+        {
+          type: 'bot',
+          time: t,
+          text: `בחרו נושא לעזרה:`,
+          options: TOPICS.find(t => t.id === 'welcome')?.options || []
+        }
+      ])
       setCurrentTopic('welcome')
     }
   }, [open])
@@ -327,7 +348,7 @@ export default function ChatBot() {
 
   const handleOptionClick = (option) => {
     // Add user message
-    setMessages(prev => [...prev, { type: 'user', text: option.label }])
+    setMessages(prev => [...prev, { type: 'user', text: option.label, time: getTimeStr() }])
 
     // Special action: open email
     if (option.id === 'send-email') {
@@ -335,6 +356,7 @@ export default function ChatBot() {
       setTimeout(() => {
         setMessages(prev => [...prev, {
           type: 'bot',
+          time: getTimeStr(),
           text: `נפתח חלון מייל חדש! 📧\nנחזור אליך בהקדם האפשרי.`,
           options: [{ id: 'welcome', label: '🔙 חזרה לתפריט' }]
         }])
@@ -353,12 +375,14 @@ export default function ChatBot() {
       if (topic.answer) {
         setMessages(prev => [...prev, {
           type: 'bot',
+          time: getTimeStr(),
           text: topic.answer,
           options: topic.options || []
         }])
       } else if (topic.options) {
         setMessages(prev => [...prev, {
           type: 'bot',
+          time: getTimeStr(),
           text: `${topic.label} — בחר נושא:`,
           options: topic.options
         }])
@@ -367,11 +391,21 @@ export default function ChatBot() {
   }
 
   const handleReset = () => {
-    setMessages([{
-      type: 'bot',
-      text: `שלום שוב! 👋 איך אפשר לעזור?`,
-      options: TOPICS.find(t => t.id === 'welcome')?.options || []
-    }])
+    const t = getTimeStr()
+    setMessages([
+      {
+        type: 'bot',
+        time: t,
+        text: `שלום! 👋 איך אפשר לעזור?`,
+        style: 'greeting'
+      },
+      {
+        type: 'bot',
+        time: t,
+        text: `בחרו נושא לעזרה:`,
+        options: TOPICS.find(t => t.id === 'welcome')?.options || []
+      }
+    ])
     setCurrentTopic('welcome')
   }
 
@@ -379,7 +413,7 @@ export default function ChatBot() {
     <>
       {/* Floating button — always visible */}
       <button ref={fabRef} className="chatbot-fab" onClick={() => setOpen(!open)} title="צ'אט עזרה">
-        <MessageCircle size={22} />
+        <img src="/bot-avatar.svg" alt="צ'אט" className="chatbot-fab-img" />
         {!open && <span className="chatbot-fab-pulse" />}
       </button>
 
@@ -389,7 +423,7 @@ export default function ChatBot() {
           <div className="chatbot-header">
             <div className="chatbot-header-info">
               <div className="chatbot-avatar">
-                <Bot size={20} />
+                <img src="/bot-avatar.svg" alt="פוסטי" />
               </div>
               <div className="chatbot-header-text">
                 <span className="chatbot-name">{AGENT_NAME}</span>
@@ -403,10 +437,10 @@ export default function ChatBot() {
 
           <div className="chatbot-messages">
             {messages.map((msg, i) => (
-              <div key={i} className={`chatbot-msg chatbot-msg-${msg.type}`}>
+              <div key={i} className={`chatbot-msg chatbot-msg-${msg.type} ${msg.style === 'greeting' ? 'chatbot-msg-greeting' : ''}`}>
                 {msg.type === 'bot' && (
                   <div className="chatbot-msg-avatar">
-                    <Bot size={14} />
+                    <img src="/bot-avatar.svg" alt="" />
                   </div>
                 )}
                 <div className="chatbot-msg-bubble">
@@ -421,12 +455,16 @@ export default function ChatBot() {
                           className="chatbot-option-btn"
                           onClick={() => handleOptionClick(opt)}
                         >
-                          {opt.label}
+                          <div className="chatbot-option-content">
+                            <span className="chatbot-option-label">{opt.label}</span>
+                            {opt.desc && <span className="chatbot-option-desc">{opt.desc}</span>}
+                          </div>
                           <ChevronLeft size={14} />
                         </button>
                       ))}
                     </div>
                   )}
+                  {msg.time && <span className="chatbot-msg-time">{msg.time}</span>}
                 </div>
               </div>
             ))}
@@ -434,6 +472,7 @@ export default function ChatBot() {
           </div>
 
           <div className="chatbot-footer">
+            <span className="chatbot-footer-text">אני כאן אם תצטרכו אותי! 💜</span>
             <button className="chatbot-reset-btn" onClick={handleReset}>
               🔄 התחל מחדש
             </button>
@@ -445,7 +484,13 @@ export default function ChatBot() {
 }
 
 function formatBotText(text) {
-  return text
+  // Escape HTML entities first to prevent XSS
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+  return escaped
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br/>')
 }

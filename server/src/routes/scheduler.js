@@ -2,24 +2,27 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import { asyncHandler } from "../utils/async-handler.js";
-import { imageFileFilter, MAX_FILE_SIZE } from "../utils/security.js";
+import {
+  imageFileFilter,
+  MAX_FILE_SIZE,
+  safeFilename,
+} from "../utils/security.js";
+import { requireAuth } from "../utils/auth-middleware.js";
 import {
   refreshSinglePublicationMetrics,
   scrapeUserPublicationMetrics,
   savePublicationMetrics,
 } from "../utils/metrics-scraper.js";
+import { triggerImmediateProcess } from "../jobs/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 
 const storage = multer.diskStorage({
   destination: uploadsDir,
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || ".png";
-    cb(null, Date.now() + "-" + Math.round(Math.random() * 1e6) + ext);
-  },
+  filename: (_req, file, cb) => cb(null, safeFilename(file.mimetype)),
 });
 const upload = multer({
   storage,
@@ -28,13 +31,6 @@ const upload = multer({
 });
 
 const router = express.Router();
-const prisma = new PrismaClient();
-
-// Auth middleware
-function requireAuth(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: "Not authenticated" });
-  next();
-}
 
 // ─── Schedule a post for publishing ──────────────────────
 
@@ -151,6 +147,337 @@ router.post(
   }),
 );
 
+// ─── Combined dashboard data (single request for all dashboard data) ─────
+const dashboardCache = new Map(); // userId → { data, ts }
+const CACHE_TTL = 30_000; // 30 seconds
+
+router.get(
+  "/dashboard-data",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+
+    // Serve from cache if fresh
+    const cached = dashboardCache.get(userId);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      return res.json(cached.data);
+    }
+    // All data in one request — parallel queries for speed
+    const [jobs, history, publishedCount, campaigns, fbGroups, templates] =
+      await Promise.all([
+        // Jobs
+        prisma.publicationJob.findMany({
+          where: {
+            postGroup: { userId },
+            status: { in: ["PENDING", "RUNNING"] },
+          },
+          select: {
+            id: true,
+            scheduledAt: true,
+            status: true,
+            attempts: true,
+            maxAttempts: true,
+            lastError: true,
+            targetType: true,
+            postGroup: {
+              select: {
+                id: true,
+                post: { select: { id: true, title: true, content: true } },
+                group: { select: { id: true, name: true } },
+              },
+            },
+          },
+          orderBy: { scheduledAt: "asc" },
+        }),
+        // History
+        prisma.publicationHistory.findMany({
+          where: { userId },
+          select: {
+            id: true,
+            postId: true,
+            groupId: true,
+            publishedAt: true,
+            externalPostUrl: true,
+            screenshotUrl: true,
+            status: true,
+            errorMessage: true,
+            targetType: true,
+          },
+          orderBy: { publishedAt: "desc" },
+          take: 20,
+        }),
+        // Published count
+        prisma.publicationHistory.count({
+          where: { userId, status: "SUCCESS" },
+        }),
+        // Campaigns (recent posts — dashboard shows limited set)
+        prisma.post.findMany({
+          where: { userId },
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            templateName: true,
+            imageUrl: true,
+            campaignType: true,
+            status: true,
+            isPaused: true,
+            isAnonymous: true,
+            location: true,
+            recurringDays: true,
+            recurringTime: true,
+            recurringTimes: true,
+            recurringStart: true,
+            recurringEnd: true,
+            dayTimes: true,
+            createdAt: true,
+            updatedAt: true,
+            media: {
+              orderBy: { orderIndex: "asc" },
+              select: { url: true },
+            },
+            postGroups: {
+              select: {
+                group: {
+                  select: {
+                    id: true,
+                    name: true,
+                    memberCount: true,
+                    pictureUrl: true,
+                  },
+                },
+                schedules: {
+                  where: { isActive: true },
+                  take: 1,
+                  select: { nextRunAt: true },
+                },
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 30,
+        }),
+        // Saved Facebook groups
+        prisma.facebookGroup.findMany({
+          where: { userId },
+          select: {
+            groupId: true,
+            groupName: true,
+            groupImage: true,
+            memberCount: true,
+            privacyType: true,
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+        // Templates
+        prisma.postTemplate.findMany({
+          where: { userId },
+          orderBy: { updatedAt: "desc" },
+        }),
+      ]);
+
+    // Stats — scheduledCount from jobs array, groupsCount from fbGroups
+    const stats = {
+      scheduledCount: jobs.length,
+      groupsCount: fbGroups.length,
+      publishedCount,
+    };
+
+    // Format history — enrich with campaign/group data we already have
+    const campaignMap = new Map();
+    const groupMap = new Map();
+    campaigns.forEach((c) => {
+      campaignMap.set(c.id, c);
+      c.postGroups.forEach((pg) => {
+        if (pg.group) groupMap.set(pg.group.id, pg.group);
+      });
+    });
+    fbGroups.forEach((g) => {
+      if (!groupMap.has(g.groupId))
+        groupMap.set(g.groupId, {
+          id: g.groupId,
+          name: g.groupName,
+          memberCount: g.memberCount,
+        });
+    });
+
+    const cleanedHistory = history.map((h) => {
+      const post = campaignMap.get(h.postId);
+      const group = groupMap.get(h.groupId);
+      return {
+        ...h,
+        postUrl: h.externalPostUrl || null,
+        groupMemberCount: group?.memberCount || 0,
+        post: post
+          ? {
+              id: post.id,
+              title: post.title,
+              content: post.content,
+              images: post.media?.map((m) => m.url) || [],
+            }
+          : null,
+        group: group
+          ? { id: group.id, name: group.name, memberCount: group.memberCount }
+          : null,
+        hasScreenshot: !!h.screenshotUrl && h.screenshotUrl !== "stored",
+      };
+    });
+
+    // Format campaigns
+    const formattedCampaigns = campaigns.map((post) => {
+      const groupNames = post.postGroups.map((pg) => pg.group?.name || "");
+      const hasActiveSchedule = post.postGroups.some(
+        (pg) => pg.schedules.length > 0,
+      );
+
+      let displayStatus;
+      if (post.isPaused) displayStatus = "paused";
+      else if (post.status === "DRAFT") displayStatus = "draft";
+      else if (post.campaignType === "BOTH") displayStatus = "both";
+      else if (post.campaignType === "RECURRING") displayStatus = "recurring";
+      else if (hasActiveSchedule) displayStatus = "scheduled";
+      else displayStatus = "active";
+
+      return {
+        id: post.id,
+        title: post.title,
+        content: post.content,
+        templateName: post.templateName || null,
+        imageUrl: post.imageUrl || post.media?.[0]?.url || null,
+        imageCount: post.media?.length || (post.imageUrl ? 1 : 0),
+        images:
+          post.media?.map((m) => m.url) ||
+          (post.imageUrl ? [post.imageUrl] : []),
+        campaignType: post.campaignType,
+        status: displayStatus,
+        isPaused: post.isPaused,
+        isAnonymous: post.isAnonymous,
+        location: post.location,
+        recurringDays: post.recurringDays,
+        recurringTime: post.recurringTime,
+        groupCount: post.postGroups.length,
+        groupNames,
+        groups: post.postGroups.map((pg) => ({
+          id: pg.group?.id,
+          name: pg.group?.name,
+          memberCount: pg.group?.memberCount || 0,
+          image: pg.group?.pictureUrl || null,
+        })),
+        totalExposure: post.postGroups.reduce(
+          (sum, pg) => sum + (pg.group?.memberCount || 0),
+          0,
+        ),
+        publishedCount: 0,
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+        scheduledAt:
+          post.postGroups
+            .map((pg) => pg.schedules?.[0]?.nextRunAt)
+            .filter(Boolean)
+            .sort((a, b) => new Date(a) - new Date(b))[0] || null,
+        postUrl: null,
+      };
+    });
+
+    // Derive recentCampaigns from campaigns (no extra queries)
+    const mapRecentPost = (p) => ({
+      id: p.id,
+      title: p.title,
+      content: p.content,
+      imageUrl: p.media?.[0]?.url || p.imageUrl || null,
+      images: p.media?.map((m) => m.url) || [],
+      status: p.status,
+      isAnonymous: p.isAnonymous,
+      location: p.location,
+      groups:
+        p.postGroups
+          ?.map((pg) => ({
+            id: pg.group?.id,
+            name: pg.group?.name,
+            url: pg.group?.url,
+            pictureUrl: pg.group?.pictureUrl,
+          }))
+          .filter((g) => g.name) || [],
+      groupNames:
+        p.postGroups?.map((pg) => pg.group?.name).filter(Boolean) || [],
+      groupCount: p.postGroups?.length || 0,
+      campaignType: p.campaignType,
+      recurringDays: p.recurringDays || [],
+      recurringTime: p.recurringTime,
+      recurringTimes: p.recurringTimes || [],
+      dayTimes: p.dayTimes || null,
+      recurringStart: p.recurringStart,
+      recurringEnd: p.recurringEnd,
+      scheduleMode:
+        p.campaignType === "BOTH"
+          ? "both"
+          : p.campaignType === "RECURRING"
+            ? "recurring"
+            : p.postGroups?.some((pg) => pg.schedules?.length > 0)
+              ? "scheduled"
+              : "now",
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    });
+    const drafts = campaigns.filter((p) => p.status === "DRAFT").slice(0, 10);
+    const recentActive = campaigns
+      .filter((p) => p.status === "ACTIVE" || p.status === "ARCHIVED")
+      .slice(0, 10);
+
+    // Derive group post counts from history we already have
+    const groupPostCounts = {};
+    for (const h of history) {
+      if (h.status === "SUCCESS" && h.group?.id) {
+        groupPostCounts[h.group.id] = (groupPostCounts[h.group.id] || 0) + 1;
+      }
+    }
+
+    // Format saved groups (use fbGroups memberCount for template reach too)
+    const fbMemberMap = {};
+    const formattedGroups = fbGroups.map((g) => {
+      fbMemberMap[g.groupId] = g.memberCount || 0;
+      return {
+        id: g.groupId,
+        name: g.groupName,
+        image: g.groupImage,
+        url: `https://www.facebook.com/groups/${g.groupId}`,
+        memberCount: g.memberCount || null,
+        privacyType: g.privacyType || null,
+        postsCount: groupPostCounts[g.groupId] || 0,
+        scheduledCount: 0,
+      };
+    });
+
+    // Format templates with reach (use fbGroups memberCount)
+    const enrichedTemplates = templates.map((t) => ({
+      ...t,
+      totalReach: (t.groupIds || []).reduce(
+        (sum, id) => sum + (fbMemberMap[id] || 0),
+        0,
+      ),
+    }));
+
+    const responseData = {
+      success: true,
+      jobs,
+      history: cleanedHistory,
+      stats,
+      campaigns: formattedCampaigns,
+      recentCampaigns: {
+        drafts: drafts.map(mapRecentPost),
+        history: recentActive.map(mapRecentPost),
+      },
+      groups: formattedGroups,
+      templates: enrichedTemplates,
+    };
+
+    // Cache for subsequent requests
+    dashboardCache.set(userId, { data: responseData, ts: Date.now() });
+
+    res.json(responseData);
+  }),
+);
+
 // ─── Get user's scheduled jobs ───────────────────────────
 
 router.get(
@@ -162,9 +489,17 @@ router.get(
         postGroup: { userId: req.user.id },
         status: { in: ["PENDING", "RUNNING"] },
       },
-      include: {
+      select: {
+        id: true,
+        scheduledAt: true,
+        status: true,
+        attempts: true,
+        maxAttempts: true,
+        lastError: true,
+        targetType: true,
         postGroup: {
-          include: {
+          select: {
+            id: true,
             post: { select: { id: true, title: true, content: true } },
             group: { select: { id: true, name: true } },
           },
@@ -185,7 +520,16 @@ router.get(
   asyncHandler(async (req, res) => {
     const history = await prisma.publicationHistory.findMany({
       where: { userId: req.user.id },
-      include: {
+      select: {
+        id: true,
+        postId: true,
+        groupId: true,
+        publishedAt: true,
+        externalPostUrl: true,
+        screenshotUrl: true,
+        status: true,
+        errorMessage: true,
+        targetType: true,
         post: {
           select: {
             id: true,
@@ -194,7 +538,7 @@ router.get(
             media: { orderBy: { orderIndex: "asc" }, select: { url: true } },
           },
         },
-        group: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true, memberCount: true } },
       },
       orderBy: { publishedAt: "desc" },
       take: 50,
@@ -204,6 +548,7 @@ router.get(
     const cleaned = history.map((h) => ({
       ...h,
       postUrl: h.externalPostUrl || null,
+      groupMemberCount: h.group?.memberCount || 0,
       post: h.post
         ? {
             ...h.post,
@@ -395,7 +740,11 @@ router.post(
     let scheduledAt = null;
     let recurringScheduledAt = null;
 
-    if ((scheduleMode === "scheduled" || scheduleMode === "both") && scheduleDate && scheduleTime) {
+    if (
+      (scheduleMode === "scheduled" || scheduleMode === "both") &&
+      scheduleDate &&
+      scheduleTime
+    ) {
       scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00`);
       if (scheduledAt <= new Date()) {
         return res.status(400).json({ error: "תאריך התזמון חייב להיות בעתיד" });
@@ -437,7 +786,9 @@ router.post(
             }
           }
           recurringScheduledAt = new Date(now);
-          recurringScheduledAt.setDate(recurringScheduledAt.getDate() + daysUntil);
+          recurringScheduledAt.setDate(
+            recurringScheduledAt.getDate() + daysUntil,
+          );
           recurringScheduledAt.setHours(hours, minutes, 0, 0);
         }
       } else {
@@ -458,7 +809,9 @@ router.post(
           }
         }
         recurringScheduledAt = new Date(now);
-        recurringScheduledAt.setDate(recurringScheduledAt.getDate() + daysUntil);
+        recurringScheduledAt.setDate(
+          recurringScheduledAt.getDate() + daysUntil,
+        );
         recurringScheduledAt.setHours(hours, minutes, 0, 0);
       }
 
@@ -474,7 +827,10 @@ router.post(
         userId,
         title: title || null,
         content: text,
-        status: (scheduledAt || recurringScheduledAt) ? "ACTIVE" : "DRAFT",
+        status:
+          scheduledAt || recurringScheduledAt || scheduleMode === "now"
+            ? "ACTIVE"
+            : "DRAFT",
         isAnonymous: anonymous || false,
         location: location || null,
         publishToProfile: publishToProfile || false,
@@ -513,9 +869,15 @@ router.post(
     // Create PostGroup + Schedule + Job for each group
     const results = [];
     for (const groupId of groupIds || []) {
-      // Find the Group record (groupId here is the facebook group slug)
+      // Find the Group record (groupId here is the facebook group slug/id)
       let group = await prisma.group.findFirst({
-        where: { url: { contains: groupId } },
+        where: {
+          OR: [
+            { externalGroupId: groupId },
+            { url: `https://www.facebook.com/groups/${groupId}` },
+            { url: `https://www.facebook.com/groups/${groupId}/` },
+          ],
+        },
       });
       if (!group) {
         // Look up memberCount/privacyType from FacebookGroup
@@ -527,6 +889,7 @@ router.post(
           data: {
             name: fbGroup?.groupName || groupId,
             url: `https://www.facebook.com/groups/${groupId}`,
+            externalGroupId: groupId,
             memberCount: fbGroup?.memberCount || null,
             privacyType: fbGroup?.privacyType || null,
           },
@@ -557,7 +920,15 @@ router.post(
       });
 
       // Create schedule
-      if (scheduleMode === "both") {
+      if (scheduleMode === "now") {
+        // Immediate publish — create job scheduled for now
+        await prisma.publicationJob.create({
+          data: {
+            postGroupId: postGroup.id,
+            scheduledAt: new Date(),
+          },
+        });
+      } else if (scheduleMode === "both") {
         // Create ONE-TIME schedule + job
         if (scheduledAt) {
           await prisma.postGroupSchedule.create({
@@ -621,7 +992,15 @@ router.post(
 
     // Create a profile publication job if publishToProfile is true
     if (publishToProfile) {
-      if (scheduleMode === "both") {
+      if (scheduleMode === "now") {
+        await prisma.publicationJob.create({
+          data: {
+            postId: post.id,
+            scheduledAt: new Date(),
+            targetType: "PROFILE",
+          },
+        });
+      } else if (scheduleMode === "both") {
         // One-time profile job
         if (scheduledAt) {
           await prisma.publicationJob.create({
@@ -656,13 +1035,21 @@ router.post(
     res.json({
       success: true,
       postId: post.id,
-      message: scheduleMode === "both"
-        ? `הקמפיין תוזמן: חד-פעמי ב-${scheduledAt?.toLocaleString("he-IL")} + חוזר`
-        : scheduledAt
-          ? `הקמפיין תוזמן ל-${scheduledAt.toLocaleString("he-IL")}`
-          : "הקמפיין נוצר כטיוטה",
+      message:
+        scheduleMode === "now"
+          ? "הפרסום מתבצע כעת..."
+          : scheduleMode === "both"
+            ? `הקמפיין תוזמן: חד-פעמי ב-${scheduledAt?.toLocaleString("he-IL")} + חוזר`
+            : scheduledAt
+              ? `הקמפיין תוזמן ל-${scheduledAt.toLocaleString("he-IL")}`
+              : "הקמפיין נוצר כטיוטה",
       scheduled: results.length,
     });
+
+    // Trigger immediate processing for "now" mode
+    if (scheduleMode === "now") {
+      triggerImmediateProcess();
+    }
   }),
 );
 
@@ -674,41 +1061,38 @@ router.get(
   asyncHandler(async (req, res) => {
     const userId = req.user.id;
 
-    // Get drafts (incomplete campaigns)
-    const drafts = await prisma.post.findMany({
-      where: { userId, status: "DRAFT" },
-      include: {
-        media: { orderBy: { orderIndex: "asc" } },
-        postGroups: {
-          include: {
-            group: {
-              select: { id: true, name: true, url: true, pictureUrl: true },
-            },
-            schedules: { where: { isActive: true }, take: 1 },
+    const postInclude = {
+      media: {
+        orderBy: { orderIndex: "asc" },
+        select: { url: true, orderIndex: true },
+      },
+      postGroups: {
+        include: {
+          group: {
+            select: { id: true, name: true, url: true, pictureUrl: true },
           },
+          schedules: { where: { isActive: true }, take: 1 },
         },
       },
-      orderBy: { updatedAt: "desc" },
-      take: 10,
-    });
+    };
 
-    // Get last 10 completed/active campaigns for "restore from history"
-    const history = await prisma.post.findMany({
-      where: { userId, status: { in: ["ACTIVE", "ARCHIVED"] } },
-      include: {
-        media: { orderBy: { orderIndex: "asc" } },
-        postGroups: {
-          include: {
-            group: {
-              select: { id: true, name: true, url: true, pictureUrl: true },
-            },
-            schedules: { where: { isActive: true }, take: 1 },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    });
+    // Run both queries in parallel — they are independent
+    const [drafts, history] = await Promise.all([
+      // Get drafts (incomplete campaigns)
+      prisma.post.findMany({
+        where: { userId, status: "DRAFT" },
+        include: postInclude,
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+      }),
+      // Get last 10 completed/active campaigns for "restore from history"
+      prisma.post.findMany({
+        where: { userId, status: { in: ["ACTIVE", "ARCHIVED"] } },
+        include: postInclude,
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+    ]);
 
     const mapPost = (p) => ({
       id: p.id,
@@ -745,10 +1129,10 @@ router.get(
         p.campaignType === "BOTH"
           ? "both"
           : p.campaignType === "RECURRING"
-          ? "recurring"
-          : p.postGroups?.some((pg) => pg.schedules?.length > 0)
-            ? "scheduled"
-            : "now",
+            ? "recurring"
+            : p.postGroups?.some((pg) => pg.schedules?.length > 0)
+              ? "scheduled"
+              : "now",
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     });
@@ -771,10 +1155,27 @@ router.get(
 
     const posts = await prisma.post.findMany({
       where: { userId },
-      include: {
-        media: { orderBy: { orderIndex: "asc" } },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        templateName: true,
+        imageUrl: true,
+        campaignType: true,
+        status: true,
+        isPaused: true,
+        isAnonymous: true,
+        location: true,
+        recurringDays: true,
+        recurringTime: true,
+        createdAt: true,
+        updatedAt: true,
+        media: {
+          orderBy: { orderIndex: "asc" },
+          select: { url: true },
+        },
         postGroups: {
-          include: {
+          select: {
             group: {
               select: {
                 id: true,
@@ -1307,7 +1708,13 @@ router.get(
     if (from) dateFilter.gte = new Date(from);
     if (to) dateFilter.lte = new Date(to);
 
-    const [scheduledCount, groupsCount, publishedCount, history] =
+    const pubWhere = {
+      userId,
+      status: "SUCCESS",
+      ...(from || to ? { publishedAt: dateFilter } : {}),
+    };
+
+    const [scheduledCount, groupsCount, publishedCount, groupAgg, hourlyRaw] =
       await Promise.all([
         prisma.publicationJob.count({
           where: {
@@ -1316,62 +1723,76 @@ router.get(
           },
         }),
         prisma.facebookGroup.count({ where: { userId } }),
-        prisma.publicationHistory.count({
-          where: {
-            userId,
-            status: "SUCCESS",
-            ...(from || to ? { publishedAt: dateFilter } : {}),
-          },
+        prisma.publicationHistory.count({ where: pubWhere }),
+        // Group-level aggregation via Prisma groupBy
+        prisma.publicationHistory.groupBy({
+          by: ["groupId"],
+          where: pubWhere,
+          _count: { id: true },
         }),
-        prisma.publicationHistory.findMany({
-          where: {
-            userId,
-            status: "SUCCESS",
-            ...(from || to ? { publishedAt: dateFilter } : {}),
-          },
-          include: {
-            group: { select: { id: true, name: true } },
-            metrics: {
-              orderBy: { collectedAt: "desc" },
-              take: 1,
-              select: { likesCount: true, commentsCount: true },
-            },
-          },
-          orderBy: { publishedAt: "desc" },
-        }),
+        // Hourly aggregation via raw SQL for engagement stats
+        (() => {
+          const params = [userId];
+          let dateCondition = "";
+          if (from) {
+            params.push(new Date(from));
+            dateCondition += ` AND ph.published_at >= $${params.length}`;
+          }
+          if (to) {
+            params.push(new Date(to));
+            dateCondition += ` AND ph.published_at <= $${params.length}`;
+          }
+          return prisma.$queryRawUnsafe(
+            `SELECT
+              EXTRACT(HOUR FROM ph.published_at)::int AS hour,
+              COUNT(ph.id)::int AS posts,
+              COALESCE(SUM(lm.likes_count), 0)::int AS likes,
+              COALESCE(SUM(lm.comments_count), 0)::int AS comments
+            FROM publication_history ph
+            LEFT JOIN LATERAL (
+              SELECT likes_count, comments_count
+              FROM publication_metrics pm
+              WHERE pm.publication_history_id = ph.id
+              ORDER BY pm.collected_at DESC
+              LIMIT 1
+            ) lm ON true
+            WHERE ph.user_id = $1
+              AND ph.status = 'SUCCESS'${dateCondition}
+            GROUP BY EXTRACT(HOUR FROM ph.published_at)
+            ORDER BY hour`,
+            ...params,
+          );
+        })(),
       ]);
 
-    // Group publications by group for statistics
-    const groupStats = {};
-    for (const item of history) {
-      const gName = item.group?.name || "לא ידוע";
-      const gId = item.groupId;
-      if (!groupStats[gId]) {
-        groupStats[gId] = { id: gId, name: gName, count: 0 };
-      }
-      groupStats[gId].count++;
-    }
+    // Resolve group names for group stats (single query for just the names)
+    const groupIds = groupAgg.map((g) => g.groupId).filter(Boolean);
+    const groupNames =
+      groupIds.length > 0
+        ? await prisma.group.findMany({
+            where: { id: { in: groupIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+    const nameMap = Object.fromEntries(groupNames.map((g) => [g.id, g.name]));
 
-    // Hourly engagement aggregation for best posting times
-    const hourlyEngagement = Array.from({ length: 24 }, (_, h) => ({
-      hour: h,
-      label: `${String(h).padStart(2, "0")}:00`,
-      likes: 0,
-      comments: 0,
-      posts: 0,
-    }));
-    for (const item of history) {
-      if (!item.publishedAt) continue;
-      const h = new Date(item.publishedAt).getHours();
-      const m = item.metrics?.[0];
-      hourlyEngagement[h].posts += 1;
-      hourlyEngagement[h].likes += m?.likesCount || 0;
-      hourlyEngagement[h].comments += m?.commentsCount || 0;
-    }
-    const hourlyData = hourlyEngagement
+    const groupStats = groupAgg
+      .map((g) => ({
+        id: g.groupId,
+        name: nameMap[g.groupId] || "לא ידוע",
+        count: g._count.id,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    // Format hourly data
+    const hourlyData = hourlyRaw
       .filter((h) => h.posts > 0)
       .map((h) => ({
-        ...h,
+        hour: h.hour,
+        label: `${String(h.hour).padStart(2, "0")}:00`,
+        likes: h.likes,
+        comments: h.comments,
+        posts: h.posts,
         avgLikes: Math.round(h.likes / h.posts),
         avgComments: Math.round(h.comments / h.posts),
       }));
@@ -1382,7 +1803,7 @@ router.get(
         scheduledCount,
         groupsCount,
         publishedCount,
-        groupStats: Object.values(groupStats).sort((a, b) => b.count - a.count),
+        groupStats,
         hourlyEngagement: hourlyData,
       },
     });
@@ -1756,6 +2177,7 @@ router.get(
           id: pub.id,
           postId: pub.post?.id,
           title: pub.post?.title || pub.post?.content?.slice(0, 60) || "",
+          content: pub.post?.content || "",
           groupName: pub.group?.name || "",
           publishedAt: pub.publishedAt,
           externalPostUrl: pub.externalPostUrl,

@@ -1,15 +1,11 @@
 import express from "express";
 import bcrypt from "bcrypt";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import { OAuth2Client } from "google-auth-library";
-import {
-  generateAccessToken,
-  generateRefreshToken,
-} from "../utils/jwt.js";
+import { generateAccessToken, generateRefreshToken } from "../utils/jwt.js";
 import { createLogger } from "../utils/logger.js";
 
 const router = express.Router();
-const prisma = new PrismaClient();
 const log = createLogger("oauth");
 const SALT_ROUNDS = 12;
 
@@ -40,7 +36,12 @@ async function issueTokens(res, user) {
   return {
     success: true,
     accessToken,
-    user: { id: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+    },
   };
 }
 
@@ -72,7 +73,9 @@ router.post("/google", async (req, res) => {
 
     if (mode === "register") {
       if (user && user.googleId) {
-        return res.status(409).json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+        return res
+          .status(409)
+          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
       }
       if (user && !user.googleId) {
         // Link Google to existing account
@@ -89,7 +92,9 @@ router.post("/google", async (req, res) => {
     } else {
       // Login
       if (!user) {
-        return res.status(401).json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+        return res
+          .status(401)
+          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
       }
       if (!user.googleId) {
         // Auto-link on login if email matches
@@ -118,7 +123,7 @@ router.post("/facebook", async (req, res) => {
 
     // Verify token and get user info from Facebook
     const fbRes = await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${fbToken}`
+      `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${fbToken}`,
     );
     const fbData = await fbRes.json();
 
@@ -130,7 +135,9 @@ router.post("/facebook", async (req, res) => {
     const avatarUrl = picture?.data?.url;
 
     if (!email) {
-      return res.status(400).json({ error: "לא התקבל אימייל מפייסבוק — ודא שהאימייל ציבורי" });
+      return res
+        .status(400)
+        .json({ error: "לא התקבל אימייל מפייסבוק — ודא שהאימייל ציבורי" });
     }
 
     let user = await prisma.user.findFirst({
@@ -139,7 +146,9 @@ router.post("/facebook", async (req, res) => {
 
     if (mode === "register") {
       if (user && user.facebookOAuthId) {
-        return res.status(409).json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+        return res
+          .status(409)
+          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
       }
       if (user && !user.facebookOAuthId) {
         user = await prisma.user.update({
@@ -153,7 +162,9 @@ router.post("/facebook", async (req, res) => {
       }
     } else {
       if (!user) {
-        return res.status(401).json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+        return res
+          .status(401)
+          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
       }
       if (!user.facebookOAuthId) {
         user = await prisma.user.update({
@@ -180,15 +191,21 @@ router.post("/github", async (req, res) => {
     }
 
     // Exchange code for access token
-    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        client_id: process.env.GITHUB_CLIENT_ID,
-        client_secret: process.env.GITHUB_CLIENT_SECRET,
-        code,
-      }),
-    });
+    const tokenRes = await fetch(
+      "https://github.com/login/oauth/access_token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          client_id: process.env.GITHUB_CLIENT_ID,
+          client_secret: process.env.GITHUB_CLIENT_SECRET,
+          code,
+        }),
+      },
+    );
     const tokenData = await tokenRes.json();
 
     if (tokenData.error) {
@@ -213,7 +230,9 @@ router.post("/github", async (req, res) => {
     }
 
     if (!email) {
-      return res.status(400).json({ error: "לא התקבל אימייל מ-GitHub — ודא שיש אימייל מאומת" });
+      return res
+        .status(400)
+        .json({ error: "לא התקבל אימייל מ-GitHub — ודא שיש אימייל מאומת" });
     }
 
     const githubId = String(ghUser.id);
@@ -226,7 +245,9 @@ router.post("/github", async (req, res) => {
 
     if (mode === "register") {
       if (user && user.githubId) {
-        return res.status(409).json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+        return res
+          .status(409)
+          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
       }
       if (user && !user.githubId) {
         user = await prisma.user.update({
@@ -240,7 +261,9 @@ router.post("/github", async (req, res) => {
       }
     } else {
       if (!user) {
-        return res.status(401).json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+        return res
+          .status(401)
+          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
       }
       if (!user.githubId) {
         user = await prisma.user.update({
@@ -267,17 +290,20 @@ router.post("/linkedin", async (req, res) => {
     }
 
     // Exchange code for access token
-    const tokenRes = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: `${process.env.CLIENT_URL}/oauth/linkedin/callback`,
-        client_id: process.env.LINKEDIN_CLIENT_ID,
-        client_secret: process.env.LINKEDIN_CLIENT_SECRET,
-      }),
-    });
+    const tokenRes = await fetch(
+      "https://www.linkedin.com/oauth/v2/accessToken",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: `${process.env.CLIENT_URL}/oauth/linkedin/callback`,
+          client_id: process.env.LINKEDIN_CLIENT_ID,
+          client_secret: process.env.LINKEDIN_CLIENT_SECRET,
+        }),
+      },
+    );
     const tokenData = await tokenRes.json();
 
     if (tokenData.error) {
@@ -305,7 +331,9 @@ router.post("/linkedin", async (req, res) => {
 
     if (mode === "register") {
       if (user && user.linkedinId) {
-        return res.status(409).json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+        return res
+          .status(409)
+          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
       }
       if (user && !user.linkedinId) {
         user = await prisma.user.update({
@@ -319,7 +347,9 @@ router.post("/linkedin", async (req, res) => {
       }
     } else {
       if (!user) {
-        return res.status(401).json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+        return res
+          .status(401)
+          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
       }
       if (!user.linkedinId) {
         user = await prisma.user.update({
@@ -369,7 +399,9 @@ router.post("/apple", async (req, res) => {
 
     if (mode === "register") {
       if (user && user.appleId) {
-        return res.status(409).json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+        return res
+          .status(409)
+          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
       }
       if (user && !user.appleId) {
         user = await prisma.user.update({
@@ -383,7 +415,9 @@ router.post("/apple", async (req, res) => {
       }
     } else {
       if (!user) {
-        return res.status(401).json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+        return res
+          .status(401)
+          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
       }
       if (!user.appleId) {
         user = await prisma.user.update({

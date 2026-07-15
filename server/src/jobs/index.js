@@ -2,6 +2,7 @@ import { runSessionKeepAlive } from "./session-keepalive.js";
 import {
   processPublicationJobs,
   generateScheduledJobs,
+  recoverStaleJobs,
 } from "./publication-scheduler.js";
 import { runDailyGroupMetadataRefresh } from "./group-metadata-refresh.js";
 import {
@@ -75,6 +76,7 @@ export function startScheduler() {
   // Run job generator immediately on startup to catch any missed schedules
   setTimeout(async () => {
     try {
+      await recoverStaleJobs();
       await generateScheduledJobs();
       await processPublicationJobs();
     } catch (error) {
@@ -101,4 +103,18 @@ export function stopScheduler() {
   timers.forEach((t) => clearInterval(t));
   timers = [];
   stopMetricsScheduler();
+}
+
+/**
+ * Trigger immediate processing of pending publication jobs.
+ * Used when "now" mode campaigns are created.
+ */
+export function triggerImmediateProcess() {
+  setTimeout(async () => {
+    try {
+      await processPublicationJobs();
+    } catch (error) {
+      log.error("Error in immediate job processing", error);
+    }
+  }, 2000);
 }

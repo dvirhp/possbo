@@ -1,10 +1,51 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 import { groupsService } from '../services/groupsService'
+import { getAccessToken } from '../services/http'
 import { Users, Send, Clock3, CheckCircle2, Heart, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Eye, ThumbsUp, MessageCircle } from 'lucide-react'
 import PostsDataTable from './PostsDataTable'
 import '../styles/posts-data-table.css'
+
+function useContainerSize() {
+  const [el, setEl] = useState(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  useEffect(() => {
+    if (!el) return
+    const update = () => {
+      const { width, height } = el.getBoundingClientRect()
+      setSize(prev => (prev.width === Math.round(width) && prev.height === Math.round(height)) ? prev : { width: Math.round(width), height: Math.round(height) })
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [el])
+  return [setEl, size]
+}
+
+/** Fill missing dates with zero values so chart shows the full date range */
+function fillDateRange(data, from, to) {
+  if (!from || !to) return data || []
+  const map = new Map()
+  for (const d of (data || [])) {
+    const key = new Date(d.date).toISOString().split('T')[0]
+    map.set(key, d)
+  }
+  const result = []
+  const start = new Date(from)
+  const end = new Date(to)
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const key = d.toISOString().split('T')[0]
+    if (map.has(key)) {
+      result.push(map.get(key))
+    } else {
+      result.push({ date: key, exposure: 0, posts: 0 })
+    }
+  }
+  return result
+}
 
 function formatNumber(n) {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -223,6 +264,7 @@ function DateRangePicker({ initialFrom, initialTo, onApply, onCancel }) {
 function MiniCalendar({ campaigns, posts, jobs }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [hoveredDay, setHoveredDay] = useState(null)
+  const [tooltipPos, setTooltipPos] = useState(null)
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
   const monthName = currentDate.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })
@@ -293,6 +335,48 @@ function MiniCalendar({ campaigns, posts, jobs }) {
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1))
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1))
 
+  const handleDayEnter = useCallback((day, e) => {
+    if (!day || !dayItemsMap[day]) return
+    setHoveredDay(day)
+    const rect = e.currentTarget.getBoundingClientRect()
+    const tooltipW = 220
+    const tooltipH = 120
+    let top = rect.bottom + 6
+    let left = rect.left + rect.width / 2 - tooltipW / 2
+    // If tooltip would go below viewport, show above
+    if (top + tooltipH > window.innerHeight) {
+      top = rect.top - tooltipH - 6
+    }
+    // Keep within horizontal bounds
+    if (left < 8) left = 8
+    if (left + tooltipW > window.innerWidth - 8) left = window.innerWidth - tooltipW - 8
+    setTooltipPos({ top, left })
+  }, [dayItemsMap])
+
+  const handleDayLeave = useCallback(() => {
+    setHoveredDay(null)
+    setTooltipPos(null)
+  }, [])
+
+  const handleDayClick = useCallback((day, e) => {
+    if (!day || !dayItemsMap[day]) return
+    e.stopPropagation()
+    if (hoveredDay === day) {
+      setHoveredDay(null)
+      setTooltipPos(null)
+    } else {
+      handleDayEnter(day, e)
+    }
+  }, [dayItemsMap, hoveredDay, handleDayEnter])
+
+  // Close tooltip when clicking outside
+  useEffect(() => {
+    if (!hoveredDay) return
+    const close = () => { setHoveredDay(null); setTooltipPos(null) }
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [hoveredDay])
+
   const days = []
   for (let i = 0; i < firstDay; i++) days.push(null)
   for (let d = 1; d <= daysInMonth; d++) days.push(d)
@@ -316,8 +400,9 @@ function MiniCalendar({ campaigns, posts, jobs }) {
           <span
             key={i}
             className={`ov2-calendar-day ${day ? '' : 'empty'} ${day && isToday(day) ? 'today' : ''} ${day && dayItemsMap[day] ? 'has-items' : ''}`}
-            onMouseEnter={() => day && dayItemsMap[day] && setHoveredDay(day)}
-            onMouseLeave={() => setHoveredDay(null)}
+            onMouseEnter={(e) => handleDayEnter(day, e)}
+            onMouseLeave={handleDayLeave}
+            onClick={(e) => handleDayClick(day, e)}
           >
             {day || ''}
             {day && dayItemsMap[day] && (
@@ -326,29 +411,6 @@ function MiniCalendar({ campaigns, posts, jobs }) {
                 {dayItemsMap[day].published.length > 0 && <span className="dot published" />}
               </span>
             )}
-            {day && hoveredDay === day && dayItemsMap[day] && (
-              <div className="ov2-cal-tooltip">
-                <div className="ov2-cal-tooltip-date">{day} {currentDate.toLocaleDateString('he-IL', { month: 'long' })}</div>
-                {dayItemsMap[day].scheduled.map((item, idx) => (
-                  <div key={`s-${idx}`} className="ov2-cal-tooltip-item">
-                    <span className="dot scheduled" />
-                    <div className="ov2-cal-tooltip-info">
-                      <span className="ov2-cal-tooltip-title">{item.title}</span>
-                      <span className="ov2-cal-tooltip-meta">{item.time}{item.groups > 0 ? ` • ${item.groups} קבוצות` : ''}</span>
-                    </div>
-                  </div>
-                ))}
-                {dayItemsMap[day].published.map((item, idx) => (
-                  <div key={`p-${idx}`} className="ov2-cal-tooltip-item">
-                    <span className="dot published" />
-                    <div className="ov2-cal-tooltip-info">
-                      <span className="ov2-cal-tooltip-title">{item.title}</span>
-                      <span className="ov2-cal-tooltip-meta">{item.time}{item.group ? ` • ${item.group}` : ''}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </span>
         ))}
       </div>
@@ -356,6 +418,30 @@ function MiniCalendar({ campaigns, posts, jobs }) {
         <span className="ov2-legend-item"><span className="dot scheduled" /> {scheduledCount} מתוזמנים</span>
         <span className="ov2-legend-item"><span className="dot published" /> {publishedCount} פורסמו</span>
       </div>
+      {hoveredDay && dayItemsMap[hoveredDay] && tooltipPos && createPortal(
+        <div className="ov2-cal-tooltip" style={{ position: 'fixed', top: tooltipPos.top, left: tooltipPos.left }}>
+          <div className="ov2-cal-tooltip-date">{hoveredDay} {currentDate.toLocaleDateString('he-IL', { month: 'long' })}</div>
+          {dayItemsMap[hoveredDay].scheduled.map((item, idx) => (
+            <div key={`s-${idx}`} className="ov2-cal-tooltip-item">
+              <span className="dot scheduled" />
+              <div className="ov2-cal-tooltip-info">
+                <span className="ov2-cal-tooltip-title">{item.title}</span>
+                <span className="ov2-cal-tooltip-meta">{item.time}{item.groups > 0 ? ` • ${item.groups} קבוצות` : ''}</span>
+              </div>
+            </div>
+          ))}
+          {dayItemsMap[hoveredDay].published.map((item, idx) => (
+            <div key={`p-${idx}`} className="ov2-cal-tooltip-item">
+              <span className="dot published" />
+              <div className="ov2-cal-tooltip-info">
+                <span className="ov2-cal-tooltip-title">{item.title}</span>
+                <span className="ov2-cal-tooltip-meta">{item.time}{item.group ? ` • ${item.group}` : ''}</span>
+              </div>
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
@@ -365,11 +451,21 @@ function getCachedKpis(from, to) {
     const raw = localStorage.getItem('postit_kpi_cache')
     if (!raw) return null
     const cached = JSON.parse(raw)
-    if (cached.from === from && cached.to === to && Date.now() - cached.ts < 5 * 60 * 1000) {
+    if (cached.from === from && cached.to === to) {
       return cached
     }
   } catch { /* ignore */ }
   return null
+}
+
+function isCacheStale(from, to) {
+  try {
+    const raw = localStorage.getItem('postit_kpi_cache')
+    if (!raw) return true
+    const cached = JSON.parse(raw)
+    if (cached.from !== from || cached.to !== to) return true
+    return Date.now() - cached.ts > 2 * 60 * 1000
+  } catch { return true }
 }
 
 function setCachedKpis(from, to, kpis, exposure) {
@@ -411,6 +507,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [engChartType, setEngChartType] = useState('area')
   const lastDateRef = useRef(null)
+  const [engChartRef, engChartSize] = useContainerSize()
   const lastDataVersionRef = useRef(null)
 
   // Persist date range selection
@@ -443,15 +540,18 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
     const key = `${dateRange.from}-${dateRange.to}`
     if (lastDateRef.current === key) return
     lastDateRef.current = key
-    // Load from cache immediately, then refresh from server
+    // Load from cache immediately (no TTL check - show stale data instantly)
     const cached = getCachedKpis(dateRange.from, dateRange.to)
     if (cached?.kpis) setKpiData(cached.kpis)
     if (cached?.exposure) setExposure(cached.exposure)
-    loadKpis()
-    loadExposure()
+    // Refresh from server in background only if stale or missing
+    if (getAccessToken() && isCacheStale(dateRange.from, dateRange.to)) {
+      loadKpis()
+      loadExposure()
+    }
   }, [dateRange, loadKpis, loadExposure])
 
-  // Reload KPIs only when actual data count changes (after publish/delete)
+  // Reload KPIs + exposure when actual data count changes (after publish/delete/fetchAll)
   const dataVersion = `${campaigns?.length}-${posts?.length}-${groups?.length}-${jobs?.length}`
   useEffect(() => {
     if (lastDataVersionRef.current === null) {
@@ -461,8 +561,9 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
     if (lastDataVersionRef.current !== dataVersion) {
       lastDataVersionRef.current = dataVersion
       loadKpis()
+      loadExposure()
     }
-  }, [dataVersion, loadKpis])
+  }, [dataVersion, loadKpis, loadExposure])
 
   const scheduledCount = campaigns?.filter(c => c.status === 'scheduled' || c.status === 'recurring')?.length || 0
   const groupsCount = groups?.length || 0
@@ -681,31 +782,29 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
               )}
             </div>
           </div>
-          <div className="ov2-engagement-chart">
+          <div className="ov2-engagement-chart" ref={engChartRef}>
             {exposure?.data?.length > 0 ? (
-              <ResponsiveContainer width="100%" height={150}>
-                {engChartType === 'area' ? (
-                  <AreaChart data={exposure.data.map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                engChartType === 'area' ? (
+                  <AreaChart width={engChartSize.width || 300} height={engChartSize.height || 160} data={fillDateRange(exposure.data, dateRange.from, dateRange.to).map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="engGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#818cf8" stopOpacity={0.3} />
                         <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
-                    <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} tickFormatter={formatNumber} />
-                    <Tooltip contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }} formatter={(val) => [formatNumber(val), 'חשיפה']} />
-                    <Area type="monotone" dataKey="value" stroke="#6366F1" strokeWidth={2} fill="url(#engGrad)" dot={{ r: 4, fill: '#6366F1', stroke: '#1e2028', strokeWidth: 2 }} />
+                    <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} domain={[0, 'auto']} width={35} />
+                    <Tooltip cursor={false} contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }} formatter={(val) => [formatNumber(val), 'חשיפה']} />
+                    <Area type="monotone" dataKey="value" stroke="#6366F1" strokeWidth={2} fill="url(#engGrad)" dot={false} activeDot={{ r: 7, fill: '#6366F1', stroke: '#fff', strokeWidth: 2 }} />
                   </AreaChart>
                 ) : (
-                  <BarChart data={exposure.data.map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
-                    <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} tickFormatter={formatNumber} />
-                    <Tooltip contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }} formatter={(val) => [formatNumber(val), 'חשיפה']} />
+                  <BarChart width={engChartSize.width || 300} height={engChartSize.height || 160} data={fillDateRange(exposure.data, dateRange.from, dateRange.to).map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} width={35} />
+                    <Tooltip cursor={false} contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }} formatter={(val) => [formatNumber(val), 'חשיפה']} />
                     <Bar dataKey="value" fill="#818cf8" radius={[4, 4, 0, 0]} background={false} />
                   </BarChart>
-                )}
-              </ResponsiveContainer>
+                )
             ) : (
               <EngagementPlaceholderBars dateRange={dateRange} />
             )}

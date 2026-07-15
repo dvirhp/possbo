@@ -3,6 +3,28 @@
   margin: 8px 16px;
 }
 
+.loc-autocomplete-selected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--indigo, #6366f1);
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.loc-autocomplete-selected-icon {
+  font-size: 18px;
+}
+
+.loc-autocomplete-selected-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  direction: rtl;
+}
+
 .loc-autocomplete-input-row {
   display: flex;
   align-items: center;

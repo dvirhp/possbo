@@ -1,13 +1,104 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
 import { authAPI } from '../services/api'
 import ConfirmDialog from '../components/ConfirmDialog'
-import PullToRefresh from '../components/PullToRefresh'
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 import DashboardOverview from '../components/DashboardOverview'
+
+/** Normalize fancy Unicode text (Mathematical Bold/Italic/Script etc.) to plain ASCII */
+function normalizeFancyText(str) {
+  if (!str) return str
+  // Map Unicode Mathematical Alphanumeric Symbols to plain ASCII
+  const ranges = [
+    [0x1D400, 0x1D419, 65],  // Bold A-Z
+    [0x1D41A, 0x1D433, 97],  // Bold a-z
+    [0x1D434, 0x1D44D, 65],  // Italic A-Z
+    [0x1D44E, 0x1D467, 97],  // Italic a-z
+    [0x1D468, 0x1D481, 65],  // Bold Italic A-Z
+    [0x1D482, 0x1D49B, 97],  // Bold Italic a-z
+    [0x1D49C, 0x1D4B5, 65],  // Script A-Z
+    [0x1D4B6, 0x1D4CF, 97],  // Script a-z
+    [0x1D4D0, 0x1D4E9, 65],  // Bold Script A-Z
+    [0x1D4EA, 0x1D503, 97],  // Bold Script a-z
+    [0x1D504, 0x1D51D, 65],  // Fraktur A-Z
+    [0x1D51E, 0x1D537, 97],  // Fraktur a-z
+    [0x1D538, 0x1D551, 65],  // Double-struck A-Z
+    [0x1D552, 0x1D56B, 97],  // Double-struck a-z
+    [0x1D56C, 0x1D585, 65],  // Bold Fraktur A-Z
+    [0x1D586, 0x1D59F, 97],  // Bold Fraktur a-z
+    [0x1D5A0, 0x1D5B9, 65],  // Sans-serif A-Z
+    [0x1D5BA, 0x1D5D3, 97],  // Sans-serif a-z
+    [0x1D5D4, 0x1D5ED, 65],  // Sans-serif Bold A-Z
+    [0x1D5EE, 0x1D607, 97],  // Sans-serif Bold a-z
+    [0x1D608, 0x1D621, 65],  // Sans-serif Italic A-Z
+    [0x1D622, 0x1D63B, 97],  // Sans-serif Italic a-z
+    [0x1D63C, 0x1D655, 65],  // Sans-serif Bold Italic A-Z
+    [0x1D656, 0x1D66F, 97],  // Sans-serif Bold Italic a-z
+    [0x1D670, 0x1D689, 65],  // Monospace A-Z
+    [0x1D68A, 0x1D6A3, 97],  // Monospace a-z
+    [0x1D7CE, 0x1D7D7, 48],  // Bold 0-9
+    [0x1D7D8, 0x1D7E1, 48],  // Double-struck 0-9
+    [0x1D7E2, 0x1D7EB, 48],  // Sans-serif 0-9
+    [0x1D7EC, 0x1D7F5, 48],  // Sans-serif Bold 0-9
+    [0x1D7F6, 0x1D7FF, 48],  // Monospace 0-9
+  ]
+  let result = ''
+  for (const ch of str) {
+    const cp = ch.codePointAt(0)
+    let replaced = false
+    for (const [start, end, base] of ranges) {
+      if (cp >= start && cp <= end) {
+        result += String.fromCharCode(base + (cp - start))
+        replaced = true
+        break
+      }
+    }
+    if (!replaced) result += ch
+  }
+  return result
+}
+
+/** Fill missing dates with zero values so chart shows the full date range */
+function fillDateRange(data, from, to) {
+  if (!from || !to) return data || []
+  const map = new Map()
+  for (const d of (data || [])) {
+    const key = new Date(d.date).toISOString().split('T')[0]
+    map.set(key, d)
+  }
+  const result = []
+  const start = new Date(from)
+  const end = new Date(to)
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const key = d.toISOString().split('T')[0]
+    if (map.has(key)) {
+      result.push(map.get(key))
+    } else {
+      result.push({ date: key, exposure: 0, posts: 0 })
+    }
+  }
+  return result
+}
+
+function useContainerSize() {
+  const [el, setEl] = useState(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  useEffect(() => {
+    if (!el) return
+    const update = () => {
+      const { width, height } = el.getBoundingClientRect()
+      setSize(prev => (prev.width === Math.round(width) && prev.height === Math.round(height)) ? prev : { width: Math.round(width), height: Math.round(height) })
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [el])
+  return [setEl, size]
+}
 import '../styles/dashboard.css'
 import '../styles/overview.css'
 
@@ -52,6 +143,16 @@ export default function Dashboard() {
   const setActiveTab = useCallback((tab) => {
     setSearchParams({ tab }, { replace: true })
   }, [setSearchParams])
+
+  // Respond to global pull-to-refresh from AuthLayout
+  useEffect(() => {
+    const handler = async () => {
+      await forceRefresh()
+      window.dispatchEvent(new Event('postit-pull-refresh-done'))
+    }
+    window.addEventListener('postit-pull-refresh', handler)
+    return () => window.removeEventListener('postit-pull-refresh', handler)
+  }, [forceRefresh])
 
   // Sync subTab from URL (e.g. navigating from Overview KPIs)
   useEffect(() => {
@@ -160,8 +261,8 @@ export default function Dashboard() {
     setMainConfirm({
       title: 'התנתקות',
       message: 'האם אתה בטוח שברצונך להתנתק?',
-      action: async () => {
-        await logout()
+      action: () => {
+        logout()
         navigate('/')
       }
     })
@@ -192,13 +293,15 @@ export default function Dashboard() {
     try {
       const res = await groupsService.scrapeMyGroups()
       if (res.data.success && res.data.groups) {
+        // Merge: preserve old memberCount/privacyType if new data is null
+        const oldMap = Object.fromEntries(groups.map(g => [g.id, g]))
         updateGroups(res.data.groups.map(g => ({
           id: g.id,
           name: g.name,
           image: g.image || null,
           url: g.url || `https://www.facebook.com/groups/${g.id}`,
-          memberCount: g.memberCount || null,
-          privacyType: g.privacyType || null,
+          memberCount: g.memberCount || oldMap[g.id]?.memberCount || null,
+          privacyType: g.privacyType || oldMap[g.id]?.privacyType || null,
         })))
         window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: true, msg: `✅ סונכרנו ${res.data.groups.length} קבוצות בהצלחה! מעדכן מטא-דאטה ברקע...` } }))
         // Trigger background metadata refresh (returns immediately with 202)
@@ -533,16 +636,19 @@ export default function Dashboard() {
         </header>
 
         {/* Content */}
-        <PullToRefresh onRefresh={forceRefresh}>
         <div className="dash-body">
-          {(!authChecked || !dataReady) ? (
+          {!authChecked ? (
+            <div className="dash-loader">
+              <img src="/logo.svg" alt="" className="loader-logo-pulse" />
+            </div>
+          ) : !dataReady ? (
             <div className="dash-loader">
               <img src="/logo.svg" alt="" className="loader-logo-pulse" />
             </div>
           ) : (
             <>
-              {/* Facebook session banner */}
-              {user && !user.fbSessionValid && !refreshing && (
+              {/* Facebook session banner — only show after data is loaded (avoids flash from stale cache) */}
+              {user && !user.fbSessionValid && dataReady && !refreshing && (
                 <div className="session-banner">
                   <span>⚠️ חשבון הפייסבוק לא מחובר, פוסטים מתוזמנים לא יפורסמו</span>
                   <button className="session-banner-btn" disabled={bootstrapping} onClick={handleBootstrap}>
@@ -1067,7 +1173,6 @@ export default function Dashboard() {
             </>
           )}
         </div>
-        </PullToRefresh>
       </div>
 
       {/* ─── MOBILE BOTTOM NAV ─── */}
@@ -1731,7 +1836,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
         <div className="groups-list">
           <div className="groups-list-header">
             <span className="gl-col gl-col-name gl-sortable" onClick={() => handleSort('name')}>
-              קבוצה {sortKey === 'name' && <span className="gl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+              קבוצה ({groups.length}) {sortKey === 'name' && <span className="gl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
             </span>
             <span className="gl-col gl-col-members gl-sortable" onClick={() => handleSort('members')}>
               חברים {sortKey === 'members' && <span className="gl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
@@ -1754,7 +1859,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
                   <div className="gl-thumb-fallback" style={group.image ? { display: 'none' } : undefined}>👥</div>
                 </div>
                 <div className="gl-name-wrap">
-                  <h4>{group.name}</h4>
+                  <h4>{normalizeFancyText(group.name)}</h4>
                   <span className="gl-privacy">{group.privacyType === 'private' ? 'קבוצה פרטית' : 'קבוצה ציבורית'}</span>
                 </div>
               </div>
@@ -1790,7 +1895,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
                 <div className="group-grid-fallback" style={group.image ? { display: 'none' } : undefined}>👥</div>
               </div>
               <div className="group-grid-body">
-                <h4>{group.name}</h4>
+                <h4>{normalizeFancyText(group.name)}</h4>
                 <span className="group-grid-privacy">{group.privacyType === 'private' ? '🔒 פרטית' : '🌐 ציבורית'}</span>
                 <div className="group-grid-stats">
                   <div className="group-grid-stat">
@@ -1829,7 +1934,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
                     ? <img src={detailGroup.image} alt="" onError={e => e.target.style.display = 'none'} />
                     : <span>👥</span>}
                 </div>
-                <h3 className="gd-hero-title">{detailGroup.name}</h3>
+                <h3 className="gd-hero-title">{normalizeFancyText(detailGroup.name)}</h3>
                 <span className="gd-hero-privacy">{detailGroup.privacyType === 'private' ? '🔒 קבוצה פרטית' : '🌐 קבוצה ציבורית'}</span>
               </div>
             </div>
@@ -2132,7 +2237,8 @@ function StatsDateRangePicker({ initialFrom, initialTo, onApply, onCancel }) {
 }
 
 function BestPostingTimesChart({ hourlyData: data }) {
-  const [timesChartType, setTimesChartType] = useState('bar')
+  const [timesChartType, setTimesChartType] = useState('area')
+  const [timesChartRef, timesChartSize] = useContainerSize()
 
   if (!data?.length) return null
 
@@ -2149,13 +2255,13 @@ function BestPostingTimesChart({ hourlyData: data }) {
           </button>
         </div>
       </div>
-      <div className="stats-chart-container">
-        <ResponsiveContainer width="100%" height={220}>
-          {timesChartType === 'bar' ? (
-            <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <XAxis dataKey="label" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
-              <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+      <div className="stats-chart-container" ref={timesChartRef}>
+        {timesChartType === 'bar' ? (
+            <BarChart width={timesChartSize.width || 300} height={timesChartSize.height || 220} data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <XAxis dataKey="label" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} width={35} />
               <Tooltip
+                cursor={false}
                 contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
                 formatter={(val, name) => [val, name === 'avgLikes' ? 'ממוצע לייקים' : name === 'avgComments' ? 'ממוצע תגובות' : name]}
                 labelFormatter={(label) => `שעה ${label}`}
@@ -2164,7 +2270,7 @@ function BestPostingTimesChart({ hourlyData: data }) {
               <Bar dataKey="avgComments" fill="#10B981" radius={[4, 4, 0, 0]} name="avgComments" background={false} />
             </BarChart>
           ) : (
-            <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <AreaChart width={timesChartSize.width || 300} height={timesChartSize.height || 220} data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="timesLikesGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#818cf8" stopOpacity={0.4} />
@@ -2175,18 +2281,18 @@ function BestPostingTimesChart({ hourlyData: data }) {
                   <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="label" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
-              <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
+              <XAxis dataKey="label" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} width={35} />
               <Tooltip
+                cursor={false}
                 contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
                 formatter={(val, name) => [val, name === 'avgLikes' ? 'ממוצע לייקים' : name === 'avgComments' ? 'ממוצע תגובות' : name]}
                 labelFormatter={(label) => `שעה ${label}`}
               />
-              <Area type="monotone" dataKey="avgLikes" stroke="#818cf8" strokeWidth={2} fill="url(#timesLikesGrad)" name="avgLikes" />
-              <Area type="monotone" dataKey="avgComments" stroke="#10B981" strokeWidth={2} fill="url(#timesCommentsGrad)" name="avgComments" />
+              <Area type="monotone" dataKey="avgLikes" stroke="#818cf8" strokeWidth={2} fill="url(#timesLikesGrad)" name="avgLikes" activeDot={{ r: 6, fill: '#818cf8', stroke: '#fff', strokeWidth: 2 }} />
+              <Area type="monotone" dataKey="avgComments" stroke="#10B981" strokeWidth={2} fill="url(#timesCommentsGrad)" name="avgComments" activeDot={{ r: 6, fill: '#10B981', stroke: '#fff', strokeWidth: 2 }} />
             </AreaChart>
           )}
-        </ResponsiveContainer>
       </div>
       <p className="best-times-hint">ממוצע לייקים ותגובות לפי שעת פרסום</p>
     </div>
@@ -2194,6 +2300,7 @@ function BestPostingTimesChart({ hourlyData: data }) {
 }
 
 function StatsPanel({ stats }) {
+  const navigate = useNavigate()
   const toDS = (d) => d.toISOString().split('T')[0]
   const defaultRange = useMemo(() => {
     const to = new Date()
@@ -2204,38 +2311,74 @@ function StatsPanel({ stats }) {
   const [dateRange, setDateRange] = useState(defaultRange)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [chartType, setChartType] = useState('area') // 'area' or 'bar'
+  const [exposureChartRef, exposureChartSize] = useContainerSize()
 
   // Top posts state
-  const [topPosts, setTopPosts] = useState([])
   const [topPostsSort, setTopPostsSort] = useState('likes')
-  const [topPostsLoading, setTopPostsLoading] = useState(true)
   const [refreshingAll, setRefreshingAll] = useState(false)
 
   // Cache helpers
   const getCacheKey = useCallback((from, to) => `postit_stats_${from}_${to}`, [])
+  const getTopPostsCacheKey = useCallback((sort, from, to) => `postit_top_posts_${sort}_${from}_${to}`, [])
   const getCached = useCallback((from, to) => {
     try {
       const raw = localStorage.getItem(getCacheKey(from, to))
       if (!raw) return null
       const cached = JSON.parse(raw)
-      if (Date.now() - cached.ts < 10 * 60 * 1000) return cached.data
+      return cached.data || null
     } catch { /* ignore */ }
     return null
   }, [getCacheKey])
+  const isCacheStale = useCallback((from, to) => {
+    try {
+      const raw = localStorage.getItem(getCacheKey(from, to))
+      if (!raw) return true
+      const cached = JSON.parse(raw)
+      return Date.now() - cached.ts > 2 * 60 * 1000
+    } catch { return true }
+  }, [getCacheKey])
+  const getTopPostsCached = useCallback((sort, from, to) => {
+    try {
+      const raw = localStorage.getItem(getTopPostsCacheKey(sort, from, to))
+      if (!raw) return null
+      const cached = JSON.parse(raw)
+      return cached.data || null
+    } catch { /* ignore */ }
+    return null
+  }, [getTopPostsCacheKey])
+  const isTopPostsCacheStale = useCallback((sort, from, to) => {
+    try {
+      const raw = localStorage.getItem(getTopPostsCacheKey(sort, from, to))
+      if (!raw) return true
+      const cached = JSON.parse(raw)
+      return Date.now() - cached.ts > 2 * 60 * 1000
+    } catch { return true }
+  }, [getTopPostsCacheKey])
   const setCache = useCallback((from, to, data) => {
     try {
       localStorage.setItem(getCacheKey(from, to), JSON.stringify({ data, ts: Date.now() }))
     } catch { /* ignore */ }
   }, [getCacheKey])
+  const setTopPostsCache = useCallback((sort, from, to, data) => {
+    try {
+      localStorage.setItem(getTopPostsCacheKey(sort, from, to), JSON.stringify({ data, ts: Date.now() }))
+    } catch { /* ignore */ }
+  }, [getTopPostsCacheKey])
+
+  const [topPosts, setTopPosts] = useState(() => getTopPostsCached(topPostsSort, defaultRange.from, defaultRange.to) || [])
+  const [topPostsLoading, setTopPostsLoading] = useState(() => !getTopPostsCached(topPostsSort, defaultRange.from, defaultRange.to))
+  const [topPostsVisible, setTopPostsVisible] = useState(10)
+  const [expandedPostId, setExpandedPostId] = useState(null)
 
   const [exposure, setExposure] = useState(() => getCached(defaultRange.from, defaultRange.to))
   const [loading, setLoading] = useState(!exposure)
 
-  const loadExposure = useCallback(async (from, to) => {
+  const loadExposure = useCallback(async (from, to, forceRefresh) => {
     const cached = getCached(from, to)
     if (cached) {
       setExposure(cached)
       setLoading(false)
+      if (!forceRefresh && !isCacheStale(from, to)) return
     } else {
       setLoading(true)
     }
@@ -2250,22 +2393,34 @@ function StatsPanel({ stats }) {
       }
     } catch { /* ignore */ }
     setLoading(false)
-  }, [getCached, setCache])
+  }, [getCached, isCacheStale, setCache])
 
-  const loadTopPosts = useCallback(async (sort, from, to) => {
-    setTopPostsLoading(true)
+  const loadTopPosts = useCallback(async (sort, from, to, forceRefresh) => {
+    const cached = getTopPostsCached(sort, from, to)
+    if (cached) {
+      setTopPosts(cached)
+      setTopPostsLoading(false)
+      if (!forceRefresh && !isTopPostsCacheStale(sort, from, to)) return
+    } else {
+      setTopPostsLoading(true)
+    }
     try {
-      const res = await groupsService.getTopPosts({ sort, limit: 10, from, to })
-      if (res.data?.posts) setTopPosts(res.data.posts)
+      const res = await groupsService.getTopPosts({ sort, limit: 30, from, to })
+      if (res.data?.posts) {
+        setTopPosts(res.data.posts)
+        setTopPostsCache(sort, from, to, res.data.posts)
+      }
     } catch { /* ignore */ }
     setTopPostsLoading(false)
-  }, [])
+  }, [getTopPostsCached, isTopPostsCacheStale, setTopPostsCache])
 
   useEffect(() => {
     loadExposure(dateRange.from, dateRange.to)
   }, [dateRange, loadExposure])
 
   useEffect(() => {
+    setTopPostsVisible(10)
+    setExpandedPostId(null)
     loadTopPosts(topPostsSort, dateRange.from, dateRange.to)
   }, [topPostsSort, dateRange, loadTopPosts])
 
@@ -2283,12 +2438,12 @@ function StatsPanel({ stats }) {
 
   const chartData = useMemo(() => {
     if (!exposure?.data) return []
-    return exposure.data.map(d => ({
+    return fillDateRange(exposure.data, dateRange.from, dateRange.to).map(d => ({
       date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }),
       exposure: d.exposure,
       posts: d.posts,
     }))
-  }, [exposure])
+  }, [exposure, dateRange])
 
   return (
     <div className="stats-layout">
@@ -2352,36 +2507,36 @@ function StatsPanel({ stats }) {
               </button>
             </div>
           </div>
-          <div className="stats-chart-container">
-            <ResponsiveContainer width="100%" height={220}>
-              {chartType === 'area' ? (
-                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+          <div className="stats-chart-container" ref={exposureChartRef}>
+            {chartType === 'area' ? (
+                <AreaChart width={exposureChartSize.width || 300} height={exposureChartSize.height || 220} data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="exposureGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#818cf8" stopOpacity={0.4} />
                       <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
-                  <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} tickFormatter={formatNumber} />
+                  <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} domain={[0, 'auto']} width={35} />
                   <Tooltip
+                    cursor={false}
                     contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
                     formatter={(val) => [formatNumber(val), 'חשיפה']}
                   />
-                  <Area type="monotone" dataKey="exposure" stroke="#818cf8" strokeWidth={2} fill="url(#exposureGradient)" />
+                  <Area type={chartData.length >= 2 ? 'monotone' : 'linear'} dataKey="exposure" stroke="#818cf8" strokeWidth={2} fill="url(#exposureGradient)" dot={{ r: 5, fill: '#818cf8', stroke: '#1e2028', strokeWidth: 2 }} activeDot={{ r: 7, fill: '#818cf8', stroke: '#fff', strokeWidth: 2 }} />
                 </AreaChart>
               ) : (
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} />
-                  <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={{ stroke: '#2a2f3a' }} tickLine={false} tickFormatter={formatNumber} />
+                <BarChart width={exposureChartSize.width || 300} height={exposureChartSize.height || 220} data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} width={35} />
                   <Tooltip
+                    cursor={false}
                     contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
                     formatter={(val) => [formatNumber(val), 'חשיפה']}
                   />
                   <Bar dataKey="exposure" fill="#818cf8" radius={[4, 4, 0, 0]} background={false} />
                 </BarChart>
               )}
-            </ResponsiveContainer>
           </div>
         </div>
       )}
@@ -2392,13 +2547,16 @@ function StatsPanel({ stats }) {
           <h4>🏆 קבוצות מובילות בחשיפה</h4>
           <div className="top-groups-table">
             {exposure.topGroups.map((g, i) => (
-              <div key={g.id} className={`top-group-row ${i === 0 ? 'top-group-gold' : i === 1 ? 'top-group-silver' : ''}`}>
+              <div key={g.id} className={`top-group-row top-group-clickable ${i === 0 ? 'top-group-gold' : i === 1 ? 'top-group-silver' : ''}`} onClick={() => navigate(`/group/${g.id}`)}>
                 <span className="top-group-rank">{i + 1}</span>
                 <div className="top-group-info">
                   <span className="top-group-name">{g.name}</span>
                   {g.privacyType && <span className="top-group-privacy">{g.privacyType === 'private' ? '🔒' : '🌐'}</span>}
                 </div>
                 <span className="top-group-members">{formatNumber(g.memberCount)} חברים</span>
+                <span className="top-group-arrow">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+                </span>
               </div>
             ))}
           </div>
@@ -2445,10 +2603,13 @@ function StatsPanel({ stats }) {
                   .then(async (refreshRes) => {
                     // Reload top posts with current date range
                     const res = await groupsService.getTopPosts({
-                      sort: topPostsSort, limit: 10,
+                      sort: topPostsSort, limit: 30,
                       from: dateRange.from, to: dateRange.to,
                     })
-                    if (res.data?.posts) setTopPosts(res.data.posts)
+                    if (res.data?.posts) {
+                      setTopPosts(res.data.posts)
+                      setTopPostsCache(topPostsSort, dateRange.from, dateRange.to, res.data.posts)
+                    }
                     const count = refreshRes.data?.refreshed || 0
                     window.dispatchEvent(new CustomEvent('postit-op-done', {
                       detail: { id: 'refresh-all-metrics', success: true, msg: `✅ רענון הושלם! עודכנו ${count} פרסומים` }
@@ -2490,30 +2651,64 @@ function StatsPanel({ stats }) {
           </div>
         ) : (
           <div className="top-posts-list">
-            {topPosts.map((p, i) => (
-              <div key={p.id} className={`top-post-row ${i === 0 ? 'top-post-gold' : i === 1 ? 'top-post-silver' : i === 2 ? 'top-post-bronze' : ''}`}>
-                <span className="top-post-rank">{i + 1}</span>
-                <div className="top-post-info">
-                  <span className="top-post-title">{p.title || 'ללא כותרת'}</span>
-                  <span className="top-post-group">{p.groupName}</span>
-                </div>
-                <div className="top-post-metrics">
-                  <span className="top-post-metric" title="לייקים">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
-                    {p.likes}
+            {topPosts.slice(0, topPostsVisible).map((p, i) => (
+              <Fragment key={p.id}>
+                <div
+                  className={`top-post-row ${i === 0 ? 'top-post-gold' : i === 1 ? 'top-post-silver' : i === 2 ? 'top-post-bronze' : ''} ${expandedPostId === p.id ? 'top-post-expanded' : ''}`}
+                  onClick={() => setExpandedPostId(expandedPostId === p.id ? null : p.id)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <span className="top-post-rank">{i + 1}</span>
+                  <div className="top-post-info">
+                    <span className="top-post-title">{p.title || 'ללא כותרת'}</span>
+                    <span className="top-post-group">{p.groupName}</span>
+                  </div>
+                  <div className="top-post-metrics">
+                    <span className="top-post-metric" title="לייקים">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
+                      {p.likes}
+                    </span>
+                    <span className="top-post-metric" title="תגובות">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                      {p.comments}
+                    </span>
+                  </div>
+                  <span className="top-post-expand-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedPostId === p.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
                   </span>
-                  <span className="top-post-metric" title="תגובות">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                    {p.comments}
-                  </span>
                 </div>
-                {p.externalPostUrl && (
-                  <a href={p.externalPostUrl} target="_blank" rel="noopener noreferrer" className="top-post-link" title="פתח בפייסבוק">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                  </a>
+                {expandedPostId === p.id && (
+                  <div className="top-post-details">
+                    {p.content && (
+                      <div className="top-post-content">
+                        <p>{p.content}</p>
+                      </div>
+                    )}
+                    <div className="top-post-meta">
+                      {p.publishedAt && (
+                        <span className="top-post-date">
+                          📅 {new Date(p.publishedAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                      {p.groupName && <span className="top-post-group-badge">📍 {p.groupName}</span>}
+                    </div>
+                    {p.externalPostUrl && (
+                      <a href={p.externalPostUrl} target="_blank" rel="noopener noreferrer" className="top-post-fb-link">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        צפה בפוסט בפייסבוק
+                      </a>
+                    )}
+                  </div>
                 )}
-              </div>
+              </Fragment>
             ))}
+            {topPosts.length > topPostsVisible && (
+              <button className="top-posts-show-more" onClick={() => setTopPostsVisible(prev => prev + 10)}>
+                הצג עוד ({topPosts.length - topPostsVisible} נוספים)
+              </button>
+            )}
           </div>
         )}
       </div>

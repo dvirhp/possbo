@@ -1,14 +1,23 @@
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import { getAccessToken } from '../services/http'
 import '../styles/auth.css'
 
 export default function Privacy() {
+  const navigate = useNavigate()
+
+  const handleLogoClick = () => {
+    navigate(getAccessToken() ? '/dashboard' : '/')
+  }
+
   return (
     <div className="auth-container">
       <div className="privacy-page">
-        <Link to="/" className="auth-back-btn">←</Link>
-        <div className="privacy-header">
-          <h1>📌 PostIt</h1>
-          <p>מדיניות פרטיות ותנאי שימוש</p>
+        <div className="privacy-topbar">
+          <img src="/logo.svg" alt="PostIt" className="privacy-logo-img" onClick={handleLogoClick} style={{ cursor: 'pointer' }} />
+          <h1 className="privacy-topbar-title">מדיניות פרטיות ותנאי שימוש</h1>
+          <button onClick={() => navigate(-1)} className="privacy-back-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
         </div>
 
         <div className="privacy-content">
@@ -77,11 +86,7 @@ export default function Privacy() {
         </div>
 
         <div className="privacy-footer">
-          <Link to="/">חזרה לדף הבית</Link>
-          <span> | </span>
-          <Link to="/login">התחברות</Link>
-          <span> | </span>
-          <Link to="/register">הרשמה</Link>
+          <p>© {new Date().getFullYear()} PostIt. כל הזכויות שמורות.</p>
         </div>
       </div>
     </div>

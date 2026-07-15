@@ -105,20 +105,29 @@
 /* ─── Wizard Layout ─── */
 .cp-wizard-layout {
   display: grid;
-  grid-template-columns: 340px 1fr;
-  gap: 32px;
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  gap: 24px;
   max-width: 1100px;
   margin: 0 auto;
   padding: 24px 28px 60px;
   width: 100%;
   box-sizing: border-box;
   align-items: start;
+  overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .cp-wizard-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .cp-wizard {
   max-width: 700px;
   width: 100%;
   box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ─── Stepper ─── */
@@ -846,6 +855,70 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* WA edit message */
+.cp-wa-edit-wrap {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cp-wa-edit-wrap textarea,
+.cp-wa-edit-wrap input[type="text"] {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(37, 211, 102, 0.04);
+  border: 1px solid rgba(37, 211, 102, 0.25);
+  border-radius: 10px;
+  color: var(--text-primary, #e8ecf0);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.2s;
+  line-height: 1.5;
+}
+.cp-wa-edit-wrap textarea:focus,
+.cp-wa-edit-wrap input[type="text"]:focus {
+  border-color: #25d366;
+  box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.1);
+}
+.cp-wa-edit-wrap textarea::placeholder,
+.cp-wa-edit-wrap input[type="text"]::placeholder {
+  color: var(--text-muted, #6b7684);
+}
+.cp-wa-edit-label {
+  font-size: 12px;
+  color: rgba(37, 211, 102, 0.7);
+  font-weight: 500;
+}
+.cp-wa-edit-btn {
+  align-self: flex-start;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(37, 211, 102, 0.3);
+  background: rgba(37, 211, 102, 0.08);
+  color: #25d366;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.cp-wa-edit-btn:hover {
+  background: rgba(37, 211, 102, 0.15);
+  border-color: rgba(37, 211, 102, 0.5);
+}
+.cp-wa-msg-preview {
+  font-size: 12.5px;
+  color: var(--text-secondary, #a3adb8);
+  background: rgba(37, 211, 102, 0.04);
+  border-radius: 8px;
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-right: 3px solid rgba(37, 211, 102, 0.3);
 }
 
 .cp-whatsapp-link {
@@ -1660,7 +1733,7 @@
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
   border: 1px solid rgba(99, 102, 241, 0.3);
   border-radius: 10px;
-  margin-top: 8px;
+  margin: 8px 20px 0;
 }
 .cp-exposure-icon {
   font-size: 16px;
@@ -2086,7 +2159,6 @@
   }
 
   .cp-wizard-layout {
-    grid-template-columns: 1fr;
     padding: 16px 14px 70px;
     max-width: 100%;
   }
@@ -2506,10 +2578,10 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 14px 0 12px;
+  padding: 14px 20px 12px;
   border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
-  margin-top: 16px;
-  margin-bottom: 12px;
+  margin-top: 0;
+  margin-bottom: 0;
 }
 .cp-selected-chip {
   display: inline-flex;
@@ -2550,8 +2622,7 @@
 .cp-chip-more:hover {
   opacity: 1;
 }
-  line-height: 1;
-}
+
 .cp-selected-chip button:hover {
   opacity: 1;
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
+import { useNavigationGuard } from '../context/NavigationGuard'
 import {
   LayoutDashboard, SquarePen, Users, CalendarDays, BarChart3,
   LayoutTemplate, History, BookOpen, Settings, Moon, Sun, LogOut,
@@ -27,7 +28,7 @@ const DRAWER_ITEMS = [
   { path: '/dashboard?tab=stats', icon: BarChart3, label: 'סטטיסטיקות' },
   { path: '/templates', icon: LayoutTemplate, label: 'טמפלייטים' },
   { path: '/reports', icon: History, label: 'דוחות וסיכום' },
-  { path: '/guides', icon: BookOpen, label: 'מדריכים' },
+  { path: '/guides', icon: BookOpen, label: 'עזרת AI', action: 'open-chatbot' },
 ]
 
 export default function BottomNav() {
@@ -35,6 +36,7 @@ export default function BottomNav() {
   const navigate = useNavigate()
   const { user, logout } = useAppData()
   const { theme, setTheme } = useTheme()
+  const { guardNavigate } = useNavigationGuard()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
 
@@ -119,7 +121,7 @@ export default function BottomNav() {
               <button
                 key={item.id}
                 className={`bottom-nav-item bottom-nav-center ${isActive(item) ? 'active' : ''}`}
-                onClick={() => { navigate(item.path); setDrawerOpen(false) }}
+                onClick={() => guardNavigate(() => { navigate(item.path); setDrawerOpen(false) })}
               >
                 <div className="bottom-nav-center-ring">
                   <img src="/logo.svg" alt="" width="30" height="30" />
@@ -132,7 +134,7 @@ export default function BottomNav() {
             <button
               key={item.id}
               className={`bottom-nav-item ${isActive(item) ? 'active' : ''}`}
-              onClick={() => { navigate(item.path); setDrawerOpen(false) }}
+              onClick={() => guardNavigate(() => { navigate(item.path); setDrawerOpen(false) })}
             >
               <Icon size={22} strokeWidth={2} />
               <span className="bottom-nav-label">{item.label}</span>
@@ -149,7 +151,7 @@ export default function BottomNav() {
           <div className="mobile-drawer-user">
             <div className="mobile-drawer-avatar">
               {user?.profileImage || user?.avatarUrl
-                ? <img src={user.profileImage || user.avatarUrl} alt="" />
+                ? <img src={(user.profileImage || user.avatarUrl).startsWith('/uploads') ? `http://localhost:8000${user.profileImage || user.avatarUrl}` : (user.profileImage || user.avatarUrl)} alt="" />
                 : <span>{user?.name?.[0] || '?'}</span>}
             </div>
             <div className="mobile-drawer-user-info">
@@ -168,7 +170,14 @@ export default function BottomNav() {
               <button
                 key={item.path}
                 className={`mobile-drawer-item ${isDrawerActive(item) ? 'active' : ''}`}
-                onClick={() => { navigate(item.path); setDrawerOpen(false) }}
+                onClick={() => {
+                  if (item.action === 'open-chatbot') {
+                    window.dispatchEvent(new Event('open-chatbot'))
+                    setDrawerOpen(false)
+                  } else {
+                    guardNavigate(() => { navigate(item.path); setDrawerOpen(false) })
+                  }
+                }}
               >
                 <Icon size={20} strokeWidth={1.8} />
                 <span>{item.label}</span>
@@ -178,7 +187,7 @@ export default function BottomNav() {
         </nav>
         <div className="mobile-drawer-divider" />
         <div className="mobile-drawer-actions">
-          <button className="mobile-drawer-item" onClick={() => { navigate('/dashboard?tab=settings'); setDrawerOpen(false) }}>
+          <button className="mobile-drawer-item" onClick={() => guardNavigate(() => { navigate('/dashboard?tab=settings'); setDrawerOpen(false) })}>
             <Settings size={20} strokeWidth={1.8} />
             <span>הגדרות</span>
           </button>

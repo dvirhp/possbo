@@ -48,7 +48,9 @@ export default function PostDetails() {
         <div className="page-header">
           <BackButton />
         </div>
-        <p className="loading-text">טוען...</p>
+        <div className="dash-loader">
+          <img src="/logo.svg" alt="" className="loader-logo-pulse" />
+        </div>
       </div>
     )
   }
