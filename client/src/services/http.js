@@ -139,6 +139,13 @@ api.interceptors.response.use(
       } catch (refreshError) {
         clearAccessToken();
         onRefreshFailed(refreshError);
+        // Session fully expired — redirect to login
+        if (
+          window.location.pathname !== "/login" &&
+          window.location.pathname !== "/register"
+        ) {
+          window.location.href = "/login";
+        }
         return Promise.reject(error);
       } finally {
         isRefreshing = false;
@@ -147,6 +154,22 @@ api.interceptors.response.use(
 
     // Attach user-friendly message
     error.userMessage = getUserFriendlyMessage(error);
+
+    // If we still get a 401 after refresh attempt, redirect to login
+    if (
+      error.response?.status === 401 &&
+      !originalRequest.url?.includes("/auth/refresh") &&
+      !originalRequest.url?.includes("/auth/login") &&
+      !originalRequest.url?.includes("/auth/register")
+    ) {
+      clearAccessToken();
+      const p = window.location.pathname;
+      if (p !== "/login" && p !== "/register" && p !== "/") {
+        window.location.href = "/login";
+        return new Promise(() => {}); // never resolve — page is navigating
+      }
+    }
+
     return Promise.reject(error);
   },
 );

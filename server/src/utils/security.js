@@ -2,7 +2,6 @@
  * Security utilities for input validation and sanitization.
  */
 
-const FACEBOOK_URL_PATTERN = /^https:\/\/(www\.)?facebook\.com\//i;
 const MAX_TEXT_LENGTH = 5000;
 const MAX_URL_LENGTH = 2048;
 
@@ -100,3 +99,27 @@ export function imageFileFilter(_req, file, cb) {
  * Maximum file upload size in bytes (50 MB for videos).
  */
 export const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+/**
+ * Allowed file extensions mapped from MIME types.
+ * Used to derive a safe extension regardless of original filename.
+ */
+const MIME_TO_EXT = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "video/mp4": ".mp4",
+  "video/quicktime": ".mov",
+  "video/webm": ".webm",
+  "video/x-msvideo": ".avi",
+};
+
+/**
+ * Generate a safe filename for uploads based on MIME type.
+ * Prevents path traversal and double-extension attacks.
+ */
+export function safeFilename(mimetype) {
+  const ext = MIME_TO_EXT[mimetype] || ".bin";
+  return `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
+}

@@ -17,11 +17,13 @@ vi.mock('../../services/api.js', () => ({
 
 const mockCheckAuth = vi.fn();
 const mockSetUser = vi.fn();
+const mockLoginSuccess = vi.fn();
 const mockAppData = {
   user: null,
   authChecked: true,
   checkAuth: mockCheckAuth,
   setUser: mockSetUser,
+  loginSuccess: mockLoginSuccess,
 };
 
 vi.mock('../../context/DataProvider', () => ({
@@ -60,6 +62,7 @@ describe('Login page', () => {
     mockLogin.mockClear();
     mockCheckAuth.mockClear();
     mockSetUser.mockClear();
+    mockLoginSuccess.mockClear();
     // Default: not authenticated
     mockAppData.user = null;
     mockAppData.authChecked = true;
@@ -103,7 +106,7 @@ describe('Login page', () => {
 
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith('a@b.com', 'password123', 'token-123');
-      expect(mockSetUser).toHaveBeenCalledWith(mockUser);
+      expect(mockLoginSuccess).toHaveBeenCalledWith(mockUser);
     });
   });
 

@@ -3,8 +3,8 @@ import bcrypt from "bcrypt";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
-import { PrismaClient } from "@prisma/client";
-import { encrypt, decrypt } from "../utils/encryption.js";
+import prisma from "../config/prisma.js";
+import { decrypt } from "../utils/encryption.js";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -19,9 +19,8 @@ import {
 import { verifyTurnstile } from "../utils/turnstile.js";
 
 const router = express.Router();
-const prisma = new PrismaClient();
 const log = createLogger("auth");
-const SALT_ROUNDS = 12;
+const SALT_ROUNDS = 10;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 
@@ -75,6 +74,12 @@ router.post("/register", async (req, res) => {
       return res
         .status(400)
         .json({ error: "Password must be at least 6 characters" });
+    }
+
+    if (password.length > 128) {
+      return res
+        .status(400)
+        .json({ error: "Password must be at most 128 characters" });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -176,7 +181,17 @@ router.post("/verify-email", async (req, res) => {
     res.status(201).json({
       success: true,
       accessToken,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        profileImage: user.profileImage || null,
+        avatarUrl: null,
+        fbSessionValid: false,
+        whatsappNumber: null,
+        whatsappMessage: null,
+        notificationSettings: null,
+      },
     });
   } catch (error) {
     log.error("Email verification failed", error);
@@ -227,7 +242,17 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    if (password.length > 128) {
+      return res
+        .status(400)
+        .json({ error: "Password must be at most 128 characters" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!user || !user.passwordHash) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
@@ -253,7 +278,17 @@ router.post("/login", async (req, res) => {
     res.json({
       success: true,
       accessToken,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        profileImage: user.profileImage,
+        avatarUrl: user.avatarUrl || null,
+        fbSessionValid: user.fbSessionValid || false,
+        whatsappNumber: user.whatsappNumber || null,
+        whatsappMessage: user.whatsappMessage || null,
+        notificationSettings: user.notificationSettings || null,
+      },
     });
   } catch (error) {
     log.error("Login failed", error, { email: req.body?.email });
@@ -306,6 +341,10 @@ router.post("/reset-password", async (req, res) => {
 
     if (newPassword.length < 6) {
       return res.status(400).json({ error: "סיסמה חייבת להכיל לפחות 6 תווים" });
+    }
+
+    if (newPassword.length > 128) {
+      return res.status(400).json({ error: "סיסמה חייבת להכיל עד 128 תווים" });
     }
 
     const pending = passwordResetCodes.get(normalizedEmail);
@@ -375,15 +414,37 @@ router.post("/refresh", async (req, res) => {
     const newAccessToken = generateAccessToken(user.id);
     const newRefreshToken = generateRefreshToken(user.id);
 
-    const newRefreshHash = await bcrypt.hash(newRefreshToken, SALT_ROUNDS);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken: newRefreshHash },
-    });
+    // Start hashing new token in parallel — don't block response
+    const hashPromise = bcrypt.hash(newRefreshToken, SALT_ROUNDS);
 
     setRefreshCookie(res, newRefreshToken);
 
-    res.json({ success: true, accessToken: newAccessToken });
+    // Send response immediately — user doesn't need to wait for DB save
+    res.json({
+      success: true,
+      accessToken: newAccessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        profileImage: user.profileImage,
+        avatarUrl: user.avatarUrl || null,
+        fbSessionValid: user.fbSessionValid || false,
+        whatsappNumber: user.whatsappNumber || null,
+        whatsappMessage: user.whatsappMessage || null,
+        notificationSettings: user.notificationSettings || null,
+      },
+    });
+
+    // Save new refresh token hash in background — don't block the response
+    hashPromise
+      .then((newRefreshHash) =>
+        prisma.user.update({
+          where: { id: user.id },
+          data: { refreshToken: newRefreshHash },
+        }),
+      )
+      .catch((err) => log.error("Failed to save refresh token hash", err));
   } catch (error) {
     log.error("Token refresh failed", error);
     res.status(500).json({ error: "Token refresh failed" });
@@ -435,7 +496,7 @@ router.post("/verify-facebook", async (req, res) => {
       }
     }
 
-    // Check storage state — verify cookies haven't expired
+    // Check storage state — verify critical cookies exist
     let hasStorageState = !!user.facebookStorageState;
     let cookiesExpired = false;
 
@@ -444,20 +505,15 @@ router.post("/verify-facebook", async (req, res) => {
         const decrypted = decrypt(user.facebookStorageState);
         const state = JSON.parse(decrypted);
         const cookies = state.cookies || [];
-        // Check critical FB cookies (c_user, xs) for expiry
-        const now = Date.now() / 1000;
+        // Only check if critical FB cookies (c_user, xs) exist at all.
+        // Don't check expiry timestamps — they may be stale in the stored JSON
+        // while the actual session is still valid. The keep-alive job does the
+        // real browser-based validation.
         const criticalCookies = cookies.filter(
           (c) => c.name === "c_user" || c.name === "xs",
         );
         if (criticalCookies.length === 0) {
           cookiesExpired = true;
-        } else {
-          for (const cookie of criticalCookies) {
-            if (cookie.expires && cookie.expires > 0 && cookie.expires < now) {
-              cookiesExpired = true;
-              break;
-            }
-          }
         }
       } catch {
         // Can't decrypt or parse — treat as expired
@@ -477,15 +533,9 @@ router.post("/verify-facebook", async (req, res) => {
 
       // Create notification if session became invalid
       if (!fbSessionValid) {
-        // Clear storage state if cookies expired
-        if (cookiesExpired) {
-          await prisma.user
-            .update({
-              where: { id: req.user.id },
-              data: { facebookStorageState: null },
-            })
-            .catch(() => {});
-        }
+        // Don't delete storage state here — let the keep-alive job do the actual
+        // browser-based verification. Cookie expiry timestamps can be stale while
+        // the session is still valid (FB refreshes them on each visit).
 
         await prisma.notification
           .create({

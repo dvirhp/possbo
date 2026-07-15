@@ -1,4 +1,8 @@
 /* ═══════════ SIDEBAR ═══════════ */
+.mobile-sidebar-overlay {
+  display: none;
+}
+
 .sidebar {
   position: fixed;
   top: 0;
@@ -334,10 +338,27 @@
 @media (max-width: 768px) {
   .sidebar {
     display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 280px;
+    height: 100vh;
+    z-index: 200;
+    box-shadow: -4px 0 30px rgba(0, 0, 0, 0.4);
+  }
+  .sidebar.mobile-open {
+    display: flex;
   }
   .app-main {
     margin-right: 0;
     max-width: 100vw;
+  }
+  .mobile-sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 199;
   }
 }
 

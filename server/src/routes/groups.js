@@ -4,13 +4,12 @@ import path from "path";
 import { fileURLToPath } from "url";
 import axios from "axios";
 import multer from "multer";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import {
   bootstrapFacebookSession,
   captureGroupScreenshot,
   scrapeMyGroups,
   publishToGroup,
-  scrapeGroupsMetadata,
 } from "../utils/facebook-automation.js";
 import { savePost } from "../utils/posts-storage.js";
 import { createLogger } from "../utils/logger.js";
@@ -21,12 +20,13 @@ import {
 } from "../jobs/group-metadata-refresh.js";
 import {
   isAllowedUrl,
-  isValidGroupName,
   sanitizeText,
   imageFileFilter,
   MAX_FILE_SIZE,
+  safeFilename,
 } from "../utils/security.js";
 import { asyncHandler } from "../utils/async-handler.js";
+import { requireAuth } from "../utils/auth-middleware.js";
 
 const uploadsDir = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -36,10 +36,7 @@ const uploadsDir = path.join(
 );
 const storage = multer.diskStorage({
   destination: uploadsDir,
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || ".png";
-    cb(null, Date.now() + "-" + Math.round(Math.random() * 1e6) + ext);
-  },
+  filename: (_req, file, cb) => cb(null, safeFilename(file.mimetype)),
 });
 const upload = multer({
   storage,
@@ -47,10 +44,7 @@ const upload = multer({
   fileFilter: imageFileFilter,
 });
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 const router = express.Router();
-const prisma = new PrismaClient();
 const log = createLogger("groups");
 
 const groupImagesDir = path.join(uploadsDir, "groups");
@@ -91,14 +85,6 @@ async function downloadGroupImage(fbImageUrl, groupId) {
   }
 }
 
-// Middleware to check authentication
-const requireAuth = (req, res, next) => {
-  if (!req.user) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-  next();
-};
-
 // Search for Facebook group
 router.post("/search", requireAuth, async (req, res) => {
   try {
@@ -110,18 +96,13 @@ router.post("/search", requireAuth, async (req, res) => {
     }
 
     // Search for groups using Facebook Graph API
-    const response = await axios.get(
-      `https://graph.facebook.com/v18.0/search`,
-      {
-        params: {
-          q: groupName,
-          type: "group",
-          access_token: user.facebookAccessToken,
-        },
+    await axios.get(`https://graph.facebook.com/v18.0/search`, {
+      params: {
+        q: groupName,
+        type: "group",
+        access_token: user.facebookAccessToken,
       },
-    );
-
-    const groups = response.data.data || [];
+    });
 
     // Get user's groups to find matches
     const userGroupsResponse = await axios.get(
@@ -284,8 +265,6 @@ router.get(
       const existingGroups = await prisma.facebookGroup.findMany({
         where: { userId },
       });
-      const existingGroupIds = new Set(existingGroups.map((g) => g.groupId));
-
       // Delete groups that no longer exist (and their related data)
       const groupsToDelete = existingGroups.filter(
         (g) => !newGroupIds.has(g.groupId),
@@ -294,7 +273,10 @@ router.get(
         // Find Group record by URL pattern for this facebook group
         const dbGroup = await prisma.group.findFirst({
           where: {
-            url: { contains: g.groupId },
+            OR: [
+              { url: `https://www.facebook.com/groups/${g.groupId}` },
+              { url: `https://www.facebook.com/groups/${g.groupId}/` },
+            ],
           },
         });
         if (dbGroup) {
@@ -407,25 +389,38 @@ router.get(
     const userId = req.user.id;
     const groups = await prisma.facebookGroup.findMany({
       where: { userId },
+      select: {
+        groupId: true,
+        groupName: true,
+        groupImage: true,
+        memberCount: true,
+        privacyType: true,
+      },
       orderBy: { createdAt: "desc" },
     });
 
-    // Get publication/scheduled counts per group
+    // Get publication/scheduled counts per group in parallel using count queries
     const groupUrls = groups.map(
       (g) => `https://www.facebook.com/groups/${g.groupId}`,
     );
+
     const linkedGroups = await prisma.group.findMany({
       where: { url: { in: groupUrls } },
       select: {
         url: true,
-        postGroups: {
-          where: { userId },
+        _count: {
           select: {
-            post: { select: { status: true, campaignType: true } },
+            publicationHistory: { where: { userId, status: "SUCCESS" } },
           },
         },
-        publicationHistory: {
-          where: { userId, status: "SUCCESS" },
+        postGroups: {
+          where: {
+            userId,
+            post: {
+              status: "ACTIVE",
+              campaignType: { in: ["RECURRING", "SCHEDULED"] },
+            },
+          },
           select: { id: true },
         },
       },
@@ -434,18 +429,12 @@ router.get(
     // Build lookup: groupId → { postsCount, scheduledCount }
     const statsMap = {};
     for (const lg of linkedGroups) {
-      // Extract groupId from URL
       const match = lg.url?.match(/groups\/([^/]+)/);
       if (!match) continue;
       const gId = match[1];
-      const scheduled = lg.postGroups.filter(
-        (pg) =>
-          pg.post.status === "ACTIVE" &&
-          ["RECURRING", "SCHEDULED"].includes(pg.post.campaignType),
-      ).length;
       statsMap[gId] = {
-        postsCount: lg.publicationHistory.length,
-        scheduledCount: scheduled,
+        postsCount: lg._count.publicationHistory,
+        scheduledCount: lg.postGroups.length,
       };
     }
 
@@ -537,10 +526,13 @@ router.get(
     const { groupId } = req.params;
     const userId = req.user.id;
 
-    // Find the Group record by URL containing groupId
+    // Find the Group record by exact URL match
     const group = await prisma.group.findFirst({
       where: {
-        url: { contains: groupId },
+        OR: [
+          { url: `https://www.facebook.com/groups/${groupId}` },
+          { url: `https://www.facebook.com/groups/${groupId}/` },
+        ],
       },
     });
 
@@ -650,6 +642,98 @@ router.post(
       if (imagePath && fs.existsSync(imagePath)) {
         fs.unlinkSync(imagePath);
       }
+    }
+  }),
+);
+
+// Search Facebook Places (for location autocomplete)
+router.get(
+  "/places",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { q } = req.query;
+    if (!q || q.length < 2) {
+      return res.json([]);
+    }
+
+    const user = req.user;
+
+    // Try Facebook Graph API first (if user has access token)
+    if (user.facebookAccessToken) {
+      try {
+        const response = await axios.get(
+          `https://graph.facebook.com/v18.0/search`,
+          {
+            params: {
+              q,
+              type: "place",
+              fields: "name,location,id",
+              limit: 10,
+              access_token: user.facebookAccessToken,
+            },
+          },
+        );
+
+        const places = (response.data.data || []).map((place) => ({
+          id: place.id,
+          name: place.name,
+          city: place.location?.city || "",
+          country: place.location?.country || "",
+        }));
+
+        if (places.length > 0) {
+          return res.json(places);
+        }
+      } catch {
+        // Fall through to Photon
+      }
+    }
+
+    // Fallback: Photon geocoder (fast, OSM-based, supports streets + cities)
+    try {
+      const photonRes = await axios.get("https://photon.komoot.io/api/", {
+        params: {
+          q,
+          limit: 8,
+          lat: 32.08,
+          lon: 34.78,
+        },
+        timeout: 5000,
+      });
+
+      const features = photonRes.data.features || [];
+      const places = features
+        .filter((f) => {
+          const val = f.properties?.osm_value || "";
+          return val !== "construction" && val !== "footway";
+        })
+        .map((f) => {
+          const p = f.properties || {};
+          const name = p.name || "";
+          const city = p.city || "";
+          const state = p.state || "";
+          const country = p.country || "";
+          const detail = city || state || country;
+          return {
+            id: String(p.osm_id || Math.random()),
+            name,
+            city: detail,
+            country: city ? country : "",
+          };
+        });
+
+      // Deduplicate by name+city
+      const seen = new Set();
+      const unique = places.filter((p) => {
+        const key = `${p.name}|${p.city}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      res.json(unique.slice(0, 8));
+    } catch {
+      res.json([]);
     }
   }),
 );

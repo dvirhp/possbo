@@ -31,7 +31,7 @@ describe('Privacy page', () => {
 
   it('renders back button', () => {
     renderPrivacy();
-    expect(screen.getByText('←')).toBeInTheDocument();
+    expect(document.querySelector('.privacy-back-btn')).toBeInTheDocument();
   });
 
   it('renders security info', () => {

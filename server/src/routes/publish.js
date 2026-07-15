@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import {
   publishToGroup,
   publishToProfile,
@@ -17,11 +17,11 @@ import {
   sanitizeText,
   imageFileFilter,
   MAX_FILE_SIZE,
+  safeFilename,
 } from "../utils/security.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { createLogger } from "../utils/logger.js";
-
-const prisma = new PrismaClient();
+import { requireAuth } from "../utils/auth-middleware.js";
 const log = createLogger("publish");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,10 +29,7 @@ const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 
 const storage = multer.diskStorage({
   destination: uploadsDir,
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || ".png";
-    cb(null, Date.now() + "-" + Math.round(Math.random() * 1e6) + ext);
-  },
+  filename: (_req, file, cb) => cb(null, safeFilename(file.mimetype)),
 });
 const upload = multer({
   storage,
@@ -41,14 +38,6 @@ const upload = multer({
 });
 
 const router = express.Router();
-
-// Require auth for all publish routes
-const requireAuth = (req, res, next) => {
-  if (!req.user) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-  next();
-};
 
 // Publish a post to a Facebook group
 router.post(
@@ -106,8 +95,13 @@ router.post(
       try {
         let group = await prisma.group.findFirst({ where: { url: groupUrl } });
         if (!group) {
+          const fbId = groupUrl.match(/groups\/([^/?]+)/)?.[1] || null;
           group = await prisma.group.create({
-            data: { name: groupName || groupUrl, url: groupUrl },
+            data: {
+              name: groupName || groupUrl,
+              url: groupUrl,
+              externalGroupId: fbId,
+            },
           });
         }
         // Create a post record for the failed attempt
@@ -116,7 +110,7 @@ router.post(
             userId: req.user.id,
             title: title || null,
             content: sanitizedText,
-            status: "FAILED",
+            status: "DRAFT",
             isAnonymous: isAnonymous,
             location: sanitizedLocation || null,
           },

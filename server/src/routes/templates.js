@@ -2,9 +2,25 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import { asyncHandler } from "../utils/async-handler.js";
-import { imageFileFilter, MAX_FILE_SIZE } from "../utils/security.js";
+import {
+  imageFileFilter,
+  MAX_FILE_SIZE,
+  safeFilename,
+} from "../utils/security.js";
+import { requireAuth } from "../utils/auth-middleware.js";
+
+// Safely parse a value that may be a JSON string (form-data) or already an object (JSON body)
+function safeParse(val, fallback) {
+  if (val == null) return fallback;
+  if (typeof val !== "string") return val; // already parsed
+  try {
+    return JSON.parse(val);
+  } catch {
+    return fallback;
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads", "templates");
@@ -16,10 +32,7 @@ const storage = multer.diskStorage({
       cb(null, uploadsDir);
     });
   },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || ".png";
-    cb(null, Date.now() + "-" + Math.round(Math.random() * 1e6) + ext);
-  },
+  filename: (_req, file, cb) => cb(null, safeFilename(file.mimetype)),
 });
 const upload = multer({
   storage,
@@ -28,12 +41,6 @@ const upload = multer({
 });
 
 const router = express.Router();
-const prisma = new PrismaClient();
-
-function requireAuth(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: "Not authenticated" });
-  next();
-}
 
 // ─── List all templates for current user ─────────────────
 
@@ -41,26 +48,50 @@ router.get(
   "/",
   requireAuth,
   asyncHandler(async (req, res) => {
-    const templates = await prisma.postTemplate.findMany({
-      where: { userId: req.user.id },
-      orderBy: { updatedAt: "desc" },
-    });
+    // Fetch templates and all user's groups in parallel to reduce DB round-trips
+    const [templates, userGroups] = await Promise.all([
+      prisma.postTemplate.findMany({
+        where: { userId: req.user.id },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.group.findMany({
+        where: {
+          OR: [
+            { userGroups: { some: { userId: req.user.id } } },
+            { postGroups: { some: { userId: req.user.id } } },
+          ],
+        },
+        select: {
+          id: true,
+          externalGroupId: true,
+          url: true,
+          memberCount: true,
+        },
+      }),
+    ]);
 
-    // Collect all unique groupIds across templates
+    // Build map keyed by id, externalGroupId, and extracted URL ID
+    const memberMap = {};
+    for (const g of userGroups) {
+      memberMap[g.id] = g.memberCount || 0;
+      if (g.externalGroupId) memberMap[g.externalGroupId] = g.memberCount || 0;
+      const urlId = g.url?.match(/groups\/([^/?]+)/)?.[1];
+      if (urlId) memberMap[urlId] = g.memberCount || 0;
+    }
+
+    // For any template groupIds not found via user's groups, do a targeted lookup
     const allGroupIds = [
       ...new Set(templates.flatMap((t) => t.groupIds || [])),
     ];
-    let groups = [];
-    if (allGroupIds.length > 0) {
-      // groupIds may be internal UUIDs, external Facebook IDs, or URL-embedded IDs
-      groups = await prisma.group.findMany({
+    const missingIds = allGroupIds.filter(
+      (id) => !memberMap.hasOwnProperty(id),
+    );
+    if (missingIds.length > 0) {
+      const extraGroups = await prisma.group.findMany({
         where: {
           OR: [
-            { id: { in: allGroupIds } },
-            { externalGroupId: { in: allGroupIds } },
-            ...allGroupIds.map((gid) => ({
-              url: { contains: `/groups/${gid}` },
-            })),
+            { id: { in: missingIds } },
+            { externalGroupId: { in: missingIds } },
           ],
         },
         select: {
@@ -70,14 +101,13 @@ router.get(
           memberCount: true,
         },
       });
-    }
-    // Build map keyed by id, externalGroupId, and extracted URL ID
-    const memberMap = {};
-    for (const g of groups) {
-      memberMap[g.id] = g.memberCount || 0;
-      if (g.externalGroupId) memberMap[g.externalGroupId] = g.memberCount || 0;
-      const urlId = g.url?.match(/groups\/([^/?]+)/)?.[1];
-      if (urlId) memberMap[urlId] = g.memberCount || 0;
+      for (const g of extraGroups) {
+        memberMap[g.id] = g.memberCount || 0;
+        if (g.externalGroupId)
+          memberMap[g.externalGroupId] = g.memberCount || 0;
+        const urlId = g.url?.match(/groups\/([^/?]+)/)?.[1];
+        if (urlId) memberMap[urlId] = g.memberCount || 0;
+      }
     }
 
     const enriched = templates.map((t) => ({
@@ -151,11 +181,14 @@ router.post(
         location: location?.trim() || null,
         whatsappText: whatsappText?.trim() || null,
         scheduleMode: scheduleMode || null,
-        scheduledDate: scheduledDate?.trim() || null,
-        recurringDays: recurringDays ? JSON.parse(recurringDays) : [],
-        recurringTimes: recurringTimes ? JSON.parse(recurringTimes) : [],
-        dayTimes: dayTimes ? JSON.parse(dayTimes) : null,
-        groupIds: groupIds ? JSON.parse(groupIds) : [],
+        scheduledDate:
+          typeof scheduledDate === "string"
+            ? scheduledDate.trim() || null
+            : null,
+        recurringDays: safeParse(recurringDays, []),
+        recurringTimes: safeParse(recurringTimes, []),
+        dayTimes: safeParse(dayTimes, null),
+        groupIds: safeParse(groupIds, []),
         imageUrls,
       },
     });
@@ -197,7 +230,7 @@ router.put(
     const newImageUrls = (req.files || []).map(
       (f) => `/uploads/templates/${f.filename}`,
     );
-    const kept = existingImages ? JSON.parse(existingImages) : [];
+    const kept = safeParse(existingImages, []);
     const imageUrls = [...kept, ...newImageUrls];
 
     const template = await prisma.postTemplate.update({
@@ -210,11 +243,14 @@ router.put(
         location: location?.trim() || null,
         whatsappText: whatsappText?.trim() || null,
         scheduleMode: scheduleMode || null,
-        scheduledDate: scheduledDate?.trim() || null,
-        recurringDays: recurringDays ? JSON.parse(recurringDays) : [],
-        recurringTimes: recurringTimes ? JSON.parse(recurringTimes) : [],
-        dayTimes: dayTimes ? JSON.parse(dayTimes) : null,
-        groupIds: groupIds ? JSON.parse(groupIds) : [],
+        scheduledDate:
+          typeof scheduledDate === "string"
+            ? scheduledDate.trim() || null
+            : null,
+        recurringDays: safeParse(recurringDays, []),
+        recurringTimes: safeParse(recurringTimes, []),
+        dayTimes: safeParse(dayTimes, null),
+        groupIds: safeParse(groupIds, []),
         imageUrls,
       },
     });

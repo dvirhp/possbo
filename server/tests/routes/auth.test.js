@@ -296,7 +296,7 @@ describe("POST /api/auth/login — edge cases", () => {
       .send({ email: "test@test.com", password: "password123" });
 
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({
+    expect(res.body.user).toMatchObject({
       id: "user-1",
       email: "test@test.com",
       name: "Test User",
@@ -370,7 +370,10 @@ describe("POST /api/auth/register — validation", () => {
       password: "password123",
     });
 
-    expect(sendVerificationEmail).toHaveBeenCalledWith("hash@test.com", "123456");
+    expect(sendVerificationEmail).toHaveBeenCalledWith(
+      "hash@test.com",
+      "123456",
+    );
   });
 
   it("should accept name, gender, phone fields", async () => {
@@ -469,9 +472,7 @@ describe("POST /api/auth/resend-code", () => {
 
 describe("POST /api/auth/forgot-password", () => {
   it("should return 400 when email missing", async () => {
-    const res = await request(app)
-      .post("/api/auth/forgot-password")
-      .send({});
+    const res = await request(app).post("/api/auth/forgot-password").send({});
     expect(res.status).toBe(400);
   });
 
@@ -485,7 +486,10 @@ describe("POST /api/auth/forgot-password", () => {
   });
 
   it("should send reset code for existing user", async () => {
-    mockUserFindUnique.mockResolvedValue({ id: "user-1", email: "test@test.com" });
+    mockUserFindUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@test.com",
+    });
     const res = await request(app)
       .post("/api/auth/forgot-password")
       .send({ email: "test@test.com" });
@@ -512,13 +516,20 @@ describe("POST /api/auth/reset-password", () => {
   it("should return 400 when no pending reset code", async () => {
     const res = await request(app)
       .post("/api/auth/reset-password")
-      .send({ email: "nobody@test.com", code: "123456", newPassword: "newpass123" });
+      .send({
+        email: "nobody@test.com",
+        code: "123456",
+        newPassword: "newpass123",
+      });
     expect(res.status).toBe(400);
   });
 
   it("should reset password with valid code", async () => {
     // Trigger forgot-password first
-    mockUserFindUnique.mockResolvedValue({ id: "user-1", email: "reset@test.com" });
+    mockUserFindUnique.mockResolvedValue({
+      id: "user-1",
+      email: "reset@test.com",
+    });
     await request(app)
       .post("/api/auth/forgot-password")
       .send({ email: "reset@test.com" });
@@ -526,7 +537,11 @@ describe("POST /api/auth/reset-password", () => {
     mockUserUpdate.mockResolvedValue({});
     const res = await request(app)
       .post("/api/auth/reset-password")
-      .send({ email: "reset@test.com", code: "123456", newPassword: "newpassword123" });
+      .send({
+        email: "reset@test.com",
+        code: "123456",
+        newPassword: "newpassword123",
+      });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -535,7 +550,11 @@ describe("POST /api/auth/reset-password", () => {
 
 describe("PATCH /api/auth/profile", () => {
   it("should update name", async () => {
-    mockUserUpdate.mockResolvedValue({ id: "user-1", email: "test@test.com", name: "New Name" });
+    mockUserUpdate.mockResolvedValue({
+      id: "user-1",
+      email: "test@test.com",
+      name: "New Name",
+    });
     const res = await request(app)
       .patch("/api/auth/profile")
       .send({ name: "New Name" });
@@ -551,9 +570,7 @@ describe("PATCH /api/auth/profile", () => {
   });
 
   it("should return 400 when no fields provided", async () => {
-    const res = await request(app)
-      .patch("/api/auth/profile")
-      .send({});
+    const res = await request(app).patch("/api/auth/profile").send({});
     expect(res.status).toBe(400);
   });
 
@@ -648,9 +665,7 @@ describe("POST /api/auth/password/request-code", () => {
 
 describe("PATCH /api/auth/password", () => {
   it("should return 400 without code or password", async () => {
-    const res = await request(app)
-      .patch("/api/auth/password")
-      .send({});
+    const res = await request(app).patch("/api/auth/password").send({});
     expect(res.status).toBe(400);
   });
 

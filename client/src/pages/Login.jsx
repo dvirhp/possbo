@@ -14,7 +14,7 @@ export default function Login() {
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [captchaToken, setCaptchaToken] = useState(null)
   const navigate = useNavigate()
-  const { checkAuth, setUser, user, authChecked } = useAppData()
+  const { checkAuth, loginSuccess, user, authChecked } = useAppData()
 
   // Wait for DataProvider's initial auth check
   useEffect(() => {
@@ -41,9 +41,8 @@ export default function Login() {
     try {
       const res = await authAPI.login(email, password, captchaToken)
       if (res.data?.user) {
-        setUser(res.data.user)
-        // Wait for state to propagate before navigating
-        setTimeout(() => navigate('/dashboard'), 0)
+        loginSuccess(res.data.user)
+        navigate('/dashboard')
       } else {
         await checkAuth()
         navigate('/dashboard')

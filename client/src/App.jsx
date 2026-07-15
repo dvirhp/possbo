@@ -1,24 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { DataProvider } from './context/DataProvider'
 import { ThemeProvider } from './context/ThemeProvider'
+import { NavigationGuardProvider } from './context/NavigationGuard'
 import TopLoader from './components/TopLoader'
 import confetti from 'canvas-confetti'
+import { groupsService } from './services/groupsService'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
-import Dashboard from './pages/Dashboard'
-import CreatePost from './pages/CreatePost'
-import ScheduledCalendar from './pages/ScheduledCalendar'
-import GroupDetails from './pages/GroupDetails'
-import PostDetails from './pages/PostDetails'
-import OAuthCallback from './pages/OAuthCallback'
-import Privacy from './pages/Privacy'
-import ForgotPassword from './pages/ForgotPassword'
-import Templates from './pages/Templates'
-import TemplateForm from './pages/TemplateForm'
-import Reports from './pages/Reports'
-import Guides from './pages/Guides'
 import AuthLayout from './components/AuthLayout'
 import ChatBot from './components/ChatBot'
 import AccessibilityWidget from './components/AccessibilityWidget'
@@ -26,7 +16,21 @@ import ErrorBoundary from './components/ErrorBoundary'
 import './App.css'
 import './styles/sidebar.css'
 
-const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password', '/privacy']
+// Lazy-loaded pages (code splitting — reduces initial bundle)
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const CreatePost = lazy(() => import('./pages/CreatePost'))
+const ScheduledCalendar = lazy(() => import('./pages/ScheduledCalendar'))
+const GroupDetails = lazy(() => import('./pages/GroupDetails'))
+const PostDetails = lazy(() => import('./pages/PostDetails'))
+const OAuthCallback = lazy(() => import('./pages/OAuthCallback'))
+const Privacy = lazy(() => import('./pages/Privacy'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const Templates = lazy(() => import('./pages/Templates'))
+const TemplateForm = lazy(() => import('./pages/TemplateForm'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Guides = lazy(() => import('./pages/Guides'))
+
+const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password']
 
 function ScrollToTop() {
   const { pathname } = useLocation()
@@ -46,6 +50,7 @@ function AuthWidgets() {
 
 function GlobalPublishBanner() {
   const [banners, setBanners] = useState([])
+  const pollRef = useRef(null)
 
   useEffect(() => {
     const addBanner = (id, banner) => {
@@ -66,9 +71,44 @@ function GlobalPublishBanner() {
 
     // Publish events
     const handlePublishStart = (e) => {
-      addBanner('publish', { type: 'progress', msg: `⏳ מפרסם ב-${e.detail.count} קבוצות...` })
+      const { count, postId } = e.detail
+      addBanner('publish', { type: 'progress', msg: `⏳ מפרסם ב-${count} קבוצות...` })
+
+      // Poll for completion
+      if (postId) {
+        if (pollRef.current) clearInterval(pollRef.current)
+        pollRef.current = setInterval(async () => {
+          try {
+            const res = await groupsService.getCampaign(postId)
+            const campaign = res.data?.campaign
+            if (!campaign) return
+            const history = campaign.publicationHistory || []
+            const totalJobs = (campaign.groups?.length || 0) + (campaign.publishToProfile ? 1 : 0)
+            const completed = history.length
+            if (completed >= totalJobs && totalJobs > 0) {
+              clearInterval(pollRef.current)
+              pollRef.current = null
+              const failed = history.filter(h => h.status === 'FAILED').length
+              const succeeded = history.filter(h => h.status === 'SUCCESS').length
+              if (failed === 0) {
+                addBanner('publish', { type: 'success', msg: `✅ פורסם בהצלחה ב-${succeeded} קבוצות!` })
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
+              } else {
+                addBanner('publish', { type: 'error', msg: `⚠️ ${succeeded}/${totalJobs} פורסמו. ${failed} נכשלו.` })
+              }
+              setTimeout(() => removeBanner('publish'), 8000)
+              window.dispatchEvent(new CustomEvent('postit-publish-done', { detail: { allSuccess: failed === 0, total: totalJobs, failed } }))
+            } else if (completed > 0) {
+              addBanner('publish', { type: 'progress', msg: `⏳ מפרסם... ${completed}/${totalJobs} הושלמו` })
+            }
+          } catch {
+            // Ignore polling errors
+          }
+        }, 5000)
+      }
     }
     const handlePublishDone = (e) => {
+      if (pollRef.current) return // Already handled by polling
       const { allSuccess, total, failed } = e.detail
       if (allSuccess) {
         addBanner('publish', { type: 'success', msg: `✅ פורסם בהצלחה ב-${total} קבוצות!` })
@@ -113,6 +153,7 @@ function GlobalPublishBanner() {
       window.removeEventListener('postit-sync-done', handleSyncDone)
       window.removeEventListener('postit-op-start', handleOpStart)
       window.removeEventListener('postit-op-done', handleOpDone)
+      if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [])
 
@@ -143,11 +184,13 @@ function App() {
   return (
     <ErrorBoundary>
     <ThemeProvider>
+    <NavigationGuardProvider>
     <DataProvider>
       <Router>
         <ScrollToTop />
         <TopLoader />
         <GlobalPublishBanner />
+        <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
@@ -169,10 +212,12 @@ function App() {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
         </Routes>
+        </Suspense>
         <AuthWidgets />
         <AccessibilityWidget />
       </Router>
     </DataProvider>
+    </NavigationGuardProvider>
     </ThemeProvider>
     </ErrorBoundary>
   )

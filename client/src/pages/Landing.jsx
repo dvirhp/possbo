@@ -1,24 +1,30 @@
 import { useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { authAPI } from '../services/api'
+import { useAppData } from '../context/DataProvider'
+import { useTheme } from '../context/ThemeProvider'
 import LandingChatBot from '../components/LandingChatBot'
 import '../styles/landing.css'
 
 export default function Landing() {
   const navigate = useNavigate()
+  const { user, authChecked } = useAppData()
+  const { theme, toggleTheme } = useTheme()
 
   // If already logged in, redirect to dashboard
   useEffect(() => {
-    authAPI.refresh()
-      .then(() => navigate('/dashboard'))
-      .catch(() => {}) // Not logged in - stay
-  }, [navigate])
+    if (authChecked && user) {
+      navigate('/dashboard')
+    }
+  }, [authChecked, user, navigate])
 
   return (
     <div className="landing-page">
       <nav className="landing-nav">
         <div className="nav-logo"><img src="/logo.svg" alt="PostIt" className="nav-logo-img" /> PostIt</div>
         <div className="nav-buttons">
+          <button className="nav-theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'מצב בהיר' : 'מצב כהה'}>
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <Link to="/login" className="nav-btn nav-btn-login">התחברות</Link>
           <Link to="/register" className="nav-btn nav-btn-register">הרשמה</Link>
         </div>

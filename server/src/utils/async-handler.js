@@ -21,9 +21,13 @@ export function asyncHandler(fn) {
         });
       }
 
+      // Never expose raw error messages to client in production
+      const isProduction = process.env.NODE_ENV === "production";
       res.status(500).json({
         success: false,
-        error: error.message || "Internal server error",
+        error: isProduction
+          ? "Internal server error"
+          : error.message || "Internal server error",
       });
     });
   };

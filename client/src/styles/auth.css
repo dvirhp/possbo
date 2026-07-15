@@ -427,46 +427,77 @@
   position: relative;
 }
 
-.privacy-header {
-  text-align: center;
+.privacy-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 32px;
 }
 
-.privacy-header h1 {
-  font-size: 28px;
+.privacy-topbar-title {
+  font-size: 18px;
+  font-weight: 700;
   color: var(--text-primary, #e8ecf0);
-  margin: 0 0 8px;
+  margin: 0;
+  text-align: center;
+  flex: 1;
 }
 
-.privacy-header p {
-  font-size: 14px;
-  color: var(--text-muted, #6b7684);
-  margin: 0;
+.privacy-back-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--bg-elevated, #2a2f3a);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  color: var(--text-secondary, #a3adb8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+.privacy-back-btn:hover {
+  background: var(--bg-hover, #313743);
+  color: var(--text-primary, #e8ecf0);
+  border-color: var(--indigo, #818cf8);
+}
+
+.privacy-logo-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
 }
 
 .privacy-content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .privacy-section {
   background: var(--bg-card, #23272f);
   border: 1px solid var(--border, rgba(255,255,255,0.06));
-  border-radius: 14px;
-  padding: 24px;
+  border-radius: 16px;
+  padding: 28px;
+  transition: border-color 0.2s;
+}
+
+.privacy-section:hover {
+  border-color: rgba(129, 140, 248, 0.15);
 }
 
 .privacy-section h2 {
   font-size: 18px;
   color: var(--text-primary, #e8ecf0);
   margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
 }
 
 .privacy-section h3 {
   font-size: 14px;
   color: var(--indigo, #818cf8);
-  margin: 18px 0 8px;
+  margin: 20px 0 8px;
   font-weight: 600;
 }
 
@@ -485,15 +516,16 @@
 .privacy-section li {
   font-size: 13.5px;
   color: var(--text-secondary, #a3adb8);
-  line-height: 1.8;
+  line-height: 1.9;
 }
 
 .privacy-contact {
   margin: 16px 0;
-  padding: 16px;
+  padding: 18px;
   background: var(--bg-elevated, #2a2f38);
-  border-radius: 10px;
+  border-radius: 12px;
   text-align: center;
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
 }
 
 .privacy-contact a {
@@ -515,20 +547,14 @@
 
 .privacy-footer {
   text-align: center;
-  margin-top: 32px;
+  margin-top: 36px;
   padding: 16px;
-  font-size: 13px;
-  color: var(--text-muted, #6b7684);
+  font-size: 12px;
+  color: var(--text-dim, #4a5260);
 }
 
-.privacy-footer a {
-  color: var(--indigo, #818cf8);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.privacy-footer a:hover {
-  text-decoration: underline;
+.privacy-footer p {
+  margin: 0;
 }
 
 /* ─── Back button in auth header ─── */

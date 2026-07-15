@@ -4,8 +4,10 @@ import LocationAutocomplete from '../../components/LocationAutocomplete.jsx';
 
 vi.mock('../../styles/location-autocomplete.css', () => ({}));
 
-const mockFetch = vi.fn();
-global.fetch = mockFetch;
+const mockGet = vi.fn();
+vi.mock('../../services/http.js', () => ({
+  default: { get: (...args) => mockGet(...args) },
+}));
 
 describe('LocationAutocomplete', () => {
   const onChange = vi.fn();
@@ -13,7 +15,7 @@ describe('LocationAutocomplete', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     onChange.mockClear();
-    mockFetch.mockClear();
+    mockGet.mockClear();
   });
 
   afterEach(() => {
@@ -31,19 +33,19 @@ describe('LocationAutocomplete', () => {
       expect(screen.getByText('📍')).toBeInTheDocument();
     });
 
-    it('should display the value prop in input', () => {
+    it('should display selected chip when value is set', () => {
       render(<LocationAutocomplete value="Tel Aviv" onChange={onChange} placeholder="L" />);
-      expect(screen.getByDisplayValue('Tel Aviv')).toBeInTheDocument();
+      expect(screen.getByText('Tel Aviv')).toBeInTheDocument();
     });
 
-    it('should disable input when disabled prop is true', () => {
-      render(<LocationAutocomplete value="" onChange={onChange} placeholder="L" disabled={true} />);
-      expect(screen.getByPlaceholderText('L')).toBeDisabled();
+    it('should disable clear button when disabled prop is true', () => {
+      render(<LocationAutocomplete value="Tel Aviv" onChange={onChange} placeholder="L" disabled={true} />);
+      expect(screen.queryByText('✕')).not.toBeInTheDocument();
     });
   });
 
   describe('clear button', () => {
-    it('should show clear button when value is not empty', () => {
+    it('should show clear button when value is set', () => {
       render(<LocationAutocomplete value="Tel Aviv" onChange={onChange} placeholder="L" />);
       expect(screen.getByText('✕')).toBeInTheDocument();
     });
@@ -55,22 +57,23 @@ describe('LocationAutocomplete', () => {
 
     it('should call onChange with empty string when clear clicked', () => {
       render(<LocationAutocomplete value="Tel Aviv" onChange={onChange} placeholder="L" />);
-      fireEvent.click(screen.getByText('✕'));
+      fireEvent.mouseDown(screen.getByText('✕'));
       expect(onChange).toHaveBeenCalledWith('');
     });
   });
 
   describe('typing', () => {
-    it('should call onChange when user types', () => {
+    it('should update input value when user types', () => {
       render(<LocationAutocomplete value="" onChange={onChange} placeholder="L" />);
-      fireEvent.change(screen.getByPlaceholderText('L'), { target: { value: 'Tel' } });
-      expect(onChange).toHaveBeenCalledWith('Tel');
+      const input = screen.getByPlaceholderText('L');
+      fireEvent.change(input, { target: { value: 'Tel' } });
+      expect(input.value).toBe('Tel');
     });
   });
 
   describe('API debounce', () => {
     it('should debounce API calls', async () => {
-      mockFetch.mockResolvedValue({ json: () => Promise.resolve([]) });
+      mockGet.mockResolvedValue({ data: [] });
 
       render(<LocationAutocomplete value="" onChange={onChange} placeholder="L" />);
       const input = screen.getByPlaceholderText('L');
@@ -79,37 +82,35 @@ describe('LocationAutocomplete', () => {
       fireEvent.change(input, { target: { value: 'Te' } });
       fireEvent.change(input, { target: { value: 'Tel' } });
 
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockGet).not.toHaveBeenCalled();
 
       await act(async () => { vi.advanceTimersByTime(500); });
 
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockGet).toHaveBeenCalledTimes(1);
     });
 
     it('should not call API when query is less than 2 characters', async () => {
-      mockFetch.mockResolvedValue({ json: () => Promise.resolve([]) });
+      mockGet.mockResolvedValue({ data: [] });
 
       render(<LocationAutocomplete value="" onChange={onChange} placeholder="L" />);
       fireEvent.change(screen.getByPlaceholderText('L'), { target: { value: 'T' } });
 
       await act(async () => { vi.advanceTimersByTime(500); });
 
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockGet).not.toHaveBeenCalled();
     });
 
-    it('should call Nominatim API with encoded query', async () => {
-      mockFetch.mockResolvedValue({ json: () => Promise.resolve([]) });
+    it('should call places API with query param', async () => {
+      mockGet.mockResolvedValue({ data: [] });
 
       render(<LocationAutocomplete value="" onChange={onChange} placeholder="L" />);
       fireEvent.change(screen.getByPlaceholderText('L'), { target: { value: 'Tel Aviv' } });
 
       await act(async () => { vi.advanceTimersByTime(500); });
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('nominatim.openstreetmap.org'),
-      );
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('Tel%20Aviv'),
+      expect(mockGet).toHaveBeenCalledWith(
+        '/groups/places',
+        expect.objectContaining({ params: { q: 'Tel Aviv' } }),
       );
     });
   });
@@ -119,15 +120,15 @@ describe('LocationAutocomplete', () => {
       vi.useRealTimers();
 
       const mockResults = [
-        { place_id: 1, display_name: 'Tel Aviv, Israel, Middle East' },
+        { id: '1', name: 'Tel Aviv', city: 'Tel Aviv', country: 'Israel' },
       ];
-      mockFetch.mockResolvedValue({ json: () => Promise.resolve(mockResults) });
+      mockGet.mockResolvedValue({ data: mockResults });
 
       render(<LocationAutocomplete value="" onChange={onChange} placeholder="L" />);
       fireEvent.change(screen.getByPlaceholderText('L'), { target: { value: 'Tel Aviv' } });
 
       await waitFor(() => {
-        expect(screen.getByText('Tel Aviv, Israel')).toBeInTheDocument();
+        expect(screen.getByText('Tel Aviv')).toBeInTheDocument();
       }, { timeout: 2000 });
     });
 
@@ -135,9 +136,9 @@ describe('LocationAutocomplete', () => {
       vi.useRealTimers();
 
       const mockResults = [
-        { place_id: 1, display_name: 'Tel Aviv, Israel, Middle East' },
+        { id: '1', name: 'Tel Aviv', city: 'Tel Aviv', country: 'Israel' },
       ];
-      mockFetch.mockResolvedValue({ json: () => Promise.resolve(mockResults) });
+      mockGet.mockResolvedValue({ data: mockResults });
 
       render(<LocationAutocomplete value="" onChange={onChange} placeholder="L" />);
       fireEvent.change(screen.getByPlaceholderText('L'), { target: { value: 'Tel Aviv' } });
@@ -146,17 +147,18 @@ describe('LocationAutocomplete', () => {
         expect(screen.getByText('Tel Aviv, Israel')).toBeInTheDocument();
       }, { timeout: 2000 });
 
-      fireEvent.click(screen.getByText('Tel Aviv, Israel'));
-      expect(onChange).toHaveBeenCalledWith('Tel Aviv, Israel');
+      // Items use onMouseDown, not onClick
+      fireEvent.mouseDown(screen.getByText('Tel Aviv, Israel').closest('li'));
+      expect(onChange).toHaveBeenCalledWith('Tel Aviv, Tel Aviv, Israel');
     });
 
-    it('should hide dropdown after selection', async () => {
+    it('should show selected chip after selection', async () => {
       vi.useRealTimers();
 
       const mockResults = [
-        { place_id: 1, display_name: 'Tel Aviv, Israel, Middle East' },
+        { id: '1', name: 'Tel Aviv', city: 'Tel Aviv', country: 'Israel' },
       ];
-      mockFetch.mockResolvedValue({ json: () => Promise.resolve(mockResults) });
+      mockGet.mockResolvedValue({ data: mockResults });
 
       render(<LocationAutocomplete value="" onChange={onChange} placeholder="L" />);
       fireEvent.change(screen.getByPlaceholderText('L'), { target: { value: 'Tel Aviv' } });
@@ -165,10 +167,11 @@ describe('LocationAutocomplete', () => {
         expect(screen.getByText('Tel Aviv, Israel')).toBeInTheDocument();
       }, { timeout: 2000 });
 
-      fireEvent.click(screen.getByText('Tel Aviv, Israel'));
+      fireEvent.mouseDown(screen.getByText('Tel Aviv, Israel').closest('li'));
 
+      // After selection, a chip is shown (no more input)
       await waitFor(() => {
-        expect(screen.queryByText('Tel Aviv, Israel')).not.toBeInTheDocument();
+        expect(screen.queryByPlaceholderText('L')).not.toBeInTheDocument();
       });
     });
   });
@@ -178,9 +181,9 @@ describe('LocationAutocomplete', () => {
       vi.useRealTimers();
 
       const mockResults = [
-        { place_id: 1, display_name: 'Tel Aviv, Israel, Middle East' },
+        { id: '1', name: 'Tel Aviv', city: 'Tel Aviv', country: 'Israel' },
       ];
-      mockFetch.mockResolvedValue({ json: () => Promise.resolve(mockResults) });
+      mockGet.mockResolvedValue({ data: mockResults });
 
       render(
         <div>

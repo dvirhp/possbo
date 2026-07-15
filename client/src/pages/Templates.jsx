@@ -3,11 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { templatesService } from '../services/templatesService'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { Plus, Pencil, Trash2, Rocket, FileText, Calendar, Users, Search, LayoutGrid, List, Eye, MoreVertical } from 'lucide-react'
+import { Plus, Pencil, Trash2, Rocket, FileText, Calendar, Users, Search, LayoutGrid, List, Eye, MoreVertical, X, Clock, MapPin, UserX } from 'lucide-react'
 import '../styles/templates.css'
 
 const API_HOST = 'http://localhost:8000'
 const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
+const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
 
 function formatNumber(n) {
   if (!n) return '0'
@@ -34,6 +35,8 @@ export default function Templates() {
   const [viewMode, setViewMode] = useState(() => window.innerWidth <= 768 ? 'grid' : 'grid')
   const [openMenuId, setOpenMenuId] = useState(null)
   const [activeTooltip, setActiveTooltip] = useState(null)
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
+  const [detailMenuOpen, setDetailMenuOpen] = useState(false)
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
 
   // Close dropdown on outside click
@@ -101,6 +104,7 @@ export default function Templates() {
           dayTimes: template.dayTimes || {},
           groupIds: template.groupIds || [],
           imageUrls: template.imageUrls || [],
+          whatsappText: template.whatsappText || null,
         }
       }
     })
@@ -151,7 +155,7 @@ export default function Templates() {
       <div className="tpl-content">
         {loading ? (
           <div className="tpl-loading">
-            <div className="tpl-spinner" />
+            <img src="/logo.svg" alt="" className="loader-logo-pulse" />
             <span>טוען טמפלייטים...</span>
           </div>
         ) : templates.length === 0 ? (
@@ -216,7 +220,7 @@ export default function Templates() {
                   const groups = resolveGroups(tpl.groupIds)
                   const reach = tpl.totalReach ?? getTotalReach(tpl.groupIds)
                   return (
-                    <div key={tpl.id} className="tpl-list-row">
+                    <div key={tpl.id} className="tpl-list-row" onClick={() => { setSelectedTemplate(tpl); setDetailMenuOpen(false) }} style={{ cursor: 'pointer' }}>
                       <div className="tpl-list-col tpl-list-col-name">
                         <div className="tpl-list-icon"><FileText size={16} /></div>
                         <div className="tpl-list-name-wrap">
@@ -246,7 +250,7 @@ export default function Templates() {
                       <div className="tpl-list-col tpl-list-col-usage">
                         <span>{tpl.usageCount}</span>
                       </div>
-                      <div className="tpl-list-col tpl-list-col-actions">
+                      <div className="tpl-list-col tpl-list-col-actions" onClick={e => e.stopPropagation()}>
                         <button className="tpl-list-use-btn" onClick={() => handleUseTemplate(tpl)}>
                           <Rocket size={13} /> צור קמפיין
                         </button>
@@ -265,7 +269,7 @@ export default function Templates() {
                   const groupCount = tpl.groupIds?.length || 0
                   const reach = tpl.totalReach ?? getTotalReach(tpl.groupIds)
                   return (
-                    <div key={tpl.id} className="tpl-card">
+                    <div key={tpl.id} className="tpl-card" onClick={() => { setSelectedTemplate(tpl); setDetailMenuOpen(false) }} style={{ cursor: 'pointer' }}>
                       {/* Image Collage */}
                       {tpl.imageUrls?.length > 0 && (
                         <div className={`tpl-card-collage tpl-collage-${Math.min(tpl.imageUrls.length, 4)}`}>
@@ -356,7 +360,7 @@ export default function Templates() {
                       </div>
 
                       {/* Use Template Button */}
-                      <button className="tpl-use-btn" onClick={() => handleUseTemplate(tpl)}>
+                      <button className="tpl-use-btn" onClick={(e) => { e.stopPropagation(); handleUseTemplate(tpl) }}>
                         <Rocket size={16} />
                         <span>צור קמפיין מטמפלייט</span>
                       </button>
@@ -368,6 +372,158 @@ export default function Templates() {
           </>
         )}
       </div>
+
+      {/* Template Detail Popup */}
+      {selectedTemplate && (() => {
+        const tpl = selectedTemplate
+        const groups = resolveGroups(tpl.groupIds)
+        const reach = tpl.totalReach ?? getTotalReach(tpl.groupIds)
+        return (
+          <div className="tpl-detail-overlay" onClick={() => setSelectedTemplate(null)}>
+            <div className="tpl-detail-modal" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="tpl-detail-header">
+                <button className="tpl-detail-close" onClick={() => setSelectedTemplate(null)}><X size={18} /></button>
+                <h3>{tpl.name}</h3>
+                <div className="tpl-detail-menu-wrap">
+                  <button className="tpl-detail-menu-btn" onClick={() => setDetailMenuOpen(!detailMenuOpen)}>
+                    <MoreVertical size={18} />
+                  </button>
+                  {detailMenuOpen && (
+                    <div className="tpl-detail-dropdown">
+                      <button onClick={() => { setSelectedTemplate(null); setDetailMenuOpen(false); navigate(`/templates/${tpl.id}/edit`) }}>
+                        <Pencil size={14} /> ערוך טמפלייט
+                      </button>
+                      <button className="tpl-dropdown-danger" onClick={() => { setSelectedTemplate(null); setDetailMenuOpen(false); setDeleteConfirm(tpl) }}>
+                        <Trash2 size={14} /> מחק טמפלייט
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Images */}
+              {tpl.imageUrls?.length > 0 && (
+                <div className="tpl-detail-images">
+                  {tpl.imageUrls.length === 1 ? (
+                    <img src={imgSrc(tpl.imageUrls[0])} alt="" className="tpl-detail-img-single" />
+                  ) : (
+                    <div className={`tpl-detail-img-grid tpl-detail-grid-${Math.min(tpl.imageUrls.length, 4)}`}>
+                      {tpl.imageUrls.slice(0, 4).map((url, i) => (
+                        <img key={i} src={imgSrc(url)} alt="" />
+                      ))}
+                      {tpl.imageUrls.length > 4 && (
+                        <span className="tpl-detail-img-more">+{tpl.imageUrls.length - 4}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Body */}
+              <div className="tpl-detail-body">
+                {/* Campaign title */}
+                {tpl.campaignTitle && (
+                  <div className="tpl-detail-field">
+                    <span className="tpl-detail-label">כותרת קמפיין</span>
+                    <span className="tpl-detail-value">{tpl.campaignTitle}</span>
+                  </div>
+                )}
+
+                {/* Content */}
+                <div className="tpl-detail-field">
+                  <span className="tpl-detail-label">תוכן הפוסט</span>
+                  <div className="tpl-detail-content">{tpl.content}</div>
+                </div>
+
+                {/* Groups */}
+                {groups.length > 0 && (
+                  <div className="tpl-detail-field">
+                    <span className="tpl-detail-label"><Users size={14} /> קבוצות ({groups.length})</span>
+                    <div className="tpl-detail-groups-list">
+                      {groups.map(g => (
+                        <div key={g.id} className="tpl-detail-group-row">
+                          {g.pictureUrl ? <img src={g.pictureUrl} alt="" className="tpl-detail-group-img" /> : <span className="tpl-detail-group-letter">{g.name?.[0]}</span>}
+                          <span className="tpl-detail-group-name">{g.name}</span>
+                          {g.memberCount > 0 && <span className="tpl-detail-group-count">{formatNumber(g.memberCount)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Exposure */}
+                {reach > 0 && (
+                  <div className="tpl-detail-field">
+                    <span className="tpl-detail-label"><Eye size={14} /> חשיפה משוערת</span>
+                    <span className="tpl-detail-value tpl-detail-highlight">{formatNumber(reach)}</span>
+                  </div>
+                )}
+
+                {/* Schedule mode */}
+                <div className="tpl-detail-field">
+                  <span className="tpl-detail-label"><Clock size={14} /> מצב תזמון</span>
+                  <span className="tpl-detail-value">{scheduleModeLabel(tpl.scheduleMode)}</span>
+                </div>
+
+                {/* Recurring days */}
+                {tpl.scheduleMode === 'recurring' && tpl.recurringDays?.length > 0 && (
+                  <div className="tpl-detail-field">
+                    <span className="tpl-detail-label"><Calendar size={14} /> ימים חוזרים</span>
+                    <div className="tpl-detail-days">
+                      {tpl.recurringDays.sort((a, b) => a - b).map(d => (
+                        <span key={d} className="tpl-detail-day-tag">{DAY_NAMES[d]}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recurring times */}
+                {tpl.scheduleMode === 'recurring' && tpl.recurringTimes?.length > 0 && (
+                  <div className="tpl-detail-field">
+                    <span className="tpl-detail-label"><Clock size={14} /> שעות</span>
+                    <div className="tpl-detail-days">
+                      {tpl.recurringTimes.map(t => (
+                        <span key={t} className="tpl-detail-day-tag">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Anonymous */}
+                {tpl.isAnonymous && (
+                  <div className="tpl-detail-field">
+                    <span className="tpl-detail-label"><UserX size={14} /> פרסום אנונימי</span>
+                    <span className="tpl-detail-value">כן</span>
+                  </div>
+                )}
+
+                {/* Location */}
+                {tpl.location && (
+                  <div className="tpl-detail-field">
+                    <span className="tpl-detail-label"><MapPin size={14} /> מיקום</span>
+                    <span className="tpl-detail-value">{tpl.location}</span>
+                  </div>
+                )}
+
+                {/* Usage count */}
+                <div className="tpl-detail-field">
+                  <span className="tpl-detail-label"><Rocket size={14} /> שימושים</span>
+                  <span className="tpl-detail-value">{tpl.usageCount || 0} פעמים</span>
+                </div>
+              </div>
+
+              {/* Footer action */}
+              <div className="tpl-detail-footer">
+                <button className="tpl-detail-use-btn" onClick={() => { setSelectedTemplate(null); handleUseTemplate(tpl) }}>
+                  <Rocket size={16} />
+                  צור קמפיין מטמפלייט
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Delete confirmation */}
       {deleteConfirm && (

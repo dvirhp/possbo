@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import Sidebar from './Sidebar'
 import BottomNav from './BottomNav'
+import PullToRefresh from './PullToRefresh'
 
 export default function AuthLayout({ children }) {
   const { user, authChecked } = useAppData()
@@ -10,6 +11,57 @@ export default function AuthLayout({ children }) {
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Swipe-to-open sidebar gesture
+  const touchStartX = useRef(0)
+  const touchStartY = useRef(0)
+  const sidebarOpenRef = useRef(false)
+
+  useEffect(() => { sidebarOpenRef.current = sidebarOpen }, [sidebarOpen])
+
+  const handleSwipeStart = useCallback((e) => {
+    if (window.innerWidth > 768) return
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }, [])
+
+  const handleSwipeEnd = useCallback((e) => {
+    if (window.innerWidth > 768) return
+    const dx = e.changedTouches[0].clientX - touchStartX.current
+    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY.current)
+    // Horizontal swipe must be dominant (dx > dy) and minimum 60px
+    if (dy > Math.abs(dx) || Math.abs(dx) < 60) return
+    // RTL: swipe left (negative dx) opens sidebar on right; swipe right closes
+    if (dx < -60 && !sidebarOpenRef.current) {
+      setSidebarOpen(true)
+    } else if (dx > 60 && sidebarOpenRef.current) {
+      setSidebarOpen(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener('touchstart', handleSwipeStart, { passive: true })
+    document.addEventListener('touchend', handleSwipeEnd, { passive: true })
+    return () => {
+      document.removeEventListener('touchstart', handleSwipeStart)
+      document.removeEventListener('touchend', handleSwipeEnd)
+    }
+  }, [handleSwipeStart, handleSwipeEnd])
+
+  // Close sidebar on route change
+  useEffect(() => { setSidebarOpen(false) }, [location])
+
+  // Pull-to-refresh handler
+  const handlePullRefresh = useCallback(() => {
+    return new Promise(resolve => {
+      const handler = () => { resolve(); window.removeEventListener('postit-pull-refresh-done', handler) }
+      window.addEventListener('postit-pull-refresh-done', handler)
+      window.dispatchEvent(new CustomEvent('postit-pull-refresh'))
+      // Auto-resolve after 3s if no one responds
+      setTimeout(() => { resolve(); window.removeEventListener('postit-pull-refresh-done', handler) }, 3000)
+    })
+  }, [])
 
   // Determine active tab from route
   useEffect(() => {
@@ -58,11 +110,15 @@ export default function AuthLayout({ children }) {
 
   return (
     <div className="app-layout">
+      {sidebarOpen && <div className="mobile-sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <Sidebar activeTab={activeTab} onTabChange={(tab) => {
         setActiveTab(tab)
-      }} />
+        setSidebarOpen(false)
+      }} mobileOpen={sidebarOpen} />
       <main className="app-main">
-        {children}
+        <PullToRefresh onRefresh={handlePullRefresh}>
+          {children}
+        </PullToRefresh>
       </main>
       <BottomNav />
     </div>

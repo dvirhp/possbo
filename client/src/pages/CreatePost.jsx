@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
+import { useNavigationGuard } from '../context/NavigationGuard'
 import { groupsService } from '../services/groupsService'
-import { publishService } from '../services/publishService'
 import { templatesService } from '../services/templatesService'
 import { authAPI } from '../services/api'
 import confetti from 'canvas-confetti'
@@ -10,6 +10,7 @@ import LocationAutocomplete from '../components/LocationAutocomplete'
 import FacebookPreview from '../components/FacebookPreview'
 import ConfirmDialog from '../components/ConfirmDialog'
 import OptimalTimesHint from '../components/OptimalTimesHint'
+import EmojiPicker from '../components/EmojiPicker'
 import '../styles/create-post.css'
 import '../styles/templates.css'
 
@@ -248,6 +249,7 @@ export default function CreatePost() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, authChecked, groups: cachedGroups, forceRefresh, templates: cachedTemplates, recentCampaigns: cachedRecent, dataReady } = useAppData()
+  const { setDirty, isDirty } = useNavigationGuard()
 
   const preSelectedGroup = location.state?.group || null
   const republishData = location.state?.republish || null
@@ -272,15 +274,31 @@ export default function CreatePost() {
   const [postImages, setPostImages] = useState([])
   const [postImagePreviews, setPostImagePreviews] = useState([])
   const [isAnonymous, setIsAnonymous] = useState(fromTemplate?.isAnonymous || republishData?.isAnonymous || false)
+
+  // Track unsaved changes
+  useEffect(() => {
+    const hasDirty = !!(postText.trim() || campaignTitle.trim() || postImages.length)
+    setDirty(hasDirty, 'יש תוכן שלא פורסם. לצאת בלי לשמור?')
+    return () => setDirty(false)
+  }, [postText, campaignTitle, postImages, setDirty])
+
+  // Browser tab/refresh guard
+  useEffect(() => {
+    const handler = (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = '' } }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isDirty])
+
   const [postLocation, setPostLocation] = useState(fromTemplate?.location || republishData?.location || '')
   const [showLocationInput, setShowLocationInput] = useState(!!(fromTemplate?.location || republishData?.location))
   const [whatsappNumber, setWhatsappNumber] = useState(user?.whatsappNumber || '')
-  const [whatsappMessage, setWhatsappMessage] = useState(user?.whatsappMessage || '')
-  const [showWhatsapp, setShowWhatsapp] = useState(false)
+  const [whatsappMessage, setWhatsappMessage] = useState(fromTemplate?.whatsappText || user?.whatsappMessage || '')
+  const [showWhatsapp, setShowWhatsapp] = useState(!!(fromTemplate?.whatsappText && user?.whatsappNumber))
   const [waLinking, setWaLinking] = useState(false) // inline linking mode
   const [waTempNumber, setWaTempNumber] = useState('')
   const [waTempMessage, setWaTempMessage] = useState('')
   const [waSaving, setWaSaving] = useState(false)
+  const [waEditingMsg, setWaEditingMsg] = useState(false)
 
   // Scheduling
   const [scheduleMode, setScheduleMode] = useState(fromTemplate?.scheduleMode || 'now') // 'now' | 'scheduled' | 'recurring'
@@ -455,14 +473,21 @@ export default function CreatePost() {
           templateName: fromTemplate?.name || selectedTemplateName || null,
         }, postImages)
         if (res.data.success) {
+          setDirty(false)
           forceRefresh()
-          confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
           // Mark template usage only on successful publish
           if (fromTemplate?.id) {
             templatesService.markUsed(fromTemplate.id).catch(() => {})
           }
-          // Navigate back after short delay for confetti
-          setTimeout(() => navigate(-1), 1200)
+          // Navigate immediately and show success banner
+          navigate(-1)
+          setTimeout(() => {
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
+            const msg = scheduleMode === 'recurring'
+              ? '🔄 קמפיין חוזר תוזמן בהצלחה!'
+              : '📅 פוסט תוזמן בהצלחה!'
+            window.dispatchEvent(new CustomEvent('postit-op-done', { detail: { id: 'schedule', success: true, msg } }))
+          }, 100)
         } else {
           setError(res.data.error || 'שגיאה ביצירת הקמפיין')
         }
@@ -474,62 +499,40 @@ export default function CreatePost() {
       return
     }
 
-    // Immediate publish — fire requests and navigate to dashboard
+    // Immediate publish — create campaign with scheduleMode "now"
     const finalText = waLink
       ? `${postText}\n\n${waLink}`
       : postText
 
-    setPublishing(false)
+    try {
+      const groupCount = selectedGroups.length + (publishToProfile ? 1 : 0)
+      const res = await groupsService.createCampaign({
+        title: campaignTitle,
+        text: finalText,
+        groupIds: selectedGroups.map(g => g.id),
+        anonymous: isAnonymous,
+        location: postLocation,
+        publishToProfile,
+        scheduleMode: 'now',
+        campaignType: 'ONE_TIME',
+        templateName: fromTemplate?.name || selectedTemplateName || null,
+      }, postImages)
 
-    const groupsCopy = [...selectedGroups]
-    const groupCount = groupsCopy.length + (publishToProfile ? 1 : 0)
-
-    // Navigate immediately — let user continue browsing
-    window.dispatchEvent(new CustomEvent('postit-publish-start', { detail: { count: groupCount } }))
-    navigate(-1)
-
-    // Fire publish in background
-    const publishResults = []
-
-    // Publish to profile if enabled
-    if (publishToProfile) {
-      try {
-        await publishService.publishToProfile(finalText, postImages, postLocation, campaignTitle)
-        publishResults.push({ group: 'פרופיל אישי', success: true })
-      } catch {
-        publishResults.push({ group: 'פרופיל אישי', success: false })
+      if (res.data.success) {
+        setDirty(false)
+        if (fromTemplate?.id) {
+          templatesService.markUsed(fromTemplate.id).catch(() => {})
+        }
+        window.dispatchEvent(new CustomEvent('postit-publish-start', { detail: { count: groupCount, postId: res.data.postId } }))
+        navigate(-1)
+      } else {
+        setError(res.data.error || 'שגיאה ביצירת הפרסום')
       }
+    } catch (err) {
+      setError(err.userMessage || 'שגיאה בלתי צפויה')
+    } finally {
+      setPublishing(false)
     }
-
-    const promises = groupsCopy.map(async (group) => {
-      try {
-        const groupUrl = group.url || `https://www.facebook.com/groups/${group.externalId}`
-        await publishService.publish(
-          groupUrl,
-          finalText,
-          postImages,
-          group.name,
-          isAnonymous,
-          postLocation,
-          campaignTitle
-        )
-        publishResults.push({ group: group.name, success: true })
-      } catch (err) {
-        publishResults.push({ group: group.name, success: false })
-      }
-    })
-
-    Promise.all(promises).then(() => {
-      const allSuccess = publishResults.length > 0 && publishResults.every(r => r.success)
-      // Mark template usage only on successful publish
-      if (fromTemplate?.id && publishResults.some(r => r.success)) {
-        templatesService.markUsed(fromTemplate.id).catch(() => {})
-      }
-      // Dispatch custom event — DataProvider listens and triggers forceRefresh
-      window.dispatchEvent(new CustomEvent('postit-publish-done', {
-        detail: { allSuccess, total: publishResults.length, failed: publishResults.filter(r => !r.success).length }
-      }))
-    })
   }
 
   // ─── Save as Draft ──────────────────────────────────────
@@ -565,6 +568,7 @@ export default function CreatePost() {
             recurringStartDate,
             recurringEndDate: recurringEndDate || null,
           }, postImages)
+          setDirty(false)
           forceRefresh()
           navigate('/dashboard', { state: { toast: 'נשמר כטיוטה ✓' } })
         } catch (err) {
@@ -579,6 +583,7 @@ export default function CreatePost() {
   const handleExitWizard = () => {
     // If already published/scheduled successfully, just go back
     if (results && results.some(r => r.success)) {
+      setDirty(false)
       navigate(-1)
       return
     }
@@ -586,9 +591,10 @@ export default function CreatePost() {
       setConfirmAction({
         title: 'יציאה מיצירת קמפיין',
         message: 'האם אתה בטוח שברצונך לצאת? השינויים שלך לא יישמרו.',
-        action: () => navigate(-1),
+        action: () => { setDirty(false); navigate(-1) },
       })
     } else {
+      setDirty(false)
       navigate(-1)
     }
   }
@@ -696,6 +702,7 @@ export default function CreatePost() {
 
   const [groupsOpen, setGroupsOpen] = useState(false)
   const groupsPanelRef = useRef(null)
+  const postTextareaRef = useRef(null)
 
   // Multi-step wizard
   const [currentStep, setCurrentStep] = useState(0)
@@ -1002,13 +1009,20 @@ export default function CreatePost() {
                     value={campaignTitle}
                     onChange={(e) => setCampaignTitle(e.target.value)}
                   />
+                  <div className="cp-textarea-wrap">
                   <textarea
+                    ref={postTextareaRef}
                     className={`cp-textarea ${stepErrors[0] && !postText.trim() ? 'input-error' : ''}`}
                     placeholder="מה ברצונך לשתף?"
                     value={postText}
                     onChange={(e) => setPostText(e.target.value)}
                     rows={6}
                   />
+                  <EmojiPicker
+                    textareaRef={postTextareaRef}
+                    onSelect={(newText) => setPostText(newText)}
+                  />
+                  </div>
 
                   {postImagePreviews.length > 0 && (
                     <div className="cp-images-preview">
@@ -1023,15 +1037,6 @@ export default function CreatePost() {
                           <button onClick={() => removeImage(i)} className="cp-remove-img">✕</button>
                         </div>
                       ))}
-                    </div>
-                  )}
-
-                  {showLocationInput && (
-                    <div className="cp-location-wrap">
-                      <LocationAutocomplete
-                        value={postLocation}
-                        onChange={setPostLocation}
-                      />
                     </div>
                   )}
 
@@ -1089,7 +1094,22 @@ export default function CreatePost() {
                     <div className="cp-whatsapp-wrap cp-whatsapp-active">
                       <div className="cp-whatsapp-row">✓ קישור וואטסאפ</div>
                       <div className="cp-whatsapp-row" dir="ltr">wa.me/{whatsappNumber.replace(/[^0-9]/g, '')}{whatsappMessage ? '?text=...' : ''}</div>
-                      {whatsappMessage && <div className="cp-whatsapp-row">💬 הודעה: {whatsappMessage}</div>}
+                      {whatsappMessage && !waEditingMsg && <div className="cp-wa-msg-preview">💬 {whatsappMessage}</div>}
+                      {!waEditingMsg ? (
+                        <button type="button" className="cp-wa-edit-btn" onClick={() => setWaEditingMsg(true)}>✏️ ערוך הודעה</button>
+                      ) : (
+                        <div className="cp-wa-edit-wrap">
+                          <span className="cp-wa-edit-label">הודעה שתוצג בוואטסאפ</span>
+                          <input
+                            type="text"
+                            placeholder="הודעה מותאמת (אופציונלי)"
+                            value={whatsappMessage}
+                            onChange={(e) => setWhatsappMessage(e.target.value)}
+                            dir="rtl"
+                          />
+                          <button type="button" className="cp-wa-edit-btn" onClick={() => setWaEditingMsg(false)}>✓ סיום עריכה</button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1120,6 +1140,14 @@ export default function CreatePost() {
                         <span className="cp-option-card-text">אנונימי</span>
                       </label>
                     </div>
+                    {showLocationInput && (
+                      <div className="cp-location-wrap">
+                        <LocationAutocomplete
+                          value={postLocation}
+                          onChange={setPostLocation}
+                        />
+                      </div>
+                    )}
                     <button
                       type="button"
                       className={`cp-option-whatsapp ${showWhatsapp ? 'active' : ''}`}

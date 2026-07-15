@@ -6,6 +6,7 @@ import {
   isValidGroupName,
   imageFileFilter,
   MAX_FILE_SIZE,
+  safeFilename,
 } from "../../src/utils/security.js";
 
 describe("isAllowedUrl", () => {
@@ -159,5 +160,40 @@ describe("imageFileFilter", () => {
 describe("MAX_FILE_SIZE", () => {
   it("should be 50MB", () => {
     expect(MAX_FILE_SIZE).toBe(50 * 1024 * 1024);
+  });
+});
+
+describe("safeFilename", () => {
+  it("should generate .jpg for image/jpeg", () => {
+    const name = safeFilename("image/jpeg");
+    expect(name).toMatch(/^\d+-\d+\.jpg$/);
+  });
+
+  it("should generate .png for image/png", () => {
+    const name = safeFilename("image/png");
+    expect(name).toMatch(/\.png$/);
+  });
+
+  it("should generate .mp4 for video/mp4", () => {
+    const name = safeFilename("video/mp4");
+    expect(name).toMatch(/\.mp4$/);
+  });
+
+  it("should generate .bin for unknown MIME types", () => {
+    const name = safeFilename("application/octet-stream");
+    expect(name).toMatch(/\.bin$/);
+  });
+
+  it("should generate unique filenames", () => {
+    const a = safeFilename("image/png");
+    const b = safeFilename("image/png");
+    expect(a).not.toBe(b);
+  });
+
+  it("should never contain path traversal characters", () => {
+    const name = safeFilename("image/png");
+    expect(name).not.toContain("/");
+    expect(name).not.toContain("\\");
+    expect(name).not.toContain("..");
   });
 });

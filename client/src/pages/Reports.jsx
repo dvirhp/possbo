@@ -2,8 +2,35 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { groupsService } from '../services/groupsService'
-import { FileText, Download, Calendar, TrendingUp, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Eye, X, ExternalLink } from 'lucide-react'
+import { FileText, Download, Calendar, TrendingUp, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Eye, X, ExternalLink, Users } from 'lucide-react'
 import '../styles/reports.css'
+
+const ERROR_MAP = {
+  'SESSION_EXPIRED': 'החיבור לפייסבוק פג — יש להתחבר מחדש',
+  'FACEBOOK_SESSION_REQUIRED': 'נדרש חיבור לפייסבוק — חבר את החשבון',
+  'POST_COMPOSER_NOT_FOUND': 'לא נמצא חלון פרסום בפייסבוק — ייתכן שהקבוצה חסומה',
+  'Missing post or user data': 'נתוני הפוסט חסרים — נסה ליצור קמפיין חדש',
+  'Session expired — reconnect Facebook': 'החיבור לפייסבוק פג — יש להתחבר מחדש',
+  'net::ERR_CONNECTION_RESET': 'בעיית תקשורת — בדוק את חיבור האינטרנט',
+  'net::ERR_CONNECTION_REFUSED': 'השרת לא זמין — נסה שוב מאוחר יותר',
+  'TIMEOUT': 'הפרסום נמשך זמן רב מדי — ייתכן שהפוסט פורסם בכל זאת',
+  'Navigation timeout': 'טעינת פייסבוק איטית מדי — נסה שוב',
+  'Target closed': 'הדפדפן נסגר במהלך הפרסום — נסה שוב',
+}
+
+function friendlyError(raw) {
+  if (!raw) return 'שגיאה לא ידועה — פנה לתמיכה'
+  // Check exact match
+  if (ERROR_MAP[raw]) return ERROR_MAP[raw]
+  // Check partial match
+  for (const [key, msg] of Object.entries(ERROR_MAP)) {
+    if (raw.includes(key)) return msg
+  }
+  // If it's already in Hebrew, return as-is
+  if (/[\u0590-\u05FF]/.test(raw)) return raw
+  // Generic fallback
+  return `שגיאת מערכת — ${raw.substring(0, 60)}`
+}
 
 const PERIOD_OPTIONS = [
   { value: 'daily', label: 'יומי' },
@@ -130,9 +157,135 @@ function ReportsDatePicker({ initialFrom, initialTo, onApply, onCancel, period, 
   )
 }
 
+const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
+
+function FuturePublications({ item }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const futureItems = useMemo(() => {
+    const { campaignType, recurringDays, recurringTime, groups: campaignGroups, scheduledAt, recurringEndDate } = item
+    const now = new Date()
+    const results = []
+
+    if (campaignType === 'RECURRING' && recurringDays?.length && recurringTime) {
+      // Generate next occurrences for recurring campaigns
+      const [hours, minutes] = recurringTime.split(':').map(Number)
+      const endDate = recurringEndDate ? new Date(recurringEndDate) : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // max 30 days ahead
+      const groupList = campaignGroups?.length ? campaignGroups : []
+
+      for (let dayOffset = 0; dayOffset <= 60; dayOffset++) {
+        const candidate = new Date(now)
+        candidate.setDate(candidate.getDate() + dayOffset)
+        candidate.setHours(hours, minutes, 0, 0)
+
+        if (candidate <= now) continue
+        if (candidate > endDate) break
+
+        const dayOfWeek = candidate.getDay()
+        if (recurringDays.includes(dayOfWeek)) {
+          results.push({
+            date: new Date(candidate),
+            dayName: DAY_NAMES[dayOfWeek],
+            groups: groupList,
+          })
+        }
+        if (results.length >= 20) break
+      }
+    } else if (campaignType === 'SCHEDULED' && scheduledAt) {
+      // One-time scheduled — single future entry
+      const schedDate = new Date(scheduledAt)
+      if (schedDate > now) {
+        const groupList = item.groups?.length ? item.groups : []
+        results.push({
+          date: schedDate,
+          dayName: DAY_NAMES[schedDate.getDay()],
+          groups: groupList,
+        })
+      }
+    }
+
+    return results
+  }, [item])
+
+  if (futureItems.length === 0) return null
+
+  // Build summary or detailed list
+  const showDetailed = futureItems.length <= 6
+  const groupNames = futureItems[0]?.groups?.map(g => g.name).filter(Boolean) || []
+
+  return (
+    <div className="reports-future-section">
+      <button className="reports-future-toggle" onClick={() => setExpanded(!expanded)}>
+        <Clock size={14} />
+        <span>פרסומים עתידיים ({futureItems.length})</span>
+        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+
+      {expanded && (
+        <div className="reports-future-body">
+          {showDetailed ? (
+            // Detailed list — up to 6 items
+            <div className="reports-future-list">
+              {futureItems.map((fi, i) => (
+                <div key={i} className="reports-future-item">
+                  <div className="reports-future-date">
+                    <span className="reports-future-day">יום {fi.dayName}</span>
+                    <span className="reports-future-datetime">
+                      {fi.date.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })} · {fi.date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  {fi.groups.length > 0 && (
+                    <div className="reports-future-groups">
+                      {fi.groups.length <= 3
+                        ? fi.groups.map(g => g.name).join(', ')
+                        : `${fi.groups.slice(0, 2).map(g => g.name).join(', ')} +${fi.groups.length - 2} נוספות`
+                      }
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Summary for many items
+            <div className="reports-future-summary">
+              <p>
+                מתוזמן לכל{' '}
+                {item.recurringDays?.length === 7
+                  ? 'יום'
+                  : `יום ${item.recurringDays.map(d => DAY_NAMES[d]).join(', ')}`
+                }
+                {' '}בשעה {item.recurringTime}
+              </p>
+              {futureItems.length > 0 && (
+                <p className="reports-future-range">
+                  {futureItems[0].date.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}
+                  {' — '}
+                  {futureItems[futureItems.length - 1].date.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}
+                  {' '}({futureItems.length} פרסומים)
+                </p>
+              )}
+              {groupNames.length > 0 && (
+                <div className="reports-future-group-list">
+                  <span className="reports-future-group-label">קבוצות:</span>
+                  <ul>
+                    {groupNames.slice(0, 8).map((name, i) => (
+                      <li key={i}>{name}</li>
+                    ))}
+                    {groupNames.length > 8 && <li className="more">+{groupNames.length - 8} נוספות</li>}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Reports() {
   const navigate = useNavigate()
-  const { user, authChecked, posts, campaigns, groups, jobs, ensureFresh } = useAppData()
+  const { user, authChecked, posts, campaigns, groups, jobs, ensureFresh, forceRefresh } = useAppData()
   const [period, setPeriod] = useState('weekly')
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -147,9 +300,32 @@ export default function Reports() {
     if (authChecked && !user) navigate('/login')
   }, [authChecked, user, navigate])
 
-  // Ensure data is fresh when opening reports
+  // Ensure data is fresh when opening reports + auto-refresh on events
   useEffect(() => {
-    ensureFresh()
+    forceRefresh()
+
+    // Refresh when a publish completes or campaign is created
+    const handleRefresh = () => forceRefresh()
+    window.addEventListener('postit-publish-done', handleRefresh)
+    window.addEventListener('postit-op-done', handleRefresh)
+
+    // Respond to global pull-to-refresh from AuthLayout
+    const handlePullRefresh = async () => {
+      await forceRefresh()
+      window.dispatchEvent(new Event('postit-pull-refresh-done'))
+    }
+    window.addEventListener('postit-pull-refresh', handlePullRefresh)
+
+    // Refresh when user returns to this tab
+    const handleFocus = () => ensureFresh()
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      window.removeEventListener('postit-publish-done', handleRefresh)
+      window.removeEventListener('postit-op-done', handleRefresh)
+      window.removeEventListener('postit-pull-refresh', handlePullRefresh)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [])
 
   // Close date picker on outside click
@@ -183,6 +359,33 @@ export default function Reports() {
     }
     return new Date()
   }, [period, dateRange])
+
+  // Open a detail popup for a scheduled/upcoming item
+  const openScheduledDetail = useCallback((item) => {
+    const campaign = campaigns?.find(c => c.id === item.postId)
+    setSelectedItem({
+      ...item,
+      status: 'SCHEDULED',
+      post: campaign || null,
+      group: null,
+      postUrl: null,
+      publishedAt: null,
+      scheduledAt: item.scheduledAt,
+      images: campaign?.images || [],
+      content: campaign?.content || '',
+      title: campaign?.title || item.campaignName,
+      groupName: item.groupName,
+      // Campaign-specific data for future publications
+      campaignId: item.postId,
+      campaignType: campaign?.campaignType || null,
+      recurringDays: campaign?.recurringDays || [],
+      recurringTime: campaign?.recurringTime || null,
+      groups: campaign?.groups || [],
+      groupNames: campaign?.groupNames || [],
+      groupCount: campaign?.groupCount || 0,
+      recurringEndDate: campaign?.recurringEndDate || null,
+    })
+  }, [campaigns])
 
   // Open a detail popup for a publication history item
   const openDetail = useCallback((item) => {
@@ -277,11 +480,98 @@ export default function Reports() {
       }))
   }, [posts, startDate, endDate])
 
+  const allList = useMemo(() => {
+    if (!posts?.length) return []
+    return [...posts]
+      .filter(p => {
+        const d = new Date(p.publishedAt || p.createdAt)
+        return d >= startDate && d <= endDate
+      })
+      .sort((a, b) => new Date(b.publishedAt || b.createdAt) - new Date(a.publishedAt || a.createdAt))
+      .map(p => ({
+        id: p.id,
+        postId: p.postGroupId || p.postId || p.id,
+        campaignName: p.post?.title || p.campaignTitle || p.title || p.post?.content?.slice(0, 40) || 'ללא שם',
+        groupName: p.group?.name || p.groupName || 'לא ידוע',
+        status: p.status,
+        date: p.publishedAt || p.createdAt,
+        error: p.errorMessage || p.error || null,
+      }))
+  }, [posts, startDate, endDate])
+
+  const activeGroupsList = useMemo(() => {
+    if (!posts?.length) return []
+    const map = new Map()
+    posts.forEach(p => {
+      const d = new Date(p.publishedAt || p.createdAt)
+      if (d < startDate || d > endDate) return
+      const gId = p.groupId || p.group?.id
+      if (!gId) return
+      if (!map.has(gId)) {
+        map.set(gId, {
+          id: gId,
+          name: p.group?.name || p.groupName || 'לא ידוע',
+          memberCount: p.groupMemberCount || p.group?.memberCount || 0,
+          count: 0,
+          successCount: 0,
+        })
+      }
+      const g = map.get(gId)
+      g.count++
+      if (p.status === 'SUCCESS') g.successCount++
+    })
+    return [...map.values()].sort((a, b) => b.count - a.count)
+  }, [posts, startDate, endDate])
+
+  const exposureBreakdown = useMemo(() => {
+    if (!posts?.length) return []
+    const map = new Map()
+    posts.forEach(p => {
+      const d = new Date(p.publishedAt || p.createdAt)
+      if (d < startDate || d > endDate) return
+      const gId = p.groupId || p.group?.id
+      if (!gId) return
+      const mc = p.groupMemberCount || p.group?.memberCount || 0
+      if (!map.has(gId)) {
+        map.set(gId, {
+          id: gId,
+          name: p.group?.name || p.groupName || 'לא ידוע',
+          memberCount: mc,
+          pubCount: 0,
+          totalExposure: 0,
+        })
+      }
+      const g = map.get(gId)
+      g.pubCount++
+      g.totalExposure += mc
+    })
+    return [...map.values()].sort((a, b) => b.totalExposure - a.totalExposure)
+  }, [posts, startDate, endDate])
+
   // Upcoming scheduled — combine pending jobs + scheduled campaigns
   const upcoming = useMemo(() => {
     const now = new Date()
     const items = []
     const seen = new Set()
+
+    // Helper: compute next occurrence from recurringDays + recurringTime
+    const computeNextRecurring = (recurringDays, recurringTime) => {
+      if (!recurringDays?.length || !recurringTime) return null
+      const [hours, minutes] = recurringTime.split(':').map(Number)
+      const today = now.getDay()
+      const sortedDays = [...recurringDays].sort((a, b) => a - b)
+
+      for (const dayOffset of [0, 1, 2, 3, 4, 5, 6, 7]) {
+        const targetDay = (today + dayOffset) % 7
+        if (sortedDays.includes(targetDay)) {
+          const candidate = new Date(now)
+          candidate.setDate(candidate.getDate() + dayOffset)
+          candidate.setHours(hours, minutes, 0, 0)
+          if (candidate > now) return candidate
+        }
+      }
+      return null
+    }
 
     // Pending jobs with scheduled times
     if (jobs?.length) {
@@ -302,27 +592,37 @@ export default function Reports() {
       })
     }
 
-    // Campaigns with scheduledAt that haven't been fully published
+    // Campaigns with scheduledAt or recurring schedule
     if (campaigns?.length) {
       campaigns.forEach(c => {
-        if (c.scheduledAt && (c.status === 'scheduled' || c.status === 'recurring' || c.status === 'both' || c.status === 'active') && !c.isPaused) {
-          const key = `campaign-${c.id}`
-          if (!seen.has(key)) {
-            // Don't add if we already have jobs for this campaign
-            const hasJob = items.some(i => i.postId === c.id)
-            if (!hasJob) {
-              seen.add(key)
-              const groupName = c.groupNames?.join(', ') || `${c.groupCount || 0} קבוצות`
-              items.push({
-                id: c.id,
-                postId: c.id,
-                campaignName: c.title || c.content?.substring(0, 40) || 'ללא שם',
-                groupName,
-                scheduledAt: c.scheduledAt,
-              })
-            }
-          }
+        if (c.isPaused || c.status === 'draft' || c.status === 'published') return
+
+        const key = `campaign-${c.id}`
+        if (seen.has(key)) return
+
+        // Don't add if we already have jobs for this campaign
+        const hasJob = items.some(i => i.postId === c.id)
+        if (hasJob) return
+
+        // Determine the scheduled time
+        let nextAt = c.scheduledAt ? new Date(c.scheduledAt) : null
+
+        // For recurring campaigns without scheduledAt, compute next occurrence
+        if (!nextAt && (c.status === 'recurring' || c.status === 'both' || c.campaignType === 'RECURRING') && c.recurringDays && c.recurringTime) {
+          nextAt = computeNextRecurring(c.recurringDays, c.recurringTime)
         }
+
+        if (!nextAt || nextAt <= now) return
+
+        seen.add(key)
+        const groupName = c.groupNames?.join(', ') || `${c.groupCount || 0} קבוצות`
+        items.push({
+          id: c.id,
+          postId: c.id,
+          campaignName: c.title || c.content?.substring(0, 40) || 'ללא שם',
+          groupName,
+          scheduledAt: nextAt,
+        })
       })
     }
 
@@ -461,7 +761,7 @@ export default function Reports() {
 
         {/* KPI Cards */}
         <div className="reports-kpis">
-          <div className="reports-kpi">
+          <div className="reports-kpi clickable" onClick={() => stats.total > 0 && setKpiPopup('all')}>
             <div className="reports-kpi-icon"><FileText size={22} /></div>
             <div className="reports-kpi-val">{stats.total}</div>
             <div className="reports-kpi-label">סה"כ פרסומים</div>
@@ -481,12 +781,12 @@ export default function Reports() {
             <div className="reports-kpi-val">{stats.successRate}%</div>
             <div className="reports-kpi-label">אחוז הצלחה</div>
           </div>
-          <div className="reports-kpi">
-            <div className="reports-kpi-icon"><Calendar size={22} /></div>
+          <div className="reports-kpi clickable" onClick={() => stats.groups > 0 && setKpiPopup('groups')}>
+            <div className="reports-kpi-icon"><Users size={22} /></div>
             <div className="reports-kpi-val">{stats.groups}</div>
             <div className="reports-kpi-label">קבוצות פעילות</div>
           </div>
-          <div className="reports-kpi">
+          <div className="reports-kpi clickable" onClick={() => stats.exposure > 0 && setKpiPopup('exposure')}>
             <div className="reports-kpi-icon"><Eye size={22} /></div>
             <div className="reports-kpi-val">{formatNumber(stats.exposure)}</div>
             <div className="reports-kpi-label">חשיפה משוערת</div>
@@ -554,7 +854,7 @@ export default function Reports() {
                 </thead>
                 <tbody>
                   {upcoming.map(u => (
-                    <tr key={u.id} onClick={() => navigate(`/post/${u.postId}`)}>
+                    <tr key={u.id} onClick={() => openScheduledDetail(u)}>
                       <td className="reports-cell-campaign">{u.campaignName}</td>
                       <td className="reports-cell-group">{u.groupName}</td>
                       <td><span className="reports-status scheduled">⏱ מתוזמן</span></td>
@@ -563,7 +863,7 @@ export default function Reports() {
                   ))}
                 </tbody>
               </table>
-              {jobs?.filter(j => j.status === 'PENDING').length > 7 && (
+              {upcoming.length >= 7 && (
                 <button className="reports-show-more" onClick={() => setShowMoreScheduled(!showMoreScheduled)}>
                   {showMoreScheduled ? <><ChevronUp size={14} /> הצג פחות</> : <><ChevronDown size={14} /> הצג עוד</>}
                 </button>
@@ -578,37 +878,110 @@ export default function Reports() {
         <div className="reports-popup-overlay" onClick={() => setKpiPopup(null)}>
           <div className="reports-popup" onClick={e => e.stopPropagation()}>
             <div className="reports-popup-header">
-              <h3>{kpiPopup === 'success' ? '✅ פרסומים שהצליחו' : '❌ פרסומים שנכשלו'}</h3>
+              <h3>{kpiPopup === 'success' ? '✅ פרסומים שהצליחו' : kpiPopup === 'failed' ? '❌ פרסומים שנכשלו' : kpiPopup === 'all' ? '📋 כל הפרסומים' : kpiPopup === 'groups' ? '👥 קבוצות פעילות' : '👁️ פירוט חשיפה משוערת'}</h3>
               <button className="reports-popup-close" onClick={() => setKpiPopup(null)}><X size={18} /></button>
             </div>
             <div className="reports-popup-body">
-              {(kpiPopup === 'success' ? successList : failedList).length === 0 ? (
-                <div className="reports-empty">אין נתונים</div>
-              ) : (
-                <table className="reports-table">
-                  <thead>
-                    <tr>
-                      <th>שם קמפיין</th>
-                      <th>קבוצה</th>
-                      <th>תאריך</th>
-                      {kpiPopup === 'failed' && <th>סיבה</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(kpiPopup === 'success' ? successList : failedList).map(item => (
-                      <tr key={item.id} onClick={() => { setKpiPopup(null); openDetail(item) }}>
-                        <td className="reports-cell-campaign">{item.campaignName}</td>
-                        <td className="reports-cell-group">{item.groupName}</td>
-                        <td className="reports-cell-date">{formatDate(item.date)}</td>
-                        {kpiPopup === 'failed' && (
-                          <td className="reports-cell-error">
-                            {item.error || 'סיבה לא ידועה — שלח מייל לבירור'}
-                          </td>
-                        )}
+              {kpiPopup === 'exposure' ? (
+                exposureBreakdown.length === 0 ? (
+                  <div className="reports-empty">אין נתונים</div>
+                ) : (
+                  <>
+                    <table className="reports-table">
+                      <thead>
+                        <tr>
+                          <th>קבוצה</th>
+                          <th>חשיפה לפרסום</th>
+                          <th>פרסומים</th>
+                          <th>סה"כ חשיפה</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {exposureBreakdown.map(g => (
+                          <tr key={g.id}>
+                            <td className="reports-cell-campaign">{g.name}</td>
+                            <td>{formatNumber(g.memberCount)}</td>
+                            <td>{g.pubCount}</td>
+                            <td><strong>{formatNumber(g.totalExposure)}</strong></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td><strong>סה"כ</strong></td>
+                          <td></td>
+                          <td><strong>{exposureBreakdown.reduce((s, g) => s + g.pubCount, 0)}</strong></td>
+                          <td><strong>{formatNumber(exposureBreakdown.reduce((s, g) => s + g.totalExposure, 0))}</strong></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </>
+                )
+              ) : kpiPopup === 'groups' ? (
+                activeGroupsList.length === 0 ? (
+                  <div className="reports-empty">אין נתונים</div>
+                ) : (
+                  <table className="reports-table">
+                    <thead>
+                      <tr>
+                        <th>שם קבוצה</th>
+                        <th>פרסומים</th>
+                        <th>הצליחו</th>
+                        <th>חברים</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {activeGroupsList.map(g => (
+                        <tr key={g.id}>
+                          <td className="reports-cell-campaign">{g.name}</td>
+                          <td>{g.count}</td>
+                          <td>{g.successCount}</td>
+                          <td>{g.memberCount ? formatNumber(g.memberCount) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              ) : (
+                (() => {
+                  const list = kpiPopup === 'success' ? successList : kpiPopup === 'failed' ? failedList : allList
+                  return list.length === 0 ? (
+                    <div className="reports-empty">אין נתונים</div>
+                  ) : (
+                    <table className="reports-table">
+                      <thead>
+                        <tr>
+                          <th>שם קמפיין</th>
+                          <th>קבוצה</th>
+                          {kpiPopup === 'all' && <th>סטטוס</th>}
+                          <th>תאריך</th>
+                          {kpiPopup === 'failed' && <th>סיבה</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {list.map(item => (
+                          <tr key={item.id} onClick={() => { setKpiPopup(null); openDetail(item) }}>
+                            <td className="reports-cell-campaign">{item.campaignName}</td>
+                            <td className="reports-cell-group">{item.groupName}</td>
+                            {kpiPopup === 'all' && (
+                              <td>
+                                <span className={`reports-status ${item.status === 'SUCCESS' ? 'success' : 'failed'}`}>
+                                  {item.status === 'SUCCESS' ? 'הצלחה' : 'נכשל'}
+                                </span>
+                              </td>
+                            )}
+                            <td className="reports-cell-date">{formatDate(item.date)}</td>
+                            {kpiPopup === 'failed' && (
+                              <td className="reports-cell-error">
+                                {friendlyError(item.error)}
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                })()
               )}
             </div>
           </div>
@@ -654,6 +1027,12 @@ export default function Reports() {
                     {selectedItem.status === 'SUCCESS' ? <><CheckCircle size={14} /> פורסם בהצלחה</> : selectedItem.status === 'FAILED' ? <><XCircle size={14} /> נכשל</> : <><Clock size={14} /> מתוזמן</>}
                   </span>
                 </div>
+                {selectedItem.scheduledAt && selectedItem.status === 'SCHEDULED' && (
+                  <div className="reports-detail-row">
+                    <span className="reports-detail-label">תאריך תזמון</span>
+                    <span>{new Date(selectedItem.scheduledAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                )}
                 {selectedItem.publishedAt && (
                   <div className="reports-detail-row">
                     <span className="reports-detail-label">{selectedItem.status === 'FAILED' ? 'תאריך ניסיון' : 'תאריך פרסום'}</span>
@@ -663,7 +1042,7 @@ export default function Reports() {
                 {selectedItem.error && (
                   <div className="reports-detail-row error">
                     <span className="reports-detail-label">סיבת כישלון</span>
-                    <span className="reports-detail-error">{selectedItem.error}</span>
+                    <span className="reports-detail-error">{friendlyError(selectedItem.error)}</span>
                   </div>
                 )}
                 {selectedItem.postUrl && (
@@ -675,6 +1054,11 @@ export default function Reports() {
                   </div>
                 )}
               </div>
+
+              {/* Future publications section for scheduled campaigns */}
+              {selectedItem.status === 'SCHEDULED' && selectedItem.campaignId && (
+                <FuturePublications item={selectedItem} />
+              )}
             </div>
           </div>
         </div>
