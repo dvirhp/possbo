@@ -586,12 +586,40 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+  gap: 8px;
 }
 .ov2-top-posts-header h3 {
   font-size: 15px;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+}
+.ov2-top-posts-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-elevated, #1a2035);
+  border-radius: 8px;
+  padding: 3px;
+}
+.ov2-toggle-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted, #94A3B8);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.15s ease;
+  white-space: nowrap;
+}
+.ov2-toggle-btn:hover {
+  color: var(--text-secondary);
+}
+.ov2-toggle-btn.active {
+  background: var(--bg-hover, #222940);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
 }
 .ov2-top-posts-list {
   display: flex;

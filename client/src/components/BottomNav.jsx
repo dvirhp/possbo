@@ -6,7 +6,7 @@ import { useNavigationGuard } from '../context/NavigationGuard'
 import {
   LayoutDashboard, SquarePen, Users, CalendarDays, BarChart3,
   LayoutTemplate, History, BookOpen, Settings, Moon, Sun, LogOut,
-  Menu, X, Bell, Home
+  Menu, X, Bell, Home, Sparkles, ChevronLeft, ChevronDown, CreditCard
 } from 'lucide-react'
 import NotificationSettings from './NotificationSettings'
 import '../styles/bottom-nav.css'
@@ -28,7 +28,7 @@ const DRAWER_ITEMS = [
   { path: '/dashboard?tab=stats', icon: BarChart3, label: 'סטטיסטיקות' },
   { path: '/templates', icon: LayoutTemplate, label: 'טמפלייטים' },
   { path: '/reports', icon: History, label: 'דוחות וסיכום' },
-  { path: '/guides', icon: BookOpen, label: 'עזרת AI', action: 'open-chatbot' },
+  { path: '/generate-post', icon: Sparkles, label: 'יצירת פוסט AI' },
 ]
 
 export default function BottomNav() {
@@ -39,6 +39,7 @@ export default function BottomNav() {
   const { guardNavigate } = useNavigationGuard()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
+  const [accountExpanded, setAccountExpanded] = useState(false)
 
   // Swipe left-to-right to open drawer (RTL: swipe from left edge)
   const touchStartX = useRef(0)
@@ -151,7 +152,7 @@ export default function BottomNav() {
           <div className="mobile-drawer-user">
             <div className="mobile-drawer-avatar">
               {user?.profileImage || user?.avatarUrl
-                ? <img src={(user.profileImage || user.avatarUrl).startsWith('/uploads') ? `http://localhost:8000${user.profileImage || user.avatarUrl}` : (user.profileImage || user.avatarUrl)} alt="" />
+                ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('/uploads')) return `http://localhost:8000${v}`; if (v.startsWith('uploads/')) return `http://localhost:8000/${v}`; return v })()} alt="" />
                 : <span>{user?.name?.[0] || '?'}</span>}
             </div>
             <div className="mobile-drawer-user-info">
@@ -187,10 +188,25 @@ export default function BottomNav() {
         </nav>
         <div className="mobile-drawer-divider" />
         <div className="mobile-drawer-actions">
-          <button className="mobile-drawer-item" onClick={() => guardNavigate(() => { navigate('/dashboard?tab=settings'); setDrawerOpen(false) })}>
-            <Settings size={20} strokeWidth={1.8} />
-            <span>הגדרות</span>
-          </button>
+          <div className="mobile-drawer-expandable">
+            <button className="mobile-drawer-item" onClick={() => setAccountExpanded(prev => !prev)}>
+              <Settings size={20} strokeWidth={1.8} />
+              <span>ניהול חשבון</span>
+              {accountExpanded ? <ChevronDown size={16} className="mobile-drawer-chevron" /> : <ChevronLeft size={16} className="mobile-drawer-chevron" />}
+            </button>
+            {accountExpanded && (
+              <div className="mobile-drawer-sub">
+                <button className="mobile-drawer-sub-item" onClick={() => { navigate('/dashboard?tab=account'); setDrawerOpen(false); setAccountExpanded(false) }}>
+                  <Settings size={18} strokeWidth={1.5} />
+                  <span>הגדרות</span>
+                </button>
+                <button className="mobile-drawer-sub-item" onClick={() => { navigate('/subscription'); setDrawerOpen(false); setAccountExpanded(false) }}>
+                  <CreditCard size={18} strokeWidth={1.5} />
+                  <span>ניהול מנוי ותשלום</span>
+                </button>
+              </div>
+            )}
+          </div>
           <button className="mobile-drawer-item" onClick={() => { setNotifOpen(true); setDrawerOpen(false) }}>
             <Bell size={20} strokeWidth={1.8} />
             <span>התראות</span>

@@ -3,9 +3,9 @@ import { Lightbulb, Clock, Calendar, ChevronDown, ChevronUp } from 'lucide-react
 
 // Based on Hootsuite, Sprout Social & Buffer 2024-2025 research
 const OPTIMAL_HOURS = [
-  { time: '09:00-11:00', label: 'בוקר', description: 'שעת שיא — אנשים בודקים פייסבוק עם הגעה לעבודה', strength: 3 },
-  { time: '13:00-15:00', label: 'צהריים', description: 'הפסקת צהריים — אינגייג\'מנט גבוה', strength: 2 },
-  { time: '18:00-20:00', label: 'ערב', description: 'חזרה הביתה — גלילה רגועה בפיד', strength: 3 },
+  { time: '09:00-11:00', label: 'בוקר', description: 'שעת שיא, אנשים בודקים פייסבוק עם הגעה לעבודה', strength: 3 },
+  { time: '13:00-15:00', label: 'צהריים', description: 'הפסקת צהריים, אינגייג\'מנט גבוה', strength: 2 },
+  { time: '18:00-20:00', label: 'ערב', description: 'חזרה הביתה, גלילה רגועה בפיד', strength: 3 },
 ]
 
 const OPTIMAL_DAYS = [

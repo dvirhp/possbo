@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { authAPI } from '../services/api'
+import OtpInput from '../components/OtpInput'
 import '../styles/auth.css'
 
 export default function ForgotPassword() {
@@ -106,17 +107,7 @@ export default function ForgotPassword() {
           </form>
         ) : (
           <form className="auth-form" onSubmit={handleResetPassword}>
-            <input
-              type="text"
-              className="auth-input auth-code-input"
-              placeholder="קוד אימות (6 ספרות)"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              maxLength={6}
-              dir="ltr"
-              style={{ textAlign: 'center', fontSize: '22px', letterSpacing: '5px' }}
-              autoFocus
-            />
+            <OtpInput length={6} value={code} onChange={setCode} />
             <input
               type="password"
               className="auth-input"

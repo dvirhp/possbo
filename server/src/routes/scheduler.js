@@ -163,7 +163,7 @@ router.get(
       return res.json(cached.data);
     }
     // All data in one request — parallel queries for speed
-    const [jobs, history, publishedCount, campaigns, fbGroups, templates] =
+    const [jobs, history, publishedCount, campaigns, fbGroups, templates, topPostsWithMetrics] =
       await Promise.all([
         // Jobs
         prisma.publicationJob.findMany({
@@ -273,6 +273,21 @@ router.get(
         prisma.postTemplate.findMany({
           where: { userId },
           orderBy: { updatedAt: "desc" },
+        }),
+        // Top posts with metrics (likes/comments)
+        prisma.publicationHistory.findMany({
+          where: { userId, status: "SUCCESS", metrics: { some: {} } },
+          include: {
+            post: { select: { id: true, title: true, content: true } },
+            group: { select: { id: true, name: true } },
+            metrics: {
+              orderBy: { collectedAt: "desc" },
+              take: 1,
+              select: { likesCount: true, commentsCount: true },
+            },
+          },
+          orderBy: { publishedAt: "desc" },
+          take: 20,
         }),
       ]);
 
@@ -457,6 +472,23 @@ router.get(
       ),
     }));
 
+    // Format top posts with metrics
+    const formattedTopPosts = topPostsWithMetrics
+      .map(pub => {
+        const m = pub.metrics[0];
+        if (!m) return null;
+        return {
+          id: pub.id,
+          postId: pub.post?.id,
+          title: pub.post?.title || pub.post?.content?.slice(0, 60) || '',
+          groupName: pub.group?.name || '',
+          publishedAt: pub.publishedAt,
+          likes: m.likesCount,
+          comments: m.commentsCount,
+        };
+      })
+      .filter(Boolean);
+
     const responseData = {
       success: true,
       jobs,
@@ -469,6 +501,7 @@ router.get(
       },
       groups: formattedGroups,
       templates: enrichedTemplates,
+      topPosts: formattedTopPosts,
     };
 
     // Cache for subsequent requests
@@ -1626,7 +1659,7 @@ router.post(
     res.json({
       success: true,
       postId: newPost.id,
-      message: "הקמפיין שוכפל — יש לתזמן אותו מחדש",
+      message: "הקמפיין שוכפל, יש לתזמן אותו מחדש",
     });
   }),
 );

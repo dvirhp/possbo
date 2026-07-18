@@ -8,7 +8,7 @@ import NotificationSettings from './NotificationSettings'
 import {
   LayoutDashboard, Users, FileText, CalendarDays, BarChart3,
   History, LayoutTemplate, Settings, Bell, SquarePen, Plus, RefreshCw, Sparkles,
-  Moon, Sun, LogOut, ChevronDown, BookOpen
+  Moon, Sun, LogOut, ChevronDown, ChevronLeft, ChevronUp, CreditCard, BookOpen
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -19,7 +19,6 @@ const NAV_ITEMS = [
   { id: 'analytics', icon: BarChart3, label: 'סטטיסטיקות', action: 'navigate', path: '/dashboard', tab: 'stats' },
   { id: 'templates', icon: LayoutTemplate, label: 'טמפלייטים', action: 'navigate', path: '/templates' },
   { id: 'history', icon: History, label: 'דוחות וסיכום', action: 'navigate', path: '/reports' },
-  { id: 'guides', icon: BookOpen, label: 'עזרת AI', action: 'open-chatbot', path: '/guides' },
 ]
 
 export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
@@ -30,6 +29,7 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
   const { guardNavigate } = useNavigationGuard()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
 
   const guardedNavigate = (...args) => {
     guardNavigate(() => navigate(...args))
@@ -106,9 +106,9 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
           <span className="sidebar-action-icon"><RefreshCw size={16} /></span>
           <span>סנכרן קבוצות</span>
         </button>
-        <button className="sidebar-action-item" onClick={() => window.dispatchEvent(new Event('open-chatbot'))}>
+        <button className="sidebar-action-item" onClick={() => guardedNavigate('/generate-post')}>
           <span className="sidebar-action-icon"><Sparkles size={16} /></span>
-          <span>עזרת AI</span>
+          <span>יצירת פוסט AI</span>
         </button>
       </div>
 
@@ -119,7 +119,7 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
           <button className="sidebar-user" onClick={() => setUserMenuOpen(!userMenuOpen)}>
             <div className="sidebar-user-avatar">
               {user?.profileImage || user?.avatarUrl
-                ? <img src={(user.profileImage || user.avatarUrl).startsWith('/uploads') ? `http://localhost:8000${user.profileImage || user.avatarUrl}` : (user.profileImage || user.avatarUrl)} alt="" />
+                ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('/uploads')) return `http://localhost:8000${v}`; if (v.startsWith('uploads/')) return `http://localhost:8000/${v}`; return v })()} alt="" />
                 : <span>{user?.name?.[0] || '?'}</span>}
             </div>
             <div className="sidebar-user-info">
@@ -130,10 +130,10 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
 
           {userMenuOpen && (
             <div className="sidebar-user-menu">
-              <button onClick={() => { setUserMenuOpen(false); guardedNavigate('/dashboard?tab=settings') }}>
+              <button onClick={() => { setUserMenuOpen(false); guardedNavigate('/dashboard?tab=account&sub=settings') }}>
                 👤 הצג פרופיל
               </button>
-              <button onClick={() => { setUserMenuOpen(false); guardedNavigate('/dashboard?tab=settings') }}>
+              <button onClick={() => { setUserMenuOpen(false); guardedNavigate('/dashboard?tab=account&sub=settings') }}>
                 ✏️ ערוך פרופיל
               </button>
               <button className="sidebar-menu-logout" onClick={() => { setUserMenuOpen(false); logout(); navigate('/login') }}>
@@ -148,9 +148,21 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
           <button className="sidebar-bottom-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'עבור למצב בהיר' : 'עבור למצב כהה'}>
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <button className="sidebar-bottom-btn" onClick={() => guardedNavigate('/dashboard?tab=settings')} title="הגדרות">
-            <Settings size={18} />
-          </button>
+          <div className="sidebar-account-expandable">
+            <button className="sidebar-bottom-btn" onClick={() => setAccountOpen(prev => !prev)} title="ניהול חשבון">
+              <Settings size={18} />
+            </button>
+            {accountOpen && (
+              <div className="sidebar-account-menu">
+                <button onClick={() => { setAccountOpen(false); guardedNavigate('/dashboard?tab=account') }}>
+                  <Settings size={16} strokeWidth={1.5} /> הגדרות
+                </button>
+                <button onClick={() => { setAccountOpen(false); guardedNavigate('/subscription') }}>
+                  <CreditCard size={16} strokeWidth={1.5} /> ניהול מנוי ותשלום
+                </button>
+              </div>
+            )}
+          </div>
           <button className="sidebar-bottom-btn" title="התראות" onClick={() => setNotifOpen(true)}>
             <Bell size={18} />
           </button>

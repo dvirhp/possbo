@@ -594,22 +594,27 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
     })
   }, [campaigns, dateRange])
 
-  // Top performing posts - based on campaigns with publications
+  // Top performing posts - sorted by likes or comments
+  const [topPostsSort, setTopPostsSort] = useState('likes')
   const topPosts = useMemo(() => {
-    if (!campaigns?.length) return []
-    return [...campaigns]
-      .filter(c => (c.publishedCount || 0) > 0)
-      .sort((a, b) => (b.totalExposure || 0) - (a.totalExposure || 0))
+    const postsData = stats?.topPosts || []
+    if (!postsData.length) return []
+    return [...postsData]
+      .sort((a, b) => {
+        if (topPostsSort === 'comments') return (b.comments || 0) - (a.comments || 0)
+        return (b.likes || 0) - (a.likes || 0)
+      })
       .slice(0, 5)
-      .map(c => ({
-        id: c.id,
-        title: c.title || c.content?.substring(0, 40) || 'ללא כותרת',
-        image: c.imageUrl || null,
-        date: c.createdAt,
-        engagement: c.totalExposure || 0,
-        publishedCount: c.publishedCount || 0,
+      .map(p => ({
+        id: p.id,
+        postId: p.postId,
+        title: p.title || p.content?.substring(0, 40) || 'ללא כותרת',
+        groupName: p.groupName || '',
+        date: p.publishedAt,
+        likes: p.likes || 0,
+        comments: p.comments || 0,
       }))
-  }, [campaigns])
+  }, [stats?.topPosts, topPostsSort])
 
   // Period label for display
   const periodLabel = useMemo(() => {
@@ -708,26 +713,29 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
           {/* Top Performing Posts */}
           <div className="ov2-top-posts-card">
             <div className="ov2-top-posts-header">
-              <h3>קמפיינים מובילים</h3>
-              <Link to="/dashboard?tab=stats" className="ov2-card-link">צפה בנתונים</Link>
+              <h3>פוסטים מובילים</h3>
+              <div className="ov2-top-posts-toggle">
+                <button className={`ov2-toggle-btn ${topPostsSort === 'likes' ? 'active' : ''}`} onClick={() => setTopPostsSort('likes')}>👍 לייקים</button>
+                <button className={`ov2-toggle-btn ${topPostsSort === 'comments' ? 'active' : ''}`} onClick={() => setTopPostsSort('comments')}>💬 תגובות</button>
+              </div>
             </div>
             <div className="ov2-top-posts-list">
               {topPosts.map((post) => (
-                <div key={post.id} className="ov2-top-post-row" onClick={() => navigate('/dashboard?tab=campaigns')}>
+                <div key={post.id} className="ov2-top-post-row" onClick={() => navigate(`/post/${post.postId || post.id}`)}>
                   <div className="ov2-top-post-thumb">
-                    {post.image ? <img src={post.image} alt="" /> : <span>📝</span>}
+                    <span>📝</span>
                   </div>
                   <div className="ov2-top-post-info">
                     <span className="ov2-top-post-title">{post.title}</span>
-                    <span className="ov2-top-post-date">{new Date(post.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    <span className="ov2-top-post-date">{post.groupName}{post.date ? ` • ${new Date(post.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}` : ''}</span>
                   </div>
                   <div className="ov2-top-post-engagement">
-                    <span className="ov2-engagement-value">{formatNumber(post.engagement)}</span>
-                    <span className="ov2-engagement-label">חשיפה</span>
+                    <span className="ov2-engagement-value">{formatNumber(topPostsSort === 'likes' ? post.likes : post.comments)}</span>
+                    <span className="ov2-engagement-label">{topPostsSort === 'likes' ? '👍' : '💬'}</span>
                   </div>
                 </div>
               ))}
-              {topPosts.length === 0 && <div className="ov2-empty">אין נתונים</div>}
+              {topPosts.length === 0 && <div className="ov2-empty">אין נתונים עדיין</div>}
             </div>
           </div>
         </div>

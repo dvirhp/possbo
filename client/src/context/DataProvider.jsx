@@ -107,7 +107,7 @@ export function DataProvider({ children }) {
       setCampaigns(d.campaigns || [])
       setGroups(d.groups || [])
       setPosts(d.history || [])
-      setStats(d.stats || null)
+      setStats({ ...(d.stats || {}), topPosts: d.topPosts || [] })
       setTemplates(d.templates || [])
       setRecentCampaigns({ drafts: d.recentCampaigns?.drafts || [], history: d.recentCampaigns?.history || [] })
       lastFetchRef.current.all = Date.now()
@@ -186,6 +186,16 @@ export function DataProvider({ children }) {
 
   // Called after successful login/register — sets auth state and immediately fetches data
   const loginSuccess = useCallback((userData) => {
+    // Clear stale data from previous user before fetching new data
+    try { localStorage.removeItem(DATA_CACHE_KEY) } catch { /* ignore */ }
+    setCampaigns([])
+    setGroups([])
+    setJobs([])
+    setPosts([])
+    setStats(null)
+    setTemplates([])
+    setRecentCampaigns({ drafts: [], history: [] })
+
     setUser(userData)
     userRef.current = userData
     saveCachedUser(userData)
@@ -218,8 +228,11 @@ export function DataProvider({ children }) {
     authAPI.logout().catch(() => {})
   }, [])
 
-  // Keep userRef in sync
-  useEffect(() => { userRef.current = user }, [user])
+  // Keep userRef in sync and persist to localStorage
+  useEffect(() => {
+    userRef.current = user
+    if (user) saveCachedUser(user)
+  }, [user])
 
   // Auto-fetch data when user becomes set through a path that doesn't call fetchAll directly
   // (e.g. setUser from a different source). Guarded by authVerifiedRef to prevent

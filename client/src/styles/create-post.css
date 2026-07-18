@@ -932,6 +932,33 @@
   margin: 4px 0 8px;
 }
 
+/* ─── AI Generate Button ─── */
+.cp-ai-generate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 20px 0;
+  padding: 7px 16px;
+  background: rgba(108, 92, 231, 0.08);
+  color: var(--primary, #6c5ce7);
+  border: 1.5px solid var(--primary, #6c5ce7);
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.cp-ai-generate-btn:hover {
+  background: var(--primary, #6c5ce7);
+  color: #fff;
+}
+
+.cp-ai-generate-btn:active {
+  transform: scale(0.97);
+}
+
 /* ─── Post Options ─── */
 .cp-options {
   display: flex;

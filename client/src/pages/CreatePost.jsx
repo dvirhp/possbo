@@ -255,6 +255,7 @@ export default function CreatePost() {
   const republishData = location.state?.republish || null
   const fromTemplate = location.state?.fromTemplate || null
   const profilePublishDefault = location.state?.publishToProfile || false
+  const generatedContent = location.state?.generatedContent || null
 
   // Profile publishing
   const [publishToProfile, setPublishToProfile] = useState(profilePublishDefault)
@@ -270,7 +271,7 @@ export default function CreatePost() {
   }, [cachedTemplates])
 
   const [campaignTitle, setCampaignTitle] = useState(fromTemplate?.title || republishData?.title || '')
-  const [postText, setPostText] = useState(fromTemplate?.content || republishData?.content || '')
+  const [postText, setPostText] = useState(fromTemplate?.content || republishData?.content || generatedContent || '')
   const [postImages, setPostImages] = useState([])
   const [postImagePreviews, setPostImagePreviews] = useState([])
   const [isAnonymous, setIsAnonymous] = useState(fromTemplate?.isAnonymous || republishData?.isAnonymous || false)
@@ -798,7 +799,7 @@ export default function CreatePost() {
     <div className="create-post-page">
       {/* Top Bar */}
       <header className="cp-topbar">
-        {postText.trim() && !results && (
+        {postText.trim() && !results ? (
           <button
             type="button"
             className="cp-topbar-draft"
@@ -807,8 +808,7 @@ export default function CreatePost() {
           >
             {savingDraft ? '⏳' : '💾'} {savingDraft ? 'שומר...' : 'שמור כטיוטה'}
           </button>
-        )}
-        <div className="cp-topbar-spacer" />
+        ) : <div className="cp-topbar-spacer" />}
         <h1 className="cp-title">קמפיין חדש</h1>
         {currentStep > 0 ? (
           <button className="cp-back" onClick={goBack}>
@@ -1112,6 +1112,15 @@ export default function CreatePost() {
                       )}
                     </div>
                   )}
+
+                  <button
+                    type="button"
+                    className="cp-ai-generate-btn"
+                    onClick={() => navigate('/generate-post', { state: { fromCreatePost: true } })}
+                  >
+                    <span>✨</span>
+                    יצירת תוכן עם AI
+                  </button>
 
                   <div className="cp-options">
                     <label className="cp-options-label">● הוספות</label>

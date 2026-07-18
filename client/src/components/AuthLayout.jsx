@@ -96,6 +96,16 @@ export default function AuthLayout({ children }) {
     }
   }, [authChecked, user, navigate])
 
+  // Enforce paywall: users without active subscription are blocked
+  useEffect(() => {
+    if (!authChecked || !user) return
+    if (location.pathname === '/subscription') return
+    const hasActiveSubscription = user.subscription && user.subscription.status === 'ACTIVE'
+    if (!hasActiveSubscription) {
+      navigate('/subscription', { replace: true })
+    }
+  }, [authChecked, user, location.pathname, navigate])
+
   if (!authChecked) {
     return (
       <div className="app-layout">
@@ -107,6 +117,17 @@ export default function AuthLayout({ children }) {
   }
 
   if (!user) return null
+
+  // Block render if user has no active subscription (paywall)
+  const hasActiveSubscription = user.subscription && user.subscription.status === 'ACTIVE'
+  if (!hasActiveSubscription && location.pathname !== '/subscription') {
+    return null
+  }
+
+  // Subscription page gets a clean layout without sidebar/bottomnav
+  if (location.pathname === '/subscription') {
+    return <>{children}</>
+  }
 
   return (
     <div className="app-layout">
