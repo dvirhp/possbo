@@ -132,7 +132,7 @@ const EXAMPLES = [
     sampleResult: `🏠 למכירה | 4 חדרים עם נוף לים | ביאליק, תל אביב
 
 4 חדרים, 110 מ"ר, קומה 7 עם נוף פתוח לים 🌊
-שיפוץ מלא — מטבח חדש, חדרי רחצה מעוצבים, פרקט בכל הדירה.
+שיפוץ מלא, מטבח חדש, חדרי רחצה מעוצבים, פרקט בכל הדירה.
 
 📐 4 חדרים | 110 מ"ר | קומה 7
 🛡️ ממ"ד | 🌇 מרפסת שמש | 🚗 חניה בטאבו
@@ -144,7 +144,7 @@ const EXAMPLES = [
     title: '🎓 קורס שיווק דיגיטלי',
     postType: 'sell_course',
     topic: 'שיווק דיגיטלי',
-    productOrService: 'קורס אונליין "שיווק בפייסבוק מא׳ עד ת׳" — 8 מפגשים עם תרגול מעשי',
+    productOrService: 'קורס אונליין "שיווק בפייסבוק מא׳ עד ת׳", 8 מפגשים עם תרגול מעשי',
     audience: 'בעלי עסקים קטנים שרוצים ללמוד לשווק לבד',
     uniqueValue: '500 בוגרים, הקורס הכי מעשי בשוק, ליווי אישי',
     tone: 'urgent',
@@ -155,7 +155,7 @@ const EXAMPLES = [
     contactWhatsapp: true, whatsappNum: '0501234567', whatsappMsg: 'אשמח לפרטים על הקורס',
     sampleResult: `⏰ נשארו רק 8 מקומות!
 
-בעלי עסקים — עדיין משלמים למישהו אחר לנהל לכם את הפייסבוק?
+בעלי עסקים, עדיין משלמים למישהו אחר לנהל לכם את הפייסבוק?
 
 📚 8 מפגשים מעשיים | אונליין
 🎯 ליווי אישי צמוד
@@ -165,7 +165,7 @@ const EXAMPLES = [
 📅 מתחיל 1.9.2026
 
 הלינק בתגובה הראשונה 👇
-📱 שאלות — וואטסאפ: 0501234567`,
+📱 שאלות, וואטסאפ: 0501234567`,
   },
   {
     title: '👗 סטודיו שמלות ערב',
@@ -183,7 +183,7 @@ const EXAMPLES = [
     sampleResult: `כל אישה מגיעה לרגע שהיא רוצה להרגיש הכי יפה בעולם ✨
 
 ב-Studio Bella כל שמלה נתפרת במיוחד בשבילך.
-בד איכותי מאיטליה, התאמה מושלמת — כי את לא ״מידה״, את יצירה 👗
+בד איכותי מאיטליה, התאמה מושלמת, כי את לא ״מידה״, את יצירה 👗
 
 🆕 קולקציית קיץ חדשה!
 📍 רמת גן | 📦 הזמנה אונליין עם משלוח
@@ -195,7 +195,7 @@ const EXAMPLES = [
     title: '🐕 אילוף כלבים פרטי',
     postType: 'sell_service',
     topic: 'אילוף כלבים',
-    productOrService: 'חבילת אילוף פרטי — 5 מפגשים בבית הלקוח, שיטה חיובית בלבד',
+    productOrService: 'חבילת אילוף פרטי, 5 מפגשים בבית הלקוח, שיטה חיובית בלבד',
     audience: 'בעלי כלבים עם בעיות התנהגות',
     uniqueValue: 'מאלף מוסמך, 8 שנות ניסיון, תוצאות מהמפגש הראשון',
     tone: 'casual',
@@ -211,7 +211,7 @@ const EXAMPLES = [
 ✅ תוצאות מהמפגש הראשון
 
 💰 החל מ-350₪ למפגש | 📍 מרכז והשרון
-🎁 פגישת היכרות — חינם!
+🎁 פגישת היכרות, חינם!
 
 📱 וואטסאפ: 0527654321
 📞 חייגו: 0527654321`,
@@ -231,7 +231,7 @@ const EXAMPLES = [
     contactEmail: true, email: 'orders@pureglow.co.il',
     sampleResult: `את יודעת מה ההבדל בין עור שנראה טוב לעור שזוהר? ✨
 
-סרום Pure Glow — היאלורוני טהור, 100% טבעי 🇮🇱
+סרום Pure Glow, היאלורוני טהור, 100% טבעי 🇮🇱
 
 🌿 רכיבים טבעיים בלבד | 🐰 ללא ניסויים
 ⏱️ תוצאות תוך שבועיים
@@ -247,7 +247,7 @@ const EXAMPLES = [
     title: '🎉 ערב השקת מסעדה',
     postType: 'event',
     topic: 'מסעדנות',
-    productOrService: 'ערב השקה למסעדה איטלקית "La Pasta" — טעימות חינם, מוזיקה חיה, שף מאיטליה',
+    productOrService: 'ערב השקה למסעדה איטלקית "La Pasta", טעימות חינם, מוזיקה חיה, שף מאיטליה',
     audience: 'חובבי אוכל ותושבי רמת השרון',
     uniqueValue: 'שף איטלקי אמיתי, חומרי גלם מאיטליה, אווירה ייחודית',
     tone: 'casual',
@@ -256,7 +256,7 @@ const EXAMPLES = [
     extraDetails: 'כניסה חופשית, מתנה לכל מגיע, מוזיקה עד חצות',
     tags: { eventName: 'ערב השקת La Pasta', date: '25.8.2026', time: '19:00', venue: 'רמת השרון, סוקולוב 42', price: 'כניסה חופשית!', registration: true },
     contactWhatsapp: true, whatsappNum: '0505559876',
-    sampleResult: `🍝 רמת השרון — מסעדה איטלקית חדשה נפתחת!
+    sampleResult: `🍝 רמת השרון, מסעדה איטלקית חדשה נפתחת!
 
 La Pasta פותחת דלתות ואתם מוזמנים 🎉
 
@@ -271,10 +271,10 @@ La Pasta פותחת דלתות ואתם מוזמנים 🎉
 📱 וואטסאפ: 0505559876`,
   },
   {
-    title: '🎯 ייעוץ עסקי — לידים',
+    title: '🎯 ייעוץ עסקי, לידים',
     postType: 'lead_gen',
     topic: 'ייעוץ עסקי',
-    productOrService: 'פגישת ייעוץ עסקי חינם 45 דק׳ — ניתוח העסק, זיהוי חסמים, תוכנית פעולה',
+    productOrService: 'פגישת ייעוץ עסקי חינם 45 דק׳, ניתוח העסק, זיהוי חסמים, תוכנית פעולה',
     audience: 'בעלי עסקים קטנים שמרגישים תקועים',
     uniqueValue: '200+ עסקים, MBA מאוניברסיטת ת״א, שיטה מוכחת',
     tone: 'storytelling',
@@ -290,16 +290,16 @@ La Pasta פותחת דלתות ואתם מוזמנים 🎉
 מה השתנה? פגישת ייעוץ אחת של 45 דקות ⚡
 
 📊 200+ עסקים | 🎓 MBA מאוניברסיטת ת״א
-🎁 פגישה ראשונה — חינם, ללא התחייבות
+🎁 פגישה ראשונה, חינם, ללא התחייבות
 📍 פרונטלי או זום
 
 📱 שלחו ״ייעוץ״ בוואטסאפ: 0541112233`,
   },
   {
-    title: '⭐ סיפור הצלחה — דיאטנית',
+    title: '⭐ סיפור הצלחה, דיאטנית',
     postType: 'testimonial',
     topic: 'תזונה וירידה במשקל',
-    productOrService: 'קליניקה לתזונה — ירידה במשקל בשיטה מותאמת אישית ללא דיאטות קיצוניות',
+    productOrService: 'קליניקה לתזונה, ירידה במשקל בשיטה מותאמת אישית ללא דיאטות קיצוניות',
     audience: 'אנשים שניסו דיאטות ולא הצליחו',
     uniqueValue: 'דיאטנית קלינית מוסמכת, שיטה מותאמת, 95% מגיעים ליעד',
     tone: 'storytelling',
@@ -316,7 +316,7 @@ La Pasta פותחת דלתות ואתם מוזמנים 🎉
 הסוד? תוכנית שנבנתה בדיוק בשבילה 🎯
 
 📊 95% מגיעים ליעד | 🎓 דיאטנית קלינית מוסמכת
-🎁 פגישת היכרות — רק 50₪
+🎁 פגישת היכרות, רק 50₪
 
 💬 כתבו ״רוצה פרטים״ בתגובות
 📱 וואטסאפ: 0508887766 | 📞 03-6445566`,
@@ -344,7 +344,7 @@ La Pasta פותחת דלתות ואתם מוזמנים 🎉
 💰 החל מ-3,500₪ | 3 תשלומים
 ⏱️ מוכן תוך 14 יום
 
-🎁 הצעת מחיר — חינם
+🎁 הצעת מחיר, חינם
 📱 וואטסאפ: 0523334455
 📧 info@webpro.co.il`,
   },
@@ -470,84 +470,108 @@ export default function GeneratePost() {
         {showExamples && (
           <div className="examples-overlay" onClick={() => { setShowExamples(false); setSelectedExample(null) }}>
             <div className="examples-popup" onClick={e => e.stopPropagation()}>
-              <div className="examples-popup-header">
-                <h2>{selectedExample ? selectedExample.title : 'דוגמאות למילוי'}</h2>
-                <button className="examples-close" onClick={() => { setShowExamples(false); setSelectedExample(null) }}>
-                  <X size={20} />
-                </button>
-              </div>
 
               {!selectedExample ? (
                 <>
-                  <p className="examples-subtitle">לחצו על דוגמה כדי לראות איך ממלאים ומה הAI מייצר</p>
-                  <div className="examples-grid">
-                    {EXAMPLES.map((ex, i) => (
-                      <button key={i} className="example-card" onClick={() => setSelectedExample(ex)}>
-                        <div className="example-card-title">{ex.title}</div>
-                        <div className="example-card-desc">{ex.productOrService}</div>
-                      </button>
-                    ))}
+                  <div className="examples-popup-header">
+                    <h2>דוגמאות למילוי</h2>
+                    <button className="examples-close" onClick={() => { setShowExamples(false); setSelectedExample(null) }}>
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <p className="examples-subtitle">בחרו דוגמה שתוביל לכם להכיר את האפשרות</p>
+                  <div className="examples-list">
+                    {EXAMPLES.map((ex, i) => {
+                      const emoji = ex.title.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u)?.[0] || '📝'
+                      const titleText = ex.title.replace(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u, '')
+                      return (
+                        <button key={i} className="example-list-item" onClick={() => setSelectedExample(ex)}>
+                          <div className="example-list-icon">{emoji}</div>
+                          <div className="example-list-content">
+                            <div className="example-list-title">{titleText}</div>
+                            <div className="example-list-desc">{ex.productOrService.length > 60 ? ex.productOrService.substring(0, 60) + '...' : ex.productOrService}</div>
+                          </div>
+                          <ChevronLeft size={18} className="example-list-arrow" />
+                        </button>
+                      )
+                    })}
                   </div>
                 </>
               ) : (
                 <div className="example-detail">
+                  <div className="examples-popup-header">
+                    <h2>{selectedExample.title}</h2>
+                    <button className="examples-close" onClick={() => { setShowExamples(false); setSelectedExample(null) }}>
+                      <X size={20} />
+                    </button>
+                  </div>
                   <button className="example-back-btn" onClick={() => setSelectedExample(null)}>
                     <ChevronRight size={16} />
-                    חזרה לדוגמאות
+                    חזרה לרשימת הדוגמאות
                   </button>
 
-                  <div className="example-fields">
-                    <h3>📋 מה מילאו:</h3>
-                    <div className="example-field">
-                      <span className="example-field-label">סוג הפוסט:</span>
-                      <span>{POST_TYPES.find(t => t.value === selectedExample.postType)?.label}</span>
-                    </div>
-                    <div className="example-field">
-                      <span className="example-field-label">תחום:</span>
-                      <span>{selectedExample.topic}</span>
-                    </div>
-                    <div className="example-field">
-                      <span className="example-field-label">מה מפרסמים:</span>
-                      <span>{selectedExample.productOrService}</span>
-                    </div>
-                    <div className="example-field">
-                      <span className="example-field-label">קהל יעד:</span>
-                      <span>{selectedExample.audience}</span>
-                    </div>
-                    <div className="example-field">
-                      <span className="example-field-label">יתרון ייחודי:</span>
-                      <span>{selectedExample.uniqueValue}</span>
-                    </div>
-                    <div className="example-field">
-                      <span className="example-field-label">טון:</span>
-                      <span>{TONES.find(t => t.value === selectedExample.tone)?.label}</span>
-                    </div>
-                    <div className="example-field">
-                      <span className="example-field-label">קריאה לפעולה:</span>
-                      <span>{selectedExample.cta}</span>
-                    </div>
-                    <div className="example-field">
-                      <span className="example-field-label">אימוג׳ים:</span>
-                      <span>{selectedExample.useEmojis ? 'כן' : 'לא'}</span>
-                    </div>
-                    {selectedExample.extraDetails && (
-                      <div className="example-field">
-                        <span className="example-field-label">פרטים נוספים:</span>
-                        <span>{selectedExample.extraDetails}</span>
+                  <div className="example-fields-section">
+                    <h3 className="example-section-title">פרטי הדוגמה</h3>
+                    <div className="example-fields-grid">
+                      <div className="example-field-row">
+                        <span className="example-field-icon">📝</span>
+                        <span className="example-field-label">סוג הפוסט</span>
+                        <span className="example-field-value">{POST_TYPES.find(t => t.value === selectedExample.postType)?.label?.replace(/^\S+\s/, '')}</span>
                       </div>
-                    )}
+                      <div className="example-field-row">
+                        <span className="example-field-icon">🏷️</span>
+                        <span className="example-field-label">תחום</span>
+                        <span className="example-field-value">{selectedExample.topic}</span>
+                      </div>
+                      <div className="example-field-row">
+                        <span className="example-field-icon">📦</span>
+                        <span className="example-field-label">מה מפרסמים</span>
+                        <span className="example-field-value">{selectedExample.productOrService}</span>
+                      </div>
+                      <div className="example-field-row">
+                        <span className="example-field-icon">👥</span>
+                        <span className="example-field-label">קהל יעד</span>
+                        <span className="example-field-value">{selectedExample.audience}</span>
+                      </div>
+                      <div className="example-field-row">
+                        <span className="example-field-icon">⭐</span>
+                        <span className="example-field-label">יתרון ייחודי</span>
+                        <span className="example-field-value">{selectedExample.uniqueValue}</span>
+                      </div>
+                      <div className="example-field-row">
+                        <span className="example-field-icon">🎭</span>
+                        <span className="example-field-label">טון</span>
+                        <span className="example-field-value">{TONES.find(t => t.value === selectedExample.tone)?.label}</span>
+                      </div>
+                      <div className="example-field-row">
+                        <span className="example-field-icon">📣</span>
+                        <span className="example-field-label">קריאה לפעולה</span>
+                        <span className="example-field-value">{selectedExample.cta}</span>
+                      </div>
+                      <div className="example-field-row">
+                        <span className="example-field-icon">😊</span>
+                        <span className="example-field-label">אימוג׳ים</span>
+                        <span className="example-field-value">{selectedExample.useEmojis ? 'כן' : 'לא'}</span>
+                      </div>
+                      {selectedExample.extraDetails && (
+                        <div className="example-field-row">
+                          <span className="example-field-icon">📝</span>
+                          <span className="example-field-label">פרטים נוספים</span>
+                          <span className="example-field-value">{selectedExample.extraDetails}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="example-result-section">
-                    <h3>✨ תוצאת הAI:</h3>
+                    <h3 className="example-section-title">תוצאת AI</h3>
                     <div className="example-result-box">
                       <pre className="result-text">{selectedExample.sampleResult}</pre>
                     </div>
                   </div>
 
                   <button className="generate-btn primary example-fill-btn" onClick={() => loadExample(selectedExample)}>
-                    מלא דומה
-                    <ArrowLeft size={18} />
+                    ✏️ מלא דומה
                   </button>
                 </div>
               )}
