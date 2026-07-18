@@ -70,7 +70,9 @@ describe('ForgotPassword page', () => {
     fireEvent.change(screen.getByPlaceholderText(/האימייל/), { target: { value: 'test@test.com' } });
     fireEvent.click(screen.getByRole('button', { name: /שלח קוד איפוס/ }));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/קוד אימות/)).toBeInTheDocument();
+      // OTP component renders 6 individual digit inputs
+      const otpInputs = document.querySelectorAll('.otp-circle');
+      expect(otpInputs.length).toBe(6);
     });
   });
 
