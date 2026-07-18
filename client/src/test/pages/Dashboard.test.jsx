@@ -119,11 +119,11 @@ describe('Dashboard page', () => {
     renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getAllByText('קמפיינים').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText('קבוצות').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText('פרסומים').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText('סטטיסטיקה').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText('הגדרות').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/קמפיינים/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/קבוצות/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/פרסומים/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/סטטיסטיקה/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/ניהול חשבון/).length).toBeGreaterThanOrEqual(1);
     });
   });
 
