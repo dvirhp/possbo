@@ -123,6 +123,7 @@ model User {
   groupSyncs         GroupSyncHistory[]
   publicationHistory PublicationHistory[]
   subscriptions      Subscription[]
+  payments           Payment[]
   usageLimits        UsageLimit[]
   dailyExposure      DailyExposure[]
   dailyStats         DailyStats[]
@@ -494,21 +495,47 @@ model Plan {
 }
 
 model Subscription {
-  id          String    @id @default(uuid())
-  userId      String    @map("user_id")
-  planId      String    @map("plan_id")
-  status      String
-  startedAt   DateTime  @map("started_at")
-  endsAt      DateTime? @map("ends_at")
-  cancelledAt DateTime? @map("cancelled_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id                    String    @id @default(uuid())
+  userId                String    @map("user_id")
+  planId                String    @map("plan_id")
+  status                String
+  startedAt             DateTime  @map("started_at")
+  endsAt                DateTime? @map("ends_at")
+  cancelledAt           DateTime? @map("cancelled_at")
+  gatewayCustomerId     String?   @map("gateway_customer_id")
+  gatewaySubscriptionId String?   @map("gateway_subscription_id")
+  paymentToken          String?   @map("payment_token")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan Plan @relation(fields: [planId], references: [id])
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  payments Payment[]
 
   @@index([userId])
   @@map("subscriptions")
+}
+
+model Payment {
+  id                   String   @id @default(uuid())
+  userId               String   @map("user_id")
+  subscriptionId       String   @map("subscription_id")
+  amount               Decimal  @db.Decimal(10, 2)
+  currency             String   @default("ILS")
+  status               String
+  periodStart          DateTime @map("period_start")
+  periodEnd            DateTime @map("period_end")
+  isProrated           Boolean  @default(false) @map("is_prorated")
+  gatewayTransactionId String?  @map("gateway_transaction_id")
+  failureReason        String?  @map("failure_reason")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([subscriptionId])
+  @@map("payments")
 }
 
 model UsageLimit {

@@ -314,6 +314,48 @@
   color: var(--text-primary, #e2e8f0);
 }
 
+/* Sidebar account expandable */
+.sidebar-account-expandable {
+  position: relative;
+}
+.sidebar-account-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  background: var(--bg-card, #1e2128);
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-account-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-secondary, #a3adb8);
+  cursor: pointer;
+  transition: 0.15s;
+  white-space: nowrap;
+}
+.sidebar-account-menu button:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-primary, #e8ecf0);
+}
+
 /* ─── App layout with sidebar ─── */
 .app-layout {
   display: flex;

@@ -82,6 +82,8 @@ import screenshotRoutes from "./routes/screenshot.js";
 import publishRoutes from "./routes/publish.js";
 import schedulerRoutes from "./routes/scheduler.js";
 import templateRoutes from "./routes/templates.js";
+import subscriptionRoutes from "./routes/subscription.js";
+import aiRoutes from "./routes/ai.js";
 
 // Use routes
 app.use("/api/auth/refresh", refreshLimiter);
@@ -92,6 +94,8 @@ app.use("/api/screenshot", screenshotRoutes);
 app.use("/api/publish", publishLimiter, publishRoutes);
 app.use("/api/scheduler", schedulerRoutes);
 app.use("/api/templates", templateRoutes);
+app.use("/api/subscription", subscriptionRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Basic route
 app.get("/", (req, res) => {

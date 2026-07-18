@@ -6,20 +6,20 @@ import { FileText, Download, Calendar, TrendingUp, CheckCircle, XCircle, Clock, 
 import '../styles/reports.css'
 
 const ERROR_MAP = {
-  'SESSION_EXPIRED': 'החיבור לפייסבוק פג — יש להתחבר מחדש',
-  'FACEBOOK_SESSION_REQUIRED': 'נדרש חיבור לפייסבוק — חבר את החשבון',
-  'POST_COMPOSER_NOT_FOUND': 'לא נמצא חלון פרסום בפייסבוק — ייתכן שהקבוצה חסומה',
-  'Missing post or user data': 'נתוני הפוסט חסרים — נסה ליצור קמפיין חדש',
-  'Session expired — reconnect Facebook': 'החיבור לפייסבוק פג — יש להתחבר מחדש',
-  'net::ERR_CONNECTION_RESET': 'בעיית תקשורת — בדוק את חיבור האינטרנט',
-  'net::ERR_CONNECTION_REFUSED': 'השרת לא זמין — נסה שוב מאוחר יותר',
-  'TIMEOUT': 'הפרסום נמשך זמן רב מדי — ייתכן שהפוסט פורסם בכל זאת',
-  'Navigation timeout': 'טעינת פייסבוק איטית מדי — נסה שוב',
-  'Target closed': 'הדפדפן נסגר במהלך הפרסום — נסה שוב',
+  'SESSION_EXPIRED': 'החיבור לפייסבוק פג, יש להתחבר מחדש',
+  'FACEBOOK_SESSION_REQUIRED': 'נדרש חיבור לפייסבוק, חבר את החשבון',
+  'POST_COMPOSER_NOT_FOUND': 'לא נמצא חלון פרסום בפייסבוק, ייתכן שהקבוצה חסומה',
+  'Missing post or user data': 'נתוני הפוסט חסרים, נסה ליצור קמפיין חדש',
+  'Session expired — reconnect Facebook': 'החיבור לפייסבוק פג, יש להתחבר מחדש',
+  'net::ERR_CONNECTION_RESET': 'בעיית תקשורת, בדוק את חיבור האינטרנט',
+  'net::ERR_CONNECTION_REFUSED': 'השרת לא זמין, נסה שוב מאוחר יותר',
+  'TIMEOUT': 'הפרסום נמשך זמן רב מדי, ייתכן שהפוסט פורסם בכל זאת',
+  'Navigation timeout': 'טעינת פייסבוק איטית מדי, נסה שוב',
+  'Target closed': 'הדפדפן נסגר במהלך הפרסום, נסה שוב',
 }
 
 function friendlyError(raw) {
-  if (!raw) return 'שגיאה לא ידועה — פנה לתמיכה'
+  if (!raw) return 'שגיאה לא ידועה, פנה לתמיכה'
   // Check exact match
   if (ERROR_MAP[raw]) return ERROR_MAP[raw]
   // Check partial match
@@ -29,7 +29,7 @@ function friendlyError(raw) {
   // If it's already in Hebrew, return as-is
   if (/[\u0590-\u05FF]/.test(raw)) return raw
   // Generic fallback
-  return `שגיאת מערכת — ${raw.substring(0, 60)}`
+  return `שגיאת מערכת: ${raw.substring(0, 60)}`
 }
 
 const PERIOD_OPTIONS = [

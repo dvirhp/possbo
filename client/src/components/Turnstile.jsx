@@ -1,8 +1,10 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { useTheme } from '../context/ThemeProvider'
 
 const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY
 
 export default function Turnstile({ onVerify, onExpire }) {
+  const { theme } = useTheme()
   const containerRef = useRef(null)
   const widgetIdRef = useRef(null)
   const retryRef = useRef(0)
@@ -49,7 +51,7 @@ export default function Turnstile({ onVerify, onExpire }) {
         'error-callback': () => {
           onVerifyRef.current?.('bypass')
         },
-        theme: 'auto',
+        theme: theme === 'dark' ? 'dark' : 'light',
         size: 'normal',
       })
     }
@@ -62,7 +64,7 @@ export default function Turnstile({ onVerify, onExpire }) {
         widgetIdRef.current = null
       }
     }
-  }, [])
+  }, [theme])
 
   return <div ref={containerRef} className="turnstile-widget" />
 }

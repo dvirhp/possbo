@@ -40,7 +40,13 @@ async function issueTokens(res, user) {
       id: user.id,
       email: user.email,
       name: user.name,
-      avatarUrl: user.avatarUrl,
+      profileImage: user.profileImage || null,
+      avatarUrl: user.avatarUrl || null,
+      fbSessionValid: user.fbSessionValid || false,
+      whatsappNumber: user.whatsappNumber || null,
+      whatsappMessage: user.whatsappMessage || null,
+      notificationSettings: user.notificationSettings || null,
+      createdAt: user.createdAt,
     },
   };
 }
@@ -75,7 +81,7 @@ router.post("/google", async (req, res) => {
       if (user && user.googleId) {
         return res
           .status(409)
-          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+          .json({ error: "חשבון כבר קיים, התחבר במקום להירשם" });
       }
       if (user && !user.googleId) {
         // Link Google to existing account
@@ -94,7 +100,7 @@ router.post("/google", async (req, res) => {
       if (!user) {
         return res
           .status(401)
-          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+          .json({ error: "אין חשבון עם האימייל הזה, הירשם קודם" });
       }
       if (!user.googleId) {
         // Auto-link on login if email matches
@@ -137,7 +143,7 @@ router.post("/facebook", async (req, res) => {
     if (!email) {
       return res
         .status(400)
-        .json({ error: "לא התקבל אימייל מפייסבוק — ודא שהאימייל ציבורי" });
+        .json({ error: "לא התקבל אימייל מפייסבוק, ודא שהאימייל ציבורי" });
     }
 
     let user = await prisma.user.findFirst({
@@ -148,7 +154,7 @@ router.post("/facebook", async (req, res) => {
       if (user && user.facebookOAuthId) {
         return res
           .status(409)
-          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+          .json({ error: "חשבון כבר קיים, התחבר במקום להירשם" });
       }
       if (user && !user.facebookOAuthId) {
         user = await prisma.user.update({
@@ -164,7 +170,7 @@ router.post("/facebook", async (req, res) => {
       if (!user) {
         return res
           .status(401)
-          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+          .json({ error: "אין חשבון עם האימייל הזה, הירשם קודם" });
       }
       if (!user.facebookOAuthId) {
         user = await prisma.user.update({
@@ -232,7 +238,7 @@ router.post("/github", async (req, res) => {
     if (!email) {
       return res
         .status(400)
-        .json({ error: "לא התקבל אימייל מ-GitHub — ודא שיש אימייל מאומת" });
+        .json({ error: "לא התקבל אימייל מGitHub, ודא שיש אימייל מאומת" });
     }
 
     const githubId = String(ghUser.id);
@@ -247,7 +253,7 @@ router.post("/github", async (req, res) => {
       if (user && user.githubId) {
         return res
           .status(409)
-          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+          .json({ error: "חשבון כבר קיים, התחבר במקום להירשם" });
       }
       if (user && !user.githubId) {
         user = await prisma.user.update({
@@ -263,7 +269,7 @@ router.post("/github", async (req, res) => {
       if (!user) {
         return res
           .status(401)
-          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+          .json({ error: "אין חשבון עם האימייל הזה, הירשם קודם" });
       }
       if (!user.githubId) {
         user = await prisma.user.update({
@@ -333,7 +339,7 @@ router.post("/linkedin", async (req, res) => {
       if (user && user.linkedinId) {
         return res
           .status(409)
-          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+          .json({ error: "חשבון כבר קיים, התחבר במקום להירשם" });
       }
       if (user && !user.linkedinId) {
         user = await prisma.user.update({
@@ -349,7 +355,7 @@ router.post("/linkedin", async (req, res) => {
       if (!user) {
         return res
           .status(401)
-          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+          .json({ error: "אין חשבון עם האימייל הזה, הירשם קודם" });
       }
       if (!user.linkedinId) {
         user = await prisma.user.update({
@@ -401,7 +407,7 @@ router.post("/apple", async (req, res) => {
       if (user && user.appleId) {
         return res
           .status(409)
-          .json({ error: "חשבון כבר קיים — התחבר במקום להירשם" });
+          .json({ error: "חשבון כבר קיים, התחבר במקום להירשם" });
       }
       if (user && !user.appleId) {
         user = await prisma.user.update({
@@ -417,7 +423,7 @@ router.post("/apple", async (req, res) => {
       if (!user) {
         return res
           .status(401)
-          .json({ error: "אין חשבון עם האימייל הזה — הירשם קודם" });
+          .json({ error: "אין חשבון עם האימייל הזה, הירשם קודם" });
       }
       if (!user.appleId) {
         user = await prisma.user.update({

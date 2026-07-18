@@ -461,17 +461,25 @@
   color: #a78bfa;
 }
 
-/* ─── Mobile ─── */
-@media (max-width: 480px) {
+/* ─── Mobile (when bottom nav is visible) ─── */
+@media (max-width: 768px) {
   .chatbot-fab {
     bottom: 96px;
     left: 16px;
+  }
+
+  .chatbot-panel {
+    bottom: 150px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chatbot-fab {
     width: 48px;
     height: 48px;
   }
 
   .chatbot-panel {
-    bottom: 150px;
     left: 28px;
     right: 60px;
     width: auto;

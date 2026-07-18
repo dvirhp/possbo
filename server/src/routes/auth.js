@@ -191,6 +191,8 @@ router.post("/verify-email", async (req, res) => {
         whatsappNumber: null,
         whatsappMessage: null,
         notificationSettings: null,
+        createdAt: user.createdAt,
+        subscription: null,
       },
     });
   } catch (error) {
@@ -275,6 +277,13 @@ router.post("/login", async (req, res) => {
 
     setRefreshCookie(res, refreshToken);
 
+    // Check subscription status
+    const activeSubscription = await prisma.subscription.findFirst({
+      where: { userId: user.id, status: { in: ['ACTIVE', 'CANCELLED'] } },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
     res.json({
       success: true,
       accessToken,
@@ -288,6 +297,12 @@ router.post("/login", async (req, res) => {
         whatsappNumber: user.whatsappNumber || null,
         whatsappMessage: user.whatsappMessage || null,
         notificationSettings: user.notificationSettings || null,
+        createdAt: user.createdAt,
+        subscription: activeSubscription ? {
+          status: activeSubscription.status,
+          planName: activeSubscription.plan?.name,
+          endsAt: activeSubscription.endsAt,
+        } : null,
       },
     });
   } catch (error) {
@@ -417,6 +432,13 @@ router.post("/refresh", async (req, res) => {
     // Start hashing new token in parallel — don't block response
     const hashPromise = bcrypt.hash(newRefreshToken, SALT_ROUNDS);
 
+    // Check subscription status
+    const activeSubscription = await prisma.subscription.findFirst({
+      where: { userId: user.id, status: { in: ['ACTIVE', 'CANCELLED'] } },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
     setRefreshCookie(res, newRefreshToken);
 
     // Send response immediately — user doesn't need to wait for DB save
@@ -433,6 +455,12 @@ router.post("/refresh", async (req, res) => {
         whatsappNumber: user.whatsappNumber || null,
         whatsappMessage: user.whatsappMessage || null,
         notificationSettings: user.notificationSettings || null,
+        createdAt: user.createdAt,
+        subscription: activeSubscription ? {
+          status: activeSubscription.status,
+          planName: activeSubscription.plan?.name,
+          endsAt: activeSubscription.endsAt,
+        } : null,
       },
     });
 
@@ -583,6 +611,13 @@ router.get("/me", async (req, res) => {
     }
   }
 
+  // Check subscription status
+  const activeSubscription = await prisma.subscription.findFirst({
+    where: { userId: req.user.id, status: { in: ['ACTIVE', 'CANCELLED'] } },
+    include: { plan: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
   res.json({
     id: req.user.id,
     email: req.user.email,
@@ -593,6 +628,12 @@ router.get("/me", async (req, res) => {
     whatsappNumber: req.user.whatsappNumber || null,
     whatsappMessage: req.user.whatsappMessage || null,
     notificationSettings: req.user.notificationSettings || null,
+    createdAt: req.user.createdAt,
+    subscription: activeSubscription ? {
+      status: activeSubscription.status,
+      planName: activeSubscription.plan?.name,
+      endsAt: activeSubscription.endsAt,
+    } : null,
   });
 });
 

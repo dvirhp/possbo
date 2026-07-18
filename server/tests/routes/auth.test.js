@@ -21,6 +21,7 @@ const mockUserCreate = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockUserFindFirst = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockSubscriptionFindFirst = vi.fn();
 
 vi.mock("@prisma/client", () => ({
   PrismaClient: vi.fn(() => ({
@@ -29,6 +30,9 @@ vi.mock("@prisma/client", () => ({
       findFirst: mockUserFindFirst,
       create: mockUserCreate,
       update: mockUserUpdate,
+    },
+    subscription: {
+      findFirst: mockSubscriptionFindFirst,
     },
   })),
 }));

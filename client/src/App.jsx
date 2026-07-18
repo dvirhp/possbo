@@ -29,6 +29,8 @@ const Templates = lazy(() => import('./pages/Templates'))
 const TemplateForm = lazy(() => import('./pages/TemplateForm'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Guides = lazy(() => import('./pages/Guides'))
+const Subscription = lazy(() => import('./pages/Subscription'))
+const GeneratePost = lazy(() => import('./pages/GeneratePost'))
 
 const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password']
 
@@ -206,6 +208,8 @@ function App() {
           <Route path="/templates/:id/edit" element={<AuthLayout><TemplateForm /></AuthLayout>} />
           <Route path="/reports" element={<AuthLayout><Reports /></AuthLayout>} />
           <Route path="/guides" element={<AuthLayout><Guides /></AuthLayout>} />
+          <Route path="/subscription" element={<AuthLayout><Subscription /></AuthLayout>} />
+          <Route path="/generate-post" element={<AuthLayout><GeneratePost /></AuthLayout>} />
           <Route path="/oauth/github/callback" element={<OAuthCallback />} />
           <Route path="/oauth/linkedin/callback" element={<OAuthCallback />} />
           <Route path="/oauth/apple/callback" element={<OAuthCallback />} />

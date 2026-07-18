@@ -520,14 +520,13 @@ export default function TemplateForm() {
 
           {/* Anonymous + Location */}
           <div className="tpl-toggles">
-            <label className="tpl-toggle">
-              <input
-                type="checkbox"
-                checked={isAnonymous}
-                onChange={e => setIsAnonymous(e.target.checked)}
-              />
-              <span>פרסום אנונימי</span>
-            </label>
+            <button
+              type="button"
+              className={`tpl-toggle-btn ${isAnonymous ? 'active' : ''}`}
+              onClick={() => setIsAnonymous(!isAnonymous)}
+            >
+              🕶️ אנונימי
+            </button>
             <button
               type="button"
               className={`tpl-toggle-btn ${showLocation ? 'active' : ''}`}

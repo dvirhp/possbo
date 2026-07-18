@@ -101,13 +101,14 @@ function useContainerSize() {
 }
 import '../styles/dashboard.css'
 import '../styles/overview.css'
+import OtpInput from '../components/OtpInput'
 
 const TABS = [
   { id: 'campaigns', icon: '📅', label: 'קמפיינים' },
   { id: 'groups', icon: '👥', label: 'קבוצות' },
   { id: 'posts', icon: '📝', label: 'פרסומים' },
   { id: 'stats', icon: '📊', label: 'סטטיסטיקה' },
-  { id: 'settings', icon: '⚙️', label: 'הגדרות' },
+  { id: 'account', icon: '👤', label: 'ניהול חשבון' },
 ]
 
 const NAV_ITEMS = [
@@ -115,7 +116,7 @@ const NAV_ITEMS = [
   { id: 'groups', icon: 'users', label: 'קבוצות' },
   { id: 'posts', icon: 'send', label: 'פרסומים' },
   { id: 'stats', icon: 'chart', label: 'סטטיסטיקה' },
-  { id: 'settings', icon: 'settings', label: 'הגדרות' },
+  { id: 'account', icon: 'account', label: 'ניהול חשבון' },
 ]
 
 function NavIcon({ type }) {
@@ -125,6 +126,7 @@ function NavIcon({ type }) {
     send: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
     chart: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
     settings: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
+    account: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
   }
   return icons[type] || null
 }
@@ -328,7 +330,7 @@ export default function Dashboard() {
         setSessionRequired(true)
         // Update user state so the FB session banner appears
         setUser(prev => prev ? { ...prev, fbSessionValid: false } : prev)
-        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: false, msg: '⚠️ חיבור הפייסבוק פג תוקף — יש להתחבר מחדש' } }))
+        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: false, msg: '⚠️ חיבור הפייסבוק פג תוקף, יש להתחבר מחדש' } }))
       } else {
         window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: false, msg: '⚠️ שגיאה בסנכרון הקבוצות' } }))
       }
@@ -535,7 +537,7 @@ export default function Dashboard() {
     groups: groups.length,
     posts: posts.length,
     stats: stats?.publishedCount || 0,
-    settings: null,
+    account: null,
   }
 
   const kpiData = {
@@ -589,7 +591,9 @@ export default function Dashboard() {
           {sidebarOpen && user && (
             <div className="sidebar-user">
               <div className="sidebar-avatar">
-                {user.name?.charAt(0) || user.email?.charAt(0) || '?'}
+                {user.profileImage || user.avatarUrl
+                  ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('/uploads')) return `http://localhost:8000${v}`; if (v.startsWith('uploads/')) return `http://localhost:8000/${v}`; return v })()} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                  : (user.name?.charAt(0) || user.email?.charAt(0) || '?')}
               </div>
               <div className="sidebar-user-info">
                 <span className="sidebar-user-name">{user.name || user.email}</span>
@@ -658,7 +662,7 @@ export default function Dashboard() {
               )}
 
               {/* KPIs / Campaign Sub-tabs */}
-              {activeTab !== 'settings' && activeTab !== 'stats' && activeTab !== 'overview' && activeTab !== 'groups' && (
+              {activeTab !== 'account' && activeTab !== 'stats' && activeTab !== 'overview' && activeTab !== 'groups' && (
                 <section className="kpi-row">
                   {activeTab === 'campaigns' ? (
                     <>
@@ -748,7 +752,7 @@ export default function Dashboard() {
               )}
 
               {/* ─── FILTER BAR ─── */}
-              {activeTab !== 'settings' && activeTab !== 'stats' && activeTab !== 'overview' && (
+              {activeTab !== 'account' && activeTab !== 'stats' && activeTab !== 'overview' && (
                 <div className="filter-bar">
                   <div className="filter-bar-search">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1168,7 +1172,7 @@ export default function Dashboard() {
                 {activeTab === 'stats' && (
                   <StatsPanel stats={stats} />
                 )}
-                {activeTab === 'settings' && <SettingsPanel user={user} logout={logout} setUser={setUser} navigate={navigate} handleBootstrap={handleBootstrap} bootstrapping={bootstrapping} />}
+                {activeTab === 'account' && <AccountPanel user={user} logout={logout} setUser={setUser} navigate={navigate} handleBootstrap={handleBootstrap} bootstrapping={bootstrapping} />}
               </div>
             </>
           )}
@@ -2723,6 +2727,50 @@ function StatsPanel({ stats }) {
   )
 }
 
+function AccountPanel({ user, logout, setUser, navigate, handleBootstrap, bootstrapping }) {
+  return (
+    <SettingsPanel user={user} logout={logout} setUser={setUser} navigate={navigate} handleBootstrap={handleBootstrap} bootstrapping={bootstrapping} />
+  )
+}
+
+function BillingPanel({ user, navigate }) {
+  const subscription = user?.subscription
+
+  return (
+    <div className="billing-panel">
+      <div className="billing-card">
+        <h3 className="billing-card-title">המנוי שלך</h3>
+        {subscription ? (
+          <div className="billing-status">
+            <div className="billing-status-badge active">
+              <span className="billing-dot"></span>
+              פעיל
+            </div>
+            <div className="billing-plan-info">
+              <span className="billing-plan-name">{subscription.planName || 'מסלול מקצועי'}</span>
+              <span className="billing-plan-price">300 ₪ / חודש</span>
+            </div>
+            {subscription.endsAt && (
+              <p className="billing-renewal">חידוש אוטומטי: {new Date(subscription.endsAt).toLocaleDateString('he-IL')}</p>
+            )}
+          </div>
+        ) : (
+          <div className="billing-status">
+            <div className="billing-status-badge inactive">
+              <span className="billing-dot"></span>
+              אין מנוי פעיל
+            </div>
+            <p className="billing-no-plan">לא הוגדר מנוי. הפעל מנוי כדי ליהנות מכל הפיצ'רים.</p>
+          </div>
+        )}
+        <button className="billing-manage-btn" onClick={() => navigate('/subscription')}>
+          {subscription ? 'נהל מנוי ותשלום' : 'הפעל מנוי'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, bootstrapping }) {
   const { theme, setTheme } = useTheme()
   const [confirmAction, setConfirmAction] = useState(null)
@@ -2943,7 +2991,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
         <div className="settings-avatar-wrap">
           <div className="settings-avatar">
             {user?.profileImage || user?.avatarUrl
-              ? <img src={user.profileImage || user.avatarUrl} alt="" />
+              ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('/uploads')) return `http://localhost:8000${v}`; if (v.startsWith('uploads/')) return `http://localhost:8000/${v}`; return v })()} alt="" />
               : <span>{user?.name?.[0] || '?'}</span>}
           </div>
           <label className="settings-avatar-upload" title="העלה תמונה">
@@ -3030,7 +3078,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                     </div>
                     <div className="settings-field">
                       <label>קוד אימות</label>
-                      <input type="text" value={pwCode} onChange={e => setPwCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6 ספרות" dir="ltr" maxLength={6} style={{ textAlign: 'center', letterSpacing: '4px', fontSize: '18px' }} />
+                      <OtpInput length={6} value={pwCode} onChange={setPwCode} />
                     </div>
                     <div className="settings-field">
                       <label>סיסמה חדשה</label>

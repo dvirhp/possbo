@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { authAPI } from '../services/api'
 import { useAppData } from '../context/DataProvider'
 import OAuthButtons from '../components/OAuthButtons'
+import OtpInput from '../components/OtpInput'
 import Turnstile from '../components/Turnstile'
 import '../styles/auth.css'
 
@@ -60,7 +61,7 @@ export default function Register() {
         setVerificationStep(true)
       } else if (res.data?.user) {
         loginSuccess(res.data.user)
-        navigate('/dashboard')
+        navigate('/subscription')
       }
     } catch (err) {
       if (!navigator.onLine || err.code === 'ERR_NETWORK') {
@@ -85,10 +86,10 @@ export default function Register() {
       const res = await authAPI.verifyEmail({ email, code: verificationCode })
       if (res.data?.user) {
         loginSuccess(res.data.user)
-        navigate('/dashboard')
+        navigate('/subscription')
       } else {
         await checkAuth()
-        navigate('/dashboard')
+        navigate('/subscription')
       }
     } catch (err) {
       setError(err.userMessage || 'שגיאה בלתי צפויה')
@@ -128,17 +129,7 @@ export default function Register() {
           </div>
 
           <form className="auth-form" onSubmit={handleVerify}>
-            <input
-              type="text"
-              className="auth-input auth-code-input"
-              placeholder="הזן קוד אימות"
-              value={verificationCode}
-              onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              maxLength={6}
-              autoFocus
-              dir="ltr"
-              style={{ textAlign: 'center', fontSize: '24px', letterSpacing: '6px' }}
-            />
+            <OtpInput length={6} value={verificationCode} onChange={setVerificationCode} />
 
             {error && <div className="auth-error">{error}</div>}
 
