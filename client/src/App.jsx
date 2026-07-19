@@ -31,6 +31,7 @@ const Reports = lazy(() => import('./pages/Reports'))
 const Guides = lazy(() => import('./pages/Guides'))
 const Subscription = lazy(() => import('./pages/Subscription'))
 const GeneratePost = lazy(() => import('./pages/GeneratePost'))
+const Feedback = lazy(() => import('./pages/Feedback'))
 
 const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password']
 
@@ -49,6 +50,8 @@ function AuthWidgets() {
     </>
   )
 }
+
+const MAX_VISIBLE_BANNERS = 2
 
 function GlobalPublishBanner() {
   const [banners, setBanners] = useState([])
@@ -128,7 +131,7 @@ function GlobalPublishBanner() {
     const handleSyncDone = (e) => {
       const { success, msg } = e.detail
       addBanner('sync-groups', { type: success ? 'success' : 'error', msg })
-      setTimeout(() => removeBanner('sync-groups'), 5000)
+      setTimeout(() => removeBanner('sync-groups'), 4000)
     }
 
     // Generic operation events (for any future operations)
@@ -139,7 +142,7 @@ function GlobalPublishBanner() {
     const handleOpDone = (e) => {
       const { id, success, msg } = e.detail
       addBanner(id, { type: success ? 'success' : 'error', msg })
-      setTimeout(() => removeBanner(id), 5000)
+      setTimeout(() => removeBanner(id), 4000)
     }
 
     window.addEventListener('postit-publish-start', handlePublishStart)
@@ -161,9 +164,17 @@ function GlobalPublishBanner() {
 
   if (banners.length === 0) return null
 
+  const visibleBanners = banners.slice(-MAX_VISIBLE_BANNERS)
+  const hiddenCount = banners.length - visibleBanners.length
+
   return (
     <div className="global-banners-container">
-      {banners.map(banner => {
+      {hiddenCount > 0 && (
+        <div className="global-publish-banner global-banner-overflow">
+          <span>+{hiddenCount} פעולות נוספות ברקע</span>
+        </div>
+      )}
+      {visibleBanners.map(banner => {
         const colorClass = banner.type === 'progress' ? 'global-banner-progress'
           : banner.type === 'success' ? 'global-banner-success' : 'global-banner-error'
         return (
@@ -172,9 +183,7 @@ function GlobalPublishBanner() {
               <span className="global-banner-spinner"></span>
             )}
             <span>{banner.msg}</span>
-            {banner.type !== 'progress' && (
-              <button onClick={() => setBanners(prev => prev.filter(b => b.id !== banner.id))}>✕</button>
-            )}
+            <button onClick={() => setBanners(prev => prev.filter(b => b.id !== banner.id))}>✕</button>
           </div>
         )
       })}
@@ -210,6 +219,7 @@ function App() {
           <Route path="/guides" element={<AuthLayout><Guides /></AuthLayout>} />
           <Route path="/subscription" element={<AuthLayout><Subscription /></AuthLayout>} />
           <Route path="/generate-post" element={<AuthLayout><GeneratePost /></AuthLayout>} />
+          <Route path="/feedback" element={<AuthLayout><Feedback /></AuthLayout>} />
           <Route path="/oauth/github/callback" element={<OAuthCallback />} />
           <Route path="/oauth/linkedin/callback" element={<OAuthCallback />} />
           <Route path="/oauth/apple/callback" element={<OAuthCallback />} />

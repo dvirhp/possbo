@@ -207,6 +207,53 @@
   background: var(--indigo-soft, rgba(129,140,248,0.12));
 }
 
+/* ─── Google Play Button ─── */
+.google-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 36px;
+  padding: 12px 28px;
+  border-radius: 14px;
+  background: var(--bg-card, #23272f);
+  border: 1.5px solid var(--indigo, #818cf8);
+  color: var(--text-primary, #e8ecf0);
+  text-decoration: none;
+  transition: 0.25s;
+  cursor: pointer;
+  direction: rtl;
+}
+.google-play-btn:hover {
+  background: var(--indigo-soft, rgba(129,140,248,0.12));
+  border-color: #a78bfa;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(129, 140, 248, 0.3);
+}
+.gp-icon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  color: var(--indigo, #818cf8);
+}
+.gp-text {
+  display: flex;
+  flex-direction: column;
+  text-align: right;
+  line-height: 1.2;
+}
+.gp-small {
+  font-size: 11px;
+  color: var(--text-muted, #6b7684);
+}
+.gp-big {
+  font-size: 16px;
+  font-weight: 700;
+  background: var(--gradient-main, linear-gradient(135deg, #818cf8, #c084fc));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 .landing-footer {
   margin-top: 40px;
   text-align: center;
@@ -244,6 +291,18 @@
 
   .cta-btn {
     text-align: center;
+  }
+
+  .google-play-btn {
+    padding: 10px 22px;
+    margin-top: 28px;
+  }
+  .gp-icon {
+    width: 22px;
+    height: 22px;
+  }
+  .gp-big {
+    font-size: 14px;
   }
 
   .landing-hero {

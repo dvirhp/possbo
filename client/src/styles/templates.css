@@ -1044,6 +1044,123 @@
 }
 .tpl-mode-btn:hover:not(.active) { border-color: var(--text-muted, #6b7684); }
 
+/* Toggle row (profile / IG) */
+.tpl-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary, #e8ecf0);
+}
+
+.tpl-toggle-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--indigo, #6366f1);
+  cursor: pointer;
+}
+
+/* Platform tabs (Facebook / Instagram) */
+.tpl-platform-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.tpl-platform-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  background: var(--bg-card, #1e2128);
+  color: var(--text-muted, #6b7684);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tpl-platform-tab:hover {
+  border-color: var(--text-muted, #6b7684);
+}
+
+.tpl-platform-tab.active {
+  border-color: #1877f2;
+  color: #1877f2;
+  background: rgba(24, 119, 242, 0.08);
+}
+
+.tpl-platform-tab-ig.active {
+  border-color: #e1306c;
+  color: #e1306c;
+  background: rgba(225, 48, 108, 0.08);
+}
+
+.tpl-platform-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #e1306c;
+  color: #fff;
+  font-size: 10px;
+  margin-right: 4px;
+}
+
+.tpl-platform-content {
+  padding: 2px 0;
+}
+
+.tpl-platform-section {
+  padding: 0;
+}
+
+.tpl-platform-section-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf0);
+  margin-bottom: 10px;
+}
+
+/* IG publish type selector */
+.tpl-ig-type-select {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.tpl-ig-type-btn {
+  flex: 1;
+  padding: 8px;
+  background: var(--bg-card, #1e2128);
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 10px;
+  color: var(--text-muted, #6b7684);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.2s;
+  text-align: center;
+}
+
+.tpl-ig-type-btn.active {
+  border-color: #e1306c;
+  color: #e1306c;
+  background: rgba(225, 48, 108, 0.08);
+}
+
+.tpl-ig-type-btn:hover:not(.active) {
+  border-color: var(--text-muted, #6b7684);
+}
+
 /* Recurring */
 .tpl-recurring { display: flex; flex-direction: column; gap: 12px; }
 .tpl-days { display: flex; gap: 6px; }

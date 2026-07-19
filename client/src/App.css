@@ -184,6 +184,14 @@ button, a {
   border: 1px solid #ef4444;
   color: #ef4444;
 }
+.global-banner-overflow {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 6px 14px;
+  opacity: 0.85;
+}
 .global-publish-banner button {
   background: none;
   border: none;
@@ -191,6 +199,7 @@ button, a {
   cursor: pointer;
   font-size: 16px;
   opacity: 0.7;
+  flex-shrink: 0;
 }
 .global-publish-banner button:hover {
   opacity: 1;

@@ -192,6 +192,12 @@
   color: var(--text-muted, #6b7684);
 }
 
+.cp-step-indicator svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
 .cp-step.active .cp-step-indicator {
   border-color: var(--indigo, #818cf8);
   background: var(--indigo, #818cf8);
@@ -2876,4 +2882,761 @@
 .optimal-item-desc {
   font-size: 11px;
   color: var(--text-muted, #6b7684);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Platform Tabs (Facebook / Instagram)
+   ══════════════════════════════════════════════════════════════ */
+
+.cp-platform-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cp-platform-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--bg-base, #1c1f26);
+  border: 2px solid var(--border, #2a2d35);
+  border-radius: 14px;
+  color: var(--text-muted, #6b7684);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+}
+
+.cp-platform-tab:hover {
+  border-color: var(--border-hover, #3a3d45);
+  color: var(--text-secondary, #a3adb8);
+}
+
+.cp-platform-tab.active {
+  border-color: var(--accent, #6366f1);
+  background: rgba(99, 102, 241, 0.06);
+  color: var(--text-primary, #e8ecf0);
+}
+
+.cp-platform-tab svg {
+  flex-shrink: 0;
+}
+
+.cp-platform-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #22c55e;
+  color: #fff;
+  font-size: 10px;
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+/* ─── Instagram Connect Notice ─── */
+
+.cp-instagram-card {
+  text-align: center;
+}
+
+.cp-ig-connect-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 20px;
+  gap: 12px;
+}
+
+.cp-ig-notice-icon {
+  margin-bottom: 4px;
+}
+
+.cp-ig-notice-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary, #e8ecf0);
+  margin: 0;
+}
+
+.cp-ig-notice-text {
+  font-size: 14px;
+  color: var(--text-secondary, #a3adb8);
+  margin: 0;
+  max-width: 340px;
+  line-height: 1.6;
+}
+
+.cp-ig-notice-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--text-secondary, #a3adb8);
+  line-height: 1.6;
+  text-align: right;
+  max-width: 380px;
+}
+
+.cp-ig-alert-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.cp-ig-connect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  background: linear-gradient(135deg, #833AB4 0%, #E1306C 50%, #F77737 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  margin-top: 4px;
+}
+
+.cp-ig-connect-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(225, 48, 108, 0.3);
+}
+
+/* ─── Instagram Options (connected state) ─── */
+
+.cp-ig-header {
+  margin-bottom: 16px;
+}
+
+.cp-ig-enable-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--bg-deep, #16181d);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.cp-ig-enable-toggle:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.cp-ig-toggle-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf0);
+}
+
+.cp-ig-enable-toggle input[type="checkbox"] {
+  width: 40px;
+  height: 22px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--border, #2a2d35);
+  border-radius: 11px;
+  position: relative;
+  cursor: pointer;
+  transition: 0.3s;
+  flex-shrink: 0;
+}
+
+.cp-ig-enable-toggle input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: var(--text-muted, #6b7684);
+  border-radius: 50%;
+  top: 3px;
+  right: 3px;
+  transition: 0.3s;
+}
+
+.cp-ig-enable-toggle input[type="checkbox"]:checked {
+  background: linear-gradient(135deg, #833AB4, #E1306C);
+}
+
+.cp-ig-enable-toggle input[type="checkbox"]:checked::after {
+  right: auto;
+  left: 3px;
+  background: #fff;
+}
+
+.cp-ig-options {
+  animation: cpFadeIn 0.3s ease;
+}
+
+.cp-ig-options-label {
+  font-size: 13px;
+  color: var(--text-muted, #6b7684);
+  margin: 0 0 12px;
+  font-weight: 500;
+}
+
+.cp-ig-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.cp-ig-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 10px;
+  background: var(--bg-deep, #16181d);
+  border: 2px solid var(--border, #2a2d35);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  color: var(--text-secondary, #a3adb8);
+}
+
+.cp-ig-type-card:hover {
+  border-color: var(--border-hover, #3a3d45);
+  transform: translateY(-1px);
+}
+
+.cp-ig-type-card.active {
+  border-color: #E1306C;
+  background: rgba(225, 48, 108, 0.06);
+  color: var(--text-primary, #e8ecf0);
+}
+
+.cp-ig-type-icon {
+  font-size: 28px;
+}
+
+.cp-ig-type-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cp-ig-type-desc {
+  font-size: 11px;
+  color: var(--text-muted, #6b7684);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.cp-ig-type-card.active .cp-ig-type-desc {
+  color: var(--text-secondary, #a3adb8);
+}
+
+.cp-ig-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: rgba(99, 102, 241, 0.06);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #a3adb8);
+  line-height: 1.5;
+}
+
+.cp-ig-hint-success {
+  background: rgba(16, 185, 129, 0.06);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+/* ─── Story/Reels Media Options ─── */
+
+.cp-ig-media-options {
+  margin-top: 14px;
+}
+
+.cp-ig-media-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary, #a3adb8);
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.cp-ig-media-notice-warn {
+  background: rgba(245, 158, 11, 0.06);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.cp-ig-media-notice-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.cp-ig-media-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cp-ig-media-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-base, #1c1f26);
+  border: 1.5px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cp-ig-media-choice:hover {
+  border-color: var(--border-hover, #3a3d45);
+}
+
+.cp-ig-media-choice.active {
+  border-color: var(--accent, #6366f1);
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.cp-ig-media-choice input[type="radio"] {
+  margin-top: 3px;
+  accent-color: var(--accent, #6366f1);
+  flex-shrink: 0;
+}
+
+.cp-ig-media-choice-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cp-ig-media-choice-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf0);
+}
+
+.cp-ig-media-choice-desc {
+  font-size: 11.5px;
+  color: var(--text-muted, #6b7684);
+}
+
+.cp-ig-image-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--bg-deep, #16181d);
+  border-radius: 10px;
+}
+
+.cp-ig-image-pick-item {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cp-ig-image-pick-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cp-ig-image-pick-item:hover {
+  border-color: var(--border-hover, #3a3d45);
+}
+
+.cp-ig-image-pick-item.active {
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.cp-ig-image-pick-check {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent, #6366f1);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* ─── Instagram chip in review ─── */
+
+.cp-chip-instagram {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, rgba(131, 58, 180, 0.12), rgba(225, 48, 108, 0.12)) !important;
+  border: 1px solid rgba(225, 48, 108, 0.25) !important;
+  color: #E1306C !important;
+}
+
+.cp-chip-instagram svg {
+  flex-shrink: 0;
+}
+
+/* ─── Platform Scheduling Cards ─── */
+
+.cp-schedule-platform-card {
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  margin-top: 12px;
+}
+
+.cp-schedule-platform-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+  margin-bottom: 12px;
+}
+
+.cp-schedule-platform-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary, #e8ecf0);
+}
+
+.cp-schedule-platform-icon {
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.cp-schedule-platform-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--emerald, #10b981);
+}
+
+.cp-schedule-platform-badge.custom {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--indigo, #818cf8);
+}
+
+.cp-schedule-platform-default {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cp-schedule-platform-default p {
+  font-size: 13px;
+  color: var(--text-secondary, #a3adb8);
+  margin: 0;
+}
+
+.cp-schedule-platform-change {
+  align-self: flex-start;
+  padding: 6px 14px;
+  background: var(--bg-base, #1c1f26);
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  border-radius: 8px;
+  color: var(--text-secondary, #a3adb8);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cp-schedule-platform-change:hover {
+  border-color: var(--accent, #6366f1);
+  color: var(--accent, #6366f1);
+}
+
+.cp-schedule-platform-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cp-schedule-platform-reset {
+  align-self: flex-start;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: var(--text-muted, #6b7684);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.cp-schedule-platform-reset:hover {
+  color: var(--accent, #6366f1);
+}
+
+.cp-schedule-ig-card {
+  border-color: rgba(225, 48, 108, 0.12);
+}
+
+/* ─── Schedule Sub-Tabs (platform/target switcher) ─── */
+
+.cp-schedule-hint-bubble {
+  margin: 0 16px 14px;
+  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: 10px;
+  color: var(--text-secondary, #8b95a5);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.cp-schedule-sub-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 12px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+  margin-bottom: 12px;
+}
+
+.cp-schedule-sub-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  background: transparent;
+  color: var(--text-secondary, #8b95a5);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.cp-schedule-sub-tab:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-primary, #e8ecf0);
+}
+
+.cp-schedule-sub-tab.active {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #60a5fa;
+}
+
+.cp-schedule-sub-tab-ig.active {
+  background: rgba(225, 48, 108, 0.1);
+  border-color: rgba(225, 48, 108, 0.3);
+  color: #e1306c;
+}
+
+.cp-schedule-sub-tab-badge {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.cp-schedule-sub-tab svg {
+  flex-shrink: 0;
+}
+
+.cp-schedule-sub-tabs-inner {
+  padding: 0 16px 10px;
+  margin-top: -4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  gap: 5px;
+}
+.cp-schedule-sub-tabs-inner .cp-schedule-sub-tab {
+  font-size: 12.5px;
+  padding: 5px 10px;
+  border-radius: 16px;
+}
+
+/* ─── Schedule Section Blocks (Groups/Profile inside FB card) ─── */
+
+.cp-schedule-section-block {
+  padding: 0;
+}
+
+.cp-schedule-section-divider {
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.06));
+}
+
+.cp-schedule-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf0);
+  margin-bottom: 12px;
+}
+
+/* ─── Review Schedule List ─── */
+
+.cp-review-schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cp-review-schedule-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary, #a3adb8);
+}
+
+.cp-review-schedule-platform {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf0);
+  min-width: 80px;
+}
+
+.cp-review-schedule-platform svg {
+  flex-shrink: 0;
+}
+
+/* ─── Settings Instagram notice ─── */
+
+.settings-ig-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: rgba(251, 191, 36, 0.06);
+  border: 1px solid rgba(251, 191, 36, 0.15);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #a3adb8);
+  line-height: 1.6;
+}
+
+.settings-ig-notice-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+  margin-top: 1px;
+}
+
+/* ─── Mobile responsive for platform tabs ─── */
+
+@media (max-width: 480px) {
+  .cp-platform-tabs {
+    gap: 6px;
+  }
+
+  .cp-platform-tab {
+    padding: 12px 10px;
+    font-size: 13px;
+    gap: 6px;
+  }
+
+  .cp-platform-tab svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .cp-ig-type-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .cp-ig-type-card {
+    padding: 14px 6px;
+  }
+
+  .cp-ig-type-icon {
+    font-size: 24px;
+  }
+
+  .cp-ig-type-name {
+    font-size: 12px;
+  }
+
+  .cp-ig-type-desc {
+    font-size: 10px;
+  }
+
+  .cp-ig-connect-notice {
+    padding: 20px 14px;
+  }
+
+  .cp-ig-notice-title {
+    font-size: 16px;
+  }
+
+  .cp-schedule-sub-tabs {
+    padding: 0 10px 10px;
+    gap: 4px;
+  }
+
+  .cp-schedule-sub-tab {
+    padding: 6px 4px;
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .cp-schedule-sub-tab svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .cp-schedule-sub-tab-badge {
+    display: none;
+  }
 }

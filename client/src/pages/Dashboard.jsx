@@ -2986,7 +2986,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
 
   return (
     <div className="settings-page">
-      {/* ═══ Profile Hero (Centered Avatar + Name) ═══ */}
+      {/* ═══ Profile Hero ═══ */}
       <div className="settings-hero">
         <div className="settings-avatar-wrap">
           <div className="settings-avatar">
@@ -3012,174 +3012,121 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
         <p className="settings-hero-email">{user?.email || ''}</p>
       </div>
 
-      {/* ═══ Cards Grid ═══ */}
-      <div className="settings-grid">
-        {/* ─── Profile Card ─── */}
-        <section className="settings-card">
-          <div className="settings-card-header">
-            <div className="settings-card-icon">👤</div>
-            <h3>פרטי משתמש</h3>
+      {/* ═══ Sections ═══ */}
+      <div className="settings-sections-wrap">
+
+        {/* ─── Basic Info Section ─── */}
+        <section className="settings-sect">
+          <div className="settings-sect-header">
+            <h3 className="settings-sect-title">מידע בסיסי</h3>
             {!editing && (
-              <button className="settings-edit-btn" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }}>
-                ✏️ ערוך
+              <button className="settings-sect-edit" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
               </button>
             )}
           </div>
-          <div className="settings-card-body">
+          <div className="settings-sect-body">
             {editing ? (
               <>
-                <div className="settings-field">
-                  <label>שם</label>
-                  <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="השם שלך" />
-                </div>
-                <div className="settings-field">
-                  <label>אימייל</label>
-                  <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="email@example.com" type="email" dir="ltr" />
+                <div className="settings-fields-grid">
+                  <div className="settings-field">
+                    <label>שם</label>
+                    <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="השם שלך" />
+                  </div>
+                  <div className="settings-field">
+                    <label>אימייל</label>
+                    <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="email@example.com" type="email" dir="ltr" />
+                  </div>
                 </div>
                 {editError && <div className="settings-msg settings-msg-error">{editError}</div>}
                 <div className="settings-field-actions">
                   <button className="settings-btn-save" onClick={handleSaveProfile} disabled={saving}>
-                    {saving ? '⏳ שומר...' : '💾 שמור שינויים'}
+                    {saving ? '⏳ שומר...' : 'שמור שינויים'}
                   </button>
                   <button className="settings-btn-cancel" onClick={() => setEditing(false)}>ביטול</button>
                 </div>
               </>
             ) : (
-              <>
-                <div className="settings-info-row">
-                  <span className="settings-info-label">שם</span>
-                  <span className="settings-info-value">{user?.name || ''}</span>
+              <div className="settings-fields-grid">
+                <div className="settings-field-display">
+                  <span className="settings-field-label">שם פרטי</span>
+                  <span className="settings-field-value">{user?.name || '—'}</span>
                 </div>
-                <div className="settings-info-row">
-                  <span className="settings-info-label">אימייל</span>
-                  <span className="settings-info-value">{user?.email || ''}</span>
-                </div>
-              </>
-            )}
-
-            {/* Password change */}
-            <div className="settings-divider" />
-            {!showPassword ? (
-              <button className="settings-btn-outline" onClick={() => setShowPassword(true)}>
-                🔒 שנה סיסמה
-              </button>
-            ) : (
-              <div className="settings-password-form">
-                {pwStep === 1 ? (
-                  <div className="settings-field">
-                    <label>סיסמה נוכחית</label>
-                    <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="הזן סיסמה נוכחית" dir="ltr" />
-                    <span className="settings-field-hint hint-info">לאחר אימות, ישלח קוד למייל שלך</span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="settings-msg settings-msg-success" style={{ marginBottom: 12 }}>
-                      📧 קוד אימות נשלח ל-{user?.email}
-                    </div>
-                    <div className="settings-field">
-                      <label>קוד אימות</label>
-                      <OtpInput length={6} value={pwCode} onChange={setPwCode} />
-                    </div>
-                    <div className="settings-field">
-                      <label>סיסמה חדשה</label>
-                      <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="לפחות 6 תווים" dir="ltr" />
-                    </div>
-                    <div className="settings-field">
-                      <label>אימות סיסמה חדשה</label>
-                      <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="הזן שוב" dir="ltr" />
-                    </div>
-                  </>
-                )}
-                {pwError && <div className="settings-msg settings-msg-error">{pwError}</div>}
-                {pwSuccess && <div className="settings-msg settings-msg-success">✓ הסיסמה שונתה בהצלחה!</div>}
-                <div className="settings-field-actions">
-                  <button className="settings-btn-save" onClick={handleChangePassword} disabled={pwSaving || (pwStep === 1 ? !currentPassword : (!pwCode || !newPassword))}>
-                    {pwSaving ? '⏳' : pwStep === 1 ? '📧 שלח קוד אימות' : '🔑 שנה סיסמה'}
-                  </button>
-                  <button className="settings-btn-cancel" onClick={() => { setShowPassword(false); setPwError(null); setPwStep(1); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPwCode('') }}>ביטול</button>
+                <div className="settings-field-display">
+                  <span className="settings-field-label">אימייל</span>
+                  <span className="settings-field-value">{user?.email || '—'}</span>
                 </div>
               </div>
             )}
           </div>
         </section>
 
-        {/* ─── Connections Card ─── */}
-        <section className="settings-card">
-          <div className="settings-card-header">
-            <div className="settings-card-icon">🔗</div>
-            <h3>חיבורים</h3>
+        {/* ─── Connections Section ─── */}
+        <section className="settings-sect">
+          <div className="settings-sect-header">
+            <h3 className="settings-sect-title">חיבורים</h3>
           </div>
-          <div className="settings-card-body">
-            {/* Facebook */}
-            <div className={`settings-connection-item ${!user?.fbSessionValid ? 'connection-disconnected' : ''}`}>
-              <div className="settings-connection-info">
-                <span className="settings-connection-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          <div className="settings-sect-body">
+            <div className="settings-fields-grid">
+              {/* Facebook */}
+              <div className="settings-field-display">
+                <span className="settings-field-label">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2" style={{ verticalAlign: 'middle', marginLeft: 6 }}><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                  פייסבוק
                 </span>
-                <div>
-                  <span className="settings-connection-name">פייסבוק</span>
-                  <span className={`settings-connection-status ${user?.fbSessionValid ? 'status-ok' : 'status-err'}`}>
-                    {user?.fbSessionValid ? '✓ מחובר' : '✗ לא מחובר'}
-                  </span>
+                <span className={`settings-field-value ${user?.fbSessionValid ? 'value-ok' : 'value-muted'}`}>
+                  {user?.fbSessionValid ? '✓ מחובר' : '✗ לא מחובר'}
+                </span>
+                <div className="settings-field-inline-actions">
+                  {user?.fbSessionValid ? (
+                    <>
+                      <button className="settings-link-btn" onClick={handleBootstrap} disabled={bootstrapping}>
+                        {bootstrapping ? '⏳' : 'החלף'}
+                      </button>
+                      <button className="settings-link-btn settings-link-btn-danger" onClick={handleDisconnectFB} disabled={disconnecting}>
+                        {disconnecting ? '⏳' : 'נתק'}
+                      </button>
+                    </>
+                  ) : (
+                    <button className="settings-link-btn settings-link-btn-connect" onClick={handleBootstrap} disabled={bootstrapping}>
+                      {bootstrapping ? '⏳ ממתין...' : 'קשר חיבור'}
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="settings-connection-actions">
-                {user?.fbSessionValid ? (
-                  <>
-                    <button className="settings-btn-outline settings-btn-sm" onClick={handleBootstrap} disabled={bootstrapping}>
-                      {bootstrapping ? '⏳' : '🔄'} החלף
+
+              {/* WhatsApp */}
+              <div className="settings-field-display">
+                <span className="settings-field-label">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366" style={{ verticalAlign: 'middle', marginLeft: 6 }}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                  וואטסאפ
+                </span>
+                <span className={`settings-field-value ${user?.whatsappNumber ? 'value-ok' : 'value-muted'}`}>
+                  {user?.whatsappNumber ? user.whatsappNumber : '—'}
+                </span>
+                <div className="settings-field-inline-actions">
+                  {user?.whatsappNumber && !waEditing ? (
+                    <>
+                      <button className="settings-link-btn" onClick={() => { setWaEditing(true); setWaNumber(user.whatsappNumber); setWaMessage(user.whatsappMessage || ''); setWaValidation(null) }}>
+                        ערוך
+                      </button>
+                      <button className="settings-link-btn settings-link-btn-danger" onClick={handleRemoveWhatsapp} disabled={waSaving}>
+                        הסר
+                      </button>
+                    </>
+                  ) : !user?.whatsappNumber && !waEditing ? (
+                    <button className="settings-link-btn settings-link-btn-connect" onClick={() => setWaEditing(true)}>
+                      קשר חיבור
                     </button>
-                    <button className="settings-btn-danger-sm" onClick={handleDisconnectFB} disabled={disconnecting}>
-                      {disconnecting ? '⏳' : '🔌'} נתק
-                    </button>
-                  </>
-                ) : (
-                  <button className="settings-btn-primary-sm" onClick={handleBootstrap} disabled={bootstrapping}>
-                    {bootstrapping ? '⏳ ממתין...' : '🔗 קשר חיבור'}
-                  </button>
-                )}
+                  ) : null}
+                </div>
               </div>
             </div>
 
-            {/* WhatsApp */}
-            <div className={`settings-connection-item ${!user?.whatsappNumber ? 'connection-disconnected' : ''}`}>
-              <div className="settings-connection-info">
-                <span className="settings-connection-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                </span>
-                <div>
-                  <span className="settings-connection-name">וואטסאפ</span>
-                  <span className={`settings-connection-status ${user?.whatsappNumber ? 'status-ok' : 'status-err'}`}>
-                    {user?.whatsappNumber ? `✓ ${user.whatsappNumber}` : '✗ לא מקושר'}
-                  </span>
-                </div>
-              </div>
-              <div className="settings-connection-actions">
-                {user?.whatsappNumber && !waEditing ? (
-                  <>
-                    <button className="settings-btn-outline settings-btn-sm" onClick={() => { setWaEditing(true); setWaNumber(user.whatsappNumber); setWaMessage(user.whatsappMessage || ''); setWaValidation(null) }}>
-                      ✏️ ערוך
-                    </button>
-                    <button className="settings-btn-danger-sm" onClick={handleRemoveWhatsapp} disabled={waSaving}>
-                      🗑️ הסר
-                    </button>
-                  </>
-                ) : !user?.whatsappNumber && !waEditing ? (
-                  <button className="settings-btn-primary-sm" onClick={() => setWaEditing(true)}>
-                    🔗 קשר חיבור
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            {/* WhatsApp bottom-sheet form */}
+            {/* WhatsApp edit form */}
             {waEditing && (
-              <div className="settings-bottomsheet">
-                <div className="settings-bottomsheet-header">
-                  <h4>קישור וואטסאפ</h4>
-                  <button className="settings-bottomsheet-close" onClick={() => { setWaEditing(false); setWaValidation(null) }}>✕</button>
-                </div>
-                <div className="settings-bottomsheet-body">
+              <div className="settings-inline-form">
+                <div className="settings-fields-grid">
                   <div className="settings-field">
                     <label>מספר טלפון</label>
                     <input
@@ -3203,22 +3150,21 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                       placeholder="היי, ראיתי את הפוסט שלך..."
                       dir="rtl"
                     />
-                    <span className="settings-field-hint hint-info">הודעה שתופיע אוטומטית כשמישהו לוחץ על קישור הוואטסאפ שלך</span>
                   </div>
-                  {waError && <div className="settings-msg settings-msg-error">{waError}</div>}
-                  <div className="settings-field-actions">
-                    <button className="settings-btn-save" onClick={handleSaveWhatsapp} disabled={waSaving || !waNumber.trim()}>
-                      {waSaving ? '⏳ שומר...' : '💾 שמור'}
-                    </button>
-                    <button className="settings-btn-cancel" onClick={() => { setWaEditing(false); setWaValidation(null) }}>ביטול</button>
-                  </div>
+                </div>
+                {waError && <div className="settings-msg settings-msg-error">{waError}</div>}
+                <div className="settings-field-actions">
+                  <button className="settings-btn-save" onClick={handleSaveWhatsapp} disabled={waSaving || !waNumber.trim()}>
+                    {waSaving ? '⏳ שומר...' : 'שמור'}
+                  </button>
+                  <button className="settings-btn-cancel" onClick={() => { setWaEditing(false); setWaValidation(null) }}>ביטול</button>
                 </div>
               </div>
             )}
 
-            {/* WhatsApp message edit (when already linked and not editing) */}
+            {/* WhatsApp message quick-edit */}
             {user?.whatsappNumber && !waEditing && (
-              <div className="settings-wa-message-edit">
+              <div className="settings-fields-grid" style={{ marginTop: 4 }}>
                 <div className="settings-field">
                   <label>הודעה מותאמת</label>
                   <div className="settings-field-row">
@@ -3235,39 +3181,160 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                 </div>
               </div>
             )}
+
+            {/* Instagram */}
+            <div className="settings-fields-grid" style={{ marginTop: 12 }}>
+              <div className="settings-field-display">
+                <span className="settings-field-label">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#ig-settings-gradient)" style={{ verticalAlign: 'middle', marginLeft: 6 }}>
+                    <defs>
+                      <linearGradient id="ig-settings-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#FFDC80" />
+                        <stop offset="25%" stopColor="#F77737" />
+                        <stop offset="50%" stopColor="#E1306C" />
+                        <stop offset="75%" stopColor="#C13584" />
+                        <stop offset="100%" stopColor="#833AB4" />
+                      </linearGradient>
+                    </defs>
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                  </svg>
+                  אינסטגרם
+                </span>
+                <span className={`settings-field-value ${user?.instagramConnected ? 'value-ok' : 'value-muted'}`}>
+                  {user?.instagramConnected ? `✓ @${user.instagramUsername}` : '✗ לא מחובר'}
+                </span>
+                <div className="settings-field-inline-actions">
+                  {user?.instagramConnected ? (
+                    <button className="settings-link-btn settings-link-btn-danger" onClick={async () => {
+                      setConfirmAction({
+                        title: 'ניתוק אינסטגרם',
+                        message: 'האם אתה בטוח שברצונך לנתק את חיבור האינסטגרם? לא תוכל לפרסם באינסטגרם עד שתתחבר מחדש.',
+                        action: async () => {
+                          try {
+                            await authAPI.disconnectInstagram()
+                            setUser(prev => ({ ...prev, instagramConnected: false, instagramUsername: null }))
+                          } catch { /* ignore */ }
+                        }
+                      })
+                    }}>
+                      נתק
+                    </button>
+                  ) : (
+                    <button className="settings-link-btn settings-link-btn-connect" onClick={async () => {
+                      try {
+                        const res = await authAPI.getInstagramAuthUrl()
+                        if (res.data.authUrl) {
+                          window.location.href = res.data.authUrl
+                        }
+                      } catch {
+                        window.alert('שגיאה ביצירת קישור חיבור')
+                      }
+                    }}>
+                      חבר חשבון
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {!user?.instagramConnected && (
+              <div className="settings-ig-notice">
+                <span className="settings-ig-notice-icon">⚠️</span>
+                <span>חיבור אינסטגרם דורש חשבון מסוג <strong>Business</strong> או <strong>Creator</strong>. חשבון אישי רגיל לא נתמך.</span>
+              </div>
+            )}
           </div>
         </section>
 
-        {/* ─── Appearance Card ─── */}
-        <section className="settings-card">
-          <div className="settings-card-header">
-            <div className="settings-card-icon">🎨</div>
-            <h3>מראה</h3>
+        {/* ─── Security Section ─── */}
+        <section className="settings-sect">
+          <div className="settings-sect-header">
+            <h3 className="settings-sect-title">אבטחה</h3>
           </div>
-          <div className="settings-card-body">
-            <div className="settings-theme-row">
-              <span>ערכת נושא</span>
-              <div className="theme-toggle">
-                <button
-                  className={`theme-toggle-btn ${theme === 'dark' ? 'active' : ''}`}
-                  onClick={() => setTheme('dark')}
-                >
-                  🌙 כהה
-                </button>
-                <button
-                  className={`theme-toggle-btn ${theme === 'light' ? 'active' : ''}`}
-                  onClick={() => setTheme('light')}
-                >
-                  ☀️ בהיר
-                </button>
+          <div className="settings-sect-body">
+            {!showPassword ? (
+              <div className="settings-fields-grid">
+                <div className="settings-field-display">
+                  <span className="settings-field-label">סיסמה</span>
+                  <span className="settings-field-value value-muted">••••••••</span>
+                  <div className="settings-field-inline-actions">
+                    <button className="settings-link-btn" onClick={() => setShowPassword(true)}>שנה סיסמה</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="settings-password-form">
+                {pwStep === 1 ? (
+                  <div className="settings-field">
+                    <label>סיסמה נוכחית</label>
+                    <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="הזן סיסמה נוכחית" dir="ltr" />
+                    <span className="settings-field-hint hint-info">לאחר אימות, ישלח קוד למייל שלך</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="settings-msg settings-msg-success" style={{ marginBottom: 8 }}>
+                      📧 קוד אימות נשלח ל-{user?.email}
+                    </div>
+                    <div className="settings-field">
+                      <label>קוד אימות</label>
+                      <OtpInput length={6} value={pwCode} onChange={setPwCode} />
+                    </div>
+                    <div className="settings-fields-grid">
+                      <div className="settings-field">
+                        <label>סיסמה חדשה</label>
+                        <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="לפחות 6 תווים" dir="ltr" />
+                      </div>
+                      <div className="settings-field">
+                        <label>אימות סיסמה חדשה</label>
+                        <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="הזן שוב" dir="ltr" />
+                      </div>
+                    </div>
+                  </>
+                )}
+                {pwError && <div className="settings-msg settings-msg-error">{pwError}</div>}
+                {pwSuccess && <div className="settings-msg settings-msg-success">✓ הסיסמה שונתה בהצלחה!</div>}
+                <div className="settings-field-actions">
+                  <button className="settings-btn-save" onClick={handleChangePassword} disabled={pwSaving || (pwStep === 1 ? !currentPassword : (!pwCode || !newPassword))}>
+                    {pwSaving ? '⏳' : pwStep === 1 ? 'שלח קוד אימות' : 'שנה סיסמה'}
+                  </button>
+                  <button className="settings-btn-cancel" onClick={() => { setShowPassword(false); setPwError(null); setPwStep(1); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPwCode('') }}>ביטול</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ─── Appearance Section ─── */}
+        <section className="settings-sect">
+          <div className="settings-sect-header">
+            <h3 className="settings-sect-title">מראה</h3>
+          </div>
+          <div className="settings-sect-body">
+            <div className="settings-fields-grid">
+              <div className="settings-field-display">
+                <span className="settings-field-label">ערכת נושא</span>
+                <div className="theme-toggle">
+                  <button
+                    className={`theme-toggle-btn ${theme === 'dark' ? 'active' : ''}`}
+                    onClick={() => setTheme('dark')}
+                  >
+                    🌙 כהה
+                  </button>
+                  <button
+                    className={`theme-toggle-btn ${theme === 'light' ? 'active' : ''}`}
+                    onClick={() => setTheme('light')}
+                  >
+                    ☀️ בהיר
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ─── Danger Zone Card ─── */}
-        <section className="settings-card settings-card-danger">
-          <div className="settings-card-body">
+        {/* ─── Danger Zone ─── */}
+        <section className="settings-sect settings-sect-danger">
+          <div className="settings-sect-body">
             <button className="settings-logout-btn" onClick={handleLogout}>
               🚪 התנתק מהמערכת
             </button>

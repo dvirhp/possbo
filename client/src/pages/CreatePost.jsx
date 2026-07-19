@@ -8,6 +8,7 @@ import { authAPI } from '../services/api'
 import confetti from 'canvas-confetti'
 import LocationAutocomplete from '../components/LocationAutocomplete'
 import FacebookPreview from '../components/FacebookPreview'
+import InstagramPreview from '../components/InstagramPreview'
 import ConfirmDialog from '../components/ConfirmDialog'
 import OptimalTimesHint from '../components/OptimalTimesHint'
 import EmojiPicker from '../components/EmojiPicker'
@@ -260,6 +261,19 @@ export default function CreatePost() {
   // Profile publishing
   const [publishToProfile, setPublishToProfile] = useState(profilePublishDefault)
 
+  // Instagram
+  const [instagramEnabled, setInstagramEnabled] = useState(fromTemplate?.instagramEnabled || false)
+  const [instagramPublishTypes, setInstagramPublishTypes] = useState(fromTemplate?.instagramPublishTypes || (fromTemplate?.instagramPublishType ? [fromTemplate.instagramPublishType] : ['FEED'])) // array of 'FEED' | 'STORY' | 'REEL'
+  const [previewMode, setPreviewMode] = useState('facebook') // 'facebook' | 'ig-feed' | 'ig-story' | 'ig-reel'
+  const instagramConnected = user?.instagramConnected || false
+
+  // Distribution view tab
+  const [distributionTab, setDistributionTab] = useState('facebook')
+
+  // Story/Reels media options
+  const [storyMediaMode, setStoryMediaMode] = useState('first') // 'first' | 'all' | 'pick'
+  const [storyPickedIndex, setStoryPickedIndex] = useState(0) // which image to use when mode='pick'
+
   // Template selector
   const [templates, setTemplates] = useState(cachedTemplates || [])
   const [showTemplateSelector, setShowTemplateSelector] = useState(false)
@@ -310,6 +324,28 @@ export default function CreatePost() {
   const [recurringStartDate, setRecurringStartDate] = useState('')
   const [recurringEndDate, setRecurringEndDate] = useState('')
   const [dayTimes, setDayTimes] = useState(fromTemplate?.dayTimes || {}) // { 0: ['10:00'], 2: ['16:00','17:00'] }
+
+  // Per-platform scheduling overrides
+  const [profileScheduleCustom, setProfileScheduleCustom] = useState(false) // false = now (default)
+  const [profileScheduleMode, setProfileScheduleMode] = useState(fromTemplate?.profileScheduleMode || 'now') // 'now' | 'scheduled' | 'recurring'
+  const [profileScheduleDate, setProfileScheduleDate] = useState(fromTemplate?.profileScheduleDate || '')
+  const [profileScheduleTime, setProfileScheduleTime] = useState(fromTemplate?.profileScheduleTime || '')
+  const [profileRecurringDays, setProfileRecurringDays] = useState(fromTemplate?.profileRecurringDays || [])
+  const [profileDayTimes, setProfileDayTimes] = useState(fromTemplate?.profileDayTimes || {})
+  const [profileRecurringStartDate, setProfileRecurringStartDate] = useState(fromTemplate?.profileRecurringStartDate || '')
+  const [profileRecurringEndDate, setProfileRecurringEndDate] = useState(fromTemplate?.profileRecurringEndDate || '')
+
+  const [igScheduleCustom, setIgScheduleCustom] = useState(false) // false = now (default)
+  const [igScheduleMode, setIgScheduleMode] = useState(fromTemplate?.igScheduleMode || 'now') // 'now' | 'scheduled' | 'recurring'
+  const [igScheduleDate, setIgScheduleDate] = useState(fromTemplate?.igScheduleDate || '')
+  const [igScheduleTime, setIgScheduleTime] = useState(fromTemplate?.igScheduleTime || '')
+  const [igRecurringDays, setIgRecurringDays] = useState(fromTemplate?.igRecurringDays || [])
+  const [igDayTimes, setIgDayTimes] = useState(fromTemplate?.igDayTimes || {})
+  const [igRecurringStartDate, setIgRecurringStartDate] = useState(fromTemplate?.igRecurringStartDate || '')
+  const [igRecurringEndDate, setIgRecurringEndDate] = useState(fromTemplate?.igRecurringEndDate || '')
+  const [scheduleSubTab, setScheduleSubTab] = useState('groups') // 'groups' | 'profile' | 'instagram'
+  const [schedulePlatformTab, setSchedulePlatformTab] = useState('facebook') // 'facebook' | 'instagram'
+  const [fbScheduleSubTab, setFbScheduleSubTab] = useState('groups') // 'groups' | 'profile'
 
   // Groups - use cached data
   const [groups, setGroups] = useState(cachedGroups || [])
@@ -461,6 +497,10 @@ export default function CreatePost() {
           anonymous: isAnonymous,
           location: postLocation,
           publishToProfile,
+          instagramEnabled,
+          instagramPublishTypes: instagramEnabled ? instagramPublishTypes : null,
+          storyMediaMode: instagramEnabled && instagramPublishTypes.includes('STORY') ? storyMediaMode : null,
+          storyPickedIndex: instagramEnabled && instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' ? storyPickedIndex : null,
           scheduleMode,
           scheduleDate,
           scheduleTime,
@@ -472,6 +512,20 @@ export default function CreatePost() {
           recurringEndDate: recurringEndDate || null,
           campaignType: scheduleMode === 'recurring' ? 'RECURRING' : 'SCHEDULED',
           templateName: fromTemplate?.name || selectedTemplateName || null,
+          profileScheduleMode,
+          profileScheduleDate: profileScheduleMode === 'scheduled' ? profileScheduleDate : null,
+          profileScheduleTime: profileScheduleMode === 'scheduled' ? profileScheduleTime : null,
+          profileRecurringDays: profileScheduleMode === 'recurring' ? profileRecurringDays : null,
+          profileDayTimes: profileScheduleMode === 'recurring' ? profileDayTimes : null,
+          profileRecurringStartDate: profileScheduleMode === 'recurring' ? profileRecurringStartDate : null,
+          profileRecurringEndDate: profileScheduleMode === 'recurring' ? profileRecurringEndDate : null,
+          igScheduleMode,
+          igScheduleDate: igScheduleMode === 'scheduled' ? igScheduleDate : null,
+          igScheduleTime: igScheduleMode === 'scheduled' ? igScheduleTime : null,
+          igRecurringDays: igScheduleMode === 'recurring' ? igRecurringDays : null,
+          igDayTimes: igScheduleMode === 'recurring' ? igDayTimes : null,
+          igRecurringStartDate: igScheduleMode === 'recurring' ? igRecurringStartDate : null,
+          igRecurringEndDate: igScheduleMode === 'recurring' ? igRecurringEndDate : null,
         }, postImages)
         if (res.data.success) {
           setDirty(false)
@@ -506,7 +560,7 @@ export default function CreatePost() {
       : postText
 
     try {
-      const groupCount = selectedGroups.length + (publishToProfile ? 1 : 0)
+      const groupCount = selectedGroups.length + (publishToProfile ? 1 : 0) + (instagramEnabled ? 1 : 0)
       const res = await groupsService.createCampaign({
         title: campaignTitle,
         text: finalText,
@@ -514,9 +568,27 @@ export default function CreatePost() {
         anonymous: isAnonymous,
         location: postLocation,
         publishToProfile,
+        instagramEnabled,
+        instagramPublishTypes: instagramEnabled ? instagramPublishTypes : null,
+        storyMediaMode: instagramEnabled && instagramPublishTypes.includes('STORY') ? storyMediaMode : null,
+        storyPickedIndex: instagramEnabled && instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' ? storyPickedIndex : null,
         scheduleMode: 'now',
         campaignType: 'ONE_TIME',
         templateName: fromTemplate?.name || selectedTemplateName || null,
+        profileScheduleMode,
+        profileScheduleDate: profileScheduleMode === 'scheduled' ? profileScheduleDate : null,
+        profileScheduleTime: profileScheduleMode === 'scheduled' ? profileScheduleTime : null,
+        profileRecurringDays: profileScheduleMode === 'recurring' ? profileRecurringDays : null,
+        profileDayTimes: profileScheduleMode === 'recurring' ? profileDayTimes : null,
+        profileRecurringStartDate: profileScheduleMode === 'recurring' ? profileRecurringStartDate : null,
+        profileRecurringEndDate: profileScheduleMode === 'recurring' ? profileRecurringEndDate : null,
+        igScheduleMode,
+        igScheduleDate: igScheduleMode === 'scheduled' ? igScheduleDate : null,
+        igScheduleTime: igScheduleMode === 'scheduled' ? igScheduleTime : null,
+        igRecurringDays: igScheduleMode === 'recurring' ? igRecurringDays : null,
+        igDayTimes: igScheduleMode === 'recurring' ? igDayTimes : null,
+        igRecurringStartDate: igScheduleMode === 'recurring' ? igRecurringStartDate : null,
+        igRecurringEndDate: igScheduleMode === 'recurring' ? igRecurringEndDate : null,
       }, postImages)
 
       if (res.data.success) {
@@ -714,7 +786,7 @@ export default function CreatePost() {
     if (Object.keys(stepErrors).length === 0) return
     const newErrors = { ...stepErrors }
     if (newErrors[0] && postText.trim()) { delete newErrors[0] }
-    if (newErrors[1] && selectedGroups.length > 0) { delete newErrors[1] }
+    if (newErrors[1] && (selectedGroups.length > 0 || instagramEnabled)) { delete newErrors[1] }
     if (newErrors[2]) {
       if (scheduleMode === 'now') { delete newErrors[2] }
       else if (scheduleMode === 'scheduled' && scheduleDate && scheduleTime) { delete newErrors[2] }
@@ -727,10 +799,10 @@ export default function CreatePost() {
   }, [postText, selectedGroups, scheduleMode, scheduleDate, scheduleTime, recurringDays, dayTimes, recurringStartDate, recurringEndDate])
 
   const steps = [
-    { id: 'content', label: 'תוכן', icon: '✏️' },
-    { id: 'groups', label: 'קבוצות', icon: '👥' },
-    { id: 'schedule', label: 'תזמון', icon: '⏰' },
-    { id: 'review', label: 'סיכום', icon: '🚀' },
+    { id: 'content', label: 'תוכן', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> },
+    { id: 'distribution', label: 'תפוצה', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+    { id: 'schedule', label: 'תזמון', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+    { id: 'review', label: 'סיכום', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> },
   ]
 
   const validateStep = (step) => {
@@ -739,7 +811,7 @@ export default function CreatePost() {
       if (!postText.trim()) errors[0] = 'יש לכתוב טקסט לפוסט'
     }
     if (step >= 1) {
-      if (selectedGroups.length === 0 && !publishToProfile) errors[1] = 'יש לבחור לפחות קבוצה אחת או לסמן פרסום בפרופיל'
+      if (selectedGroups.length === 0 && !publishToProfile && !instagramEnabled) errors[1] = 'יש לבחור לפחות קבוצה אחת, פרסום בפרופיל, או פרסום באינסטגרם'
     }
     if (step >= 2) {
       if (scheduleMode === 'scheduled') {
@@ -888,14 +960,48 @@ export default function CreatePost() {
           {/* Desktop Preview - Left side */}
           <div className="cp-preview-sidebar">
             <span className="cp-preview-label">תצוגה מקדימה</span>
-            <FacebookPreview
-              text={postText}
-              images={postImagePreviews}
-              groupName={selectedGroups[0]?.name}
-              userName={user?.name}
-              whatsappNumber={whatsappNumber}
-              isAnonymous={isAnonymous}
-            />
+            <div className="cp-preview-toggle">
+              <button
+                type="button"
+                className={`cp-preview-toggle-btn ${previewMode === 'facebook' ? 'active' : ''}`}
+                onClick={() => setPreviewMode('facebook')}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                Facebook
+              </button>
+              <button
+                type="button"
+                className={`cp-preview-toggle-btn ${previewMode.startsWith('ig-') ? 'active' : ''}`}
+                onClick={() => setPreviewMode(prev => prev.startsWith('ig-') ? prev : 'ig-feed')}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                Instagram
+              </button>
+            </div>
+            {previewMode.startsWith('ig-') && (
+              <div className="cp-preview-sub-toggle">
+                <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-feed' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-feed')}>🖼️ פוסט</button>
+                <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-story' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-story')}>⏱️ סטורי</button>
+                <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-reel' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-reel')}>🎬 רילס</button>
+              </div>
+            )}
+            {previewMode === 'facebook' ? (
+              <FacebookPreview
+                text={postText}
+                images={postImagePreviews}
+                groupName={selectedGroups[0]?.name}
+                userName={user?.name}
+                whatsappNumber={whatsappNumber}
+                isAnonymous={isAnonymous}
+              />
+            ) : (
+              <InstagramPreview
+                text={postText}
+                images={postImagePreviews}
+                userName={user?.name}
+                mode={previewMode === 'ig-story' ? 'STORY' : previewMode === 'ig-reel' ? 'REEL' : 'FEED'}
+              />
+            )}
           </div>
 
           <div className="cp-wizard">
@@ -988,7 +1094,7 @@ export default function CreatePost() {
                 onClick={() => goToStep(idx)}
               >
                 <div className="cp-step-indicator">
-                  {idx < currentStep ? '✓' : <span>{step.icon}</span>}
+                  {idx < currentStep ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> : step.icon}
                 </div>
                 <span className="cp-step-label">{step.label}</span>
               </div>
@@ -1180,9 +1286,33 @@ export default function CreatePost() {
               </div>
             )}
 
-            {/* STEP 1: Groups */}
+            {/* STEP 1: Distribution */}
             {currentStep === 1 && (
               <div className="cp-step-panel">
+                {/* Platform Toggles */}
+                <div className="cp-platform-tabs">
+                  <button
+                    type="button"
+                    className={`cp-platform-tab ${distributionTab === 'facebook' ? 'active' : ''}`}
+                    onClick={() => setDistributionTab('facebook')}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                    <span>Facebook</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`cp-platform-tab ${distributionTab === 'instagram' ? 'active' : ''}`}
+                    onClick={() => { setDistributionTab('instagram'); setInstagramEnabled(true) }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                    <span>Instagram</span>
+                    {instagramEnabled && <span className="cp-platform-badge">✓</span>}
+                  </button>
+                </div>
+
+                {/* ─── Facebook section ─── */}
+                {distributionTab === 'facebook' && (
+                <>
                 {/* Profile Publishing Toggle */}
                 <div className="cp-card cp-profile-toggle-card">
                   <label className="cp-profile-toggle">
@@ -1202,318 +1332,775 @@ export default function CreatePost() {
                 <div className="cp-card">
                   <div className="cp-card-header">
                     <h3>בחר קבוצות לפרסום</h3>
-                    {selectedGroups.length > 0 && <span className="cp-badge">{selectedGroups.length} נבחרו</span>}
-                  </div>
-
-                  {selectedGroups.length > 0 && (
-                    <div className="cp-selected-groups-chips">
-                      {(showAllChips ? selectedGroups : selectedGroups.slice(0, 4)).map(g => (
-                        <span key={g.id} className="cp-selected-chip">
-                          <span>{g.name}</span>
-                          <button type="button" onClick={() => toggleGroup(g)}>✕</button>
-                        </span>
-                      ))}
-                      {selectedGroups.length > 4 && !showAllChips && (
-                        <button type="button" className="cp-selected-chip cp-chip-more" onClick={() => setShowAllChips(true)}>
-                          +{selectedGroups.length - 4} עוד
-                        </button>
-                      )}
-                      {selectedGroups.length > 4 && showAllChips && (
-                        <button type="button" className="cp-selected-chip cp-chip-more" onClick={() => setShowAllChips(false)}>
-                          הצג פחות
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {selectedGroups.length > 0 && (
-                    <div className="cp-exposure-counter">
-                      <span className="cp-exposure-icon">👁️</span>
-                      <span className="cp-exposure-number">
-                        {selectedGroups.reduce((sum, g) => sum + (g.memberCount || 0), 0).toLocaleString()}
-                      </span>
-                      <span className="cp-exposure-label">חשיפה פוטנציאלית</span>
-                    </div>
-                  )}
-
-                  {loadingGroups ? (
-                    <div className="cp-loading">טוען קבוצות...</div>
-                  ) : groups.length === 0 ? (
-                    <div className="cp-no-groups">
-                      <p>אין קבוצות שמורות</p>
-                      <Link to="/dashboard?tab=groups">סנכרן קבוצות מפייסבוק</Link>
-                    </div>
-                  ) : (
-                    <div className="cp-groups-panel">
-                      <div className="cp-group-search">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                        </svg>
-                        <input
-                          type="text"
-                          placeholder="חפש קבוצה..."
-                          value={groupSearch}
-                          onChange={(e) => setGroupSearch(e.target.value)}
-                        />
+                        {selectedGroups.length > 0 && <span className="cp-badge">{selectedGroups.length} נבחרו</span>}
                       </div>
 
-                      <div className="cp-group-actions">
-                        <button onClick={selectAllGroups}>בחר הכל</button>
-                        <button onClick={deselectAll}>נקה בחירה</button>
-                      </div>
+                      {selectedGroups.length > 0 && (
+                        <div className="cp-selected-groups-chips">
+                          {(showAllChips ? selectedGroups : selectedGroups.slice(0, 4)).map(g => (
+                            <span key={g.id} className="cp-selected-chip">
+                              <span>{g.name}</span>
+                              <button type="button" onClick={() => toggleGroup(g)}>✕</button>
+                            </span>
+                          ))}
+                          {selectedGroups.length > 4 && !showAllChips && (
+                            <button type="button" className="cp-selected-chip cp-chip-more" onClick={() => setShowAllChips(true)}>
+                              +{selectedGroups.length - 4} עוד
+                            </button>
+                          )}
+                          {selectedGroups.length > 4 && showAllChips && (
+                            <button type="button" className="cp-selected-chip cp-chip-more" onClick={() => setShowAllChips(false)}>
+                              הצג פחות
+                            </button>
+                          )}
+                        </div>
+                      )}
 
-                      <div className="cp-groups-list">
-                        {filteredGroups.map((group) => (
-                          <label
-                            key={group.id}
-                            className={`cp-group-item ${selectedGroups.find(g => g.id === group.id) ? 'selected' : ''}`}
-                          >
+                      {selectedGroups.length > 0 && (
+                        <div className="cp-exposure-counter">
+                          <span className="cp-exposure-icon">👁️</span>
+                          <span className="cp-exposure-number">
+                            {selectedGroups.reduce((sum, g) => sum + (g.memberCount || 0), 0).toLocaleString()}
+                          </span>
+                          <span className="cp-exposure-label">חשיפה פוטנציאלית</span>
+                        </div>
+                      )}
+
+                      {loadingGroups ? (
+                        <div className="cp-loading">טוען קבוצות...</div>
+                      ) : groups.length === 0 ? (
+                        <div className="cp-no-groups">
+                          <p>אין קבוצות שמורות</p>
+                          <Link to="/dashboard?tab=groups">סנכרן קבוצות מפייסבוק</Link>
+                        </div>
+                      ) : (
+                        <div className="cp-groups-panel">
+                          <div className="cp-group-search">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
                             <input
-                              type="checkbox"
-                              checked={!!selectedGroups.find(g => g.id === group.id)}
-                              onChange={() => toggleGroup(group)}
+                              type="text"
+                              placeholder="חפש קבוצה..."
+                              value={groupSearch}
+                              onChange={(e) => setGroupSearch(e.target.value)}
                             />
-                            <span className="cp-group-name">{group.name}</span>
-                            {group.memberCount && (
-                              <span className="cp-group-members">{group.memberCount.toLocaleString()}</span>
-                            )}
-                          </label>
-                        ))}
-                      </div>
+                          </div>
+
+                          <div className="cp-group-actions">
+                            <button onClick={selectAllGroups}>בחר הכל</button>
+                            <button onClick={deselectAll}>נקה בחירה</button>
+                          </div>
+
+                          <div className="cp-groups-list">
+                            {filteredGroups.map((group) => (
+                              <label
+                                key={group.id}
+                                className={`cp-group-item ${selectedGroups.find(g => g.id === group.id) ? 'selected' : ''}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={!!selectedGroups.find(g => g.id === group.id)}
+                                  onChange={() => toggleGroup(group)}
+                                />
+                                <span className="cp-group-name">{group.name}</span>
+                                {group.memberCount && (
+                                  <span className="cp-group-members">{group.memberCount.toLocaleString()}</span>
+                                )}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                </>
+                )}
+
+                {/* ─── Instagram section ─── */}
+                {distributionTab === 'instagram' && (
+                  <div className="cp-card cp-instagram-card">
+                    {!instagramConnected ? (
+                      <div className="cp-ig-connect-notice">
+                        <div className="cp-ig-notice-icon">
+                          <svg width="48" height="48" viewBox="0 0 24 24" fill="url(#ig-gradient)">
+                            <defs>
+                              <linearGradient id="ig-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#FFDC80" />
+                                <stop offset="25%" stopColor="#F77737" />
+                                <stop offset="50%" stopColor="#E1306C" />
+                                <stop offset="75%" stopColor="#C13584" />
+                                <stop offset="100%" stopColor="#833AB4" />
+                              </linearGradient>
+                            </defs>
+                            <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                          </svg>
+                        </div>
+                        <h3 className="cp-ig-notice-title">חבר את חשבון האינסטגרם שלך</h3>
+                        <p className="cp-ig-notice-text">כדי לפרסם באינסטגרם, יש לחבר חשבון Instagram מסוג <strong>Business</strong> או <strong>Creator</strong>.</p>
+                        <div className="cp-ig-notice-alert">
+                          <span className="cp-ig-alert-icon">⚠️</span>
+                          <span>חשבון אינסטגרם אישי רגיל לא נתמך. יש להמיר אותו לחשבון מקצועי (Business / Creator) בהגדרות האפליקציה.</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="cp-ig-connect-btn"
+                          onClick={() => navigate('/dashboard?tab=settings')}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                          חבר חשבון Instagram
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="cp-ig-options">
+                        <p className="cp-ig-options-label">סוג הפרסום באינסטגרם:</p>
+                        <div className="cp-ig-type-grid">
+                          <button
+                            type="button"
+                            className={`cp-ig-type-card ${instagramPublishTypes.includes('FEED') ? 'active' : ''}`}
+                            onClick={() => setInstagramPublishTypes(prev => prev.includes('FEED') ? (prev.length > 1 ? prev.filter(v => v !== 'FEED') : prev) : [...prev, 'FEED'])}
+                          >
+                            <span className="cp-ig-type-icon">🖼️</span>
+                            <span className="cp-ig-type-name">פוסט</span>
+                            <span className="cp-ig-type-desc">פוסט בפיד האינסטגרם</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`cp-ig-type-card ${instagramPublishTypes.includes('STORY') ? 'active' : ''}`}
+                            onClick={() => setInstagramPublishTypes(prev => prev.includes('STORY') ? (prev.length > 1 ? prev.filter(v => v !== 'STORY') : prev) : [...prev, 'STORY'])}
+                          >
+                            <span className="cp-ig-type-icon">⏱️</span>
+                            <span className="cp-ig-type-name">סטורי</span>
+                            <span className="cp-ig-type-desc">סטורי שנעלם אחרי 24 שעות</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`cp-ig-type-card ${instagramPublishTypes.includes('REEL') ? 'active' : ''}`}
+                            onClick={() => setInstagramPublishTypes(prev => prev.includes('REEL') ? (prev.length > 1 ? prev.filter(v => v !== 'REEL') : prev) : [...prev, 'REEL'])}
+                          >
+                            <span className="cp-ig-type-icon">🎬</span>
+                            <span className="cp-ig-type-name">ריל</span>
+                            <span className="cp-ig-type-desc">סרטון קצר בפורמט Reels</span>
+                          </button>
+                        </div>
+
+                        {instagramPublishTypes.length > 1 && (
+                          <div className="cp-ig-hint cp-ig-hint-success" style={{ marginTop: 8 }}>
+                            <span>✨</span>
+                            <span>התוכן יפורסם ב-{instagramPublishTypes.length} סוגים במקביל</span>
+                          </div>
+                        )}
+
+                        {instagramPublishTypes.includes('STORY') && !postImagePreviews.length && (
+                          <div className="cp-ig-hint">
+                            <span>💡</span>
+                            <span>סטורי דורש תמונה או סרטון. הוסיפי מדיה בשלב התוכן.</span>
+                          </div>
+                        )}
+
+                        {/* Story with multiple images — let user choose */}
+                        {instagramPublishTypes.includes('STORY') && postImagePreviews.length > 1 && (
+                          <div className="cp-ig-media-options">
+                            <div className="cp-ig-media-notice">
+                              <span className="cp-ig-media-notice-icon">ℹ️</span>
+                              <span>סטורי תומך בתמונה/סרטון <strong>אחד בלבד</strong>. העלית {postImagePreviews.length} קבצים — בחרי מה לעשות:</span>
+                            </div>
+                            <div className="cp-ig-media-choices">
+                              <label className={`cp-ig-media-choice ${storyMediaMode === 'first' ? 'active' : ''}`}>
+                                <input type="radio" name="storyMedia" checked={storyMediaMode === 'first'} onChange={() => setStoryMediaMode('first')} />
+                                <div className="cp-ig-media-choice-content">
+                                  <span className="cp-ig-media-choice-title">📸 פרסם רק את הראשונה</span>
+                                  <span className="cp-ig-media-choice-desc">סטורי אחד עם התמונה הראשונה שהעלית</span>
+                                </div>
+                              </label>
+                              <label className={`cp-ig-media-choice ${storyMediaMode === 'all' ? 'active' : ''}`}>
+                                <input type="radio" name="storyMedia" checked={storyMediaMode === 'all'} onChange={() => setStoryMediaMode('all')} />
+                                <div className="cp-ig-media-choice-content">
+                                  <span className="cp-ig-media-choice-title">📚 פרסם סטורי לכל תמונה</span>
+                                  <span className="cp-ig-media-choice-desc">{postImagePreviews.length} סטוריז נפרדים, אחד לכל תמונה</span>
+                                </div>
+                              </label>
+                              <label className={`cp-ig-media-choice ${storyMediaMode === 'pick' ? 'active' : ''}`}>
+                                <input type="radio" name="storyMedia" checked={storyMediaMode === 'pick'} onChange={() => setStoryMediaMode('pick')} />
+                                <div className="cp-ig-media-choice-content">
+                                  <span className="cp-ig-media-choice-title">🎯 בחר תמונה ספציפית</span>
+                                  <span className="cp-ig-media-choice-desc">בחרי איזו תמונה תופיע בסטורי</span>
+                                </div>
+                              </label>
+                            </div>
+
+                            {/* Image picker grid */}
+                            {storyMediaMode === 'pick' && (
+                              <div className="cp-ig-image-picker">
+                                {postImagePreviews.map((img, i) => (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    className={`cp-ig-image-pick-item ${storyPickedIndex === i ? 'active' : ''}`}
+                                    onClick={() => setStoryPickedIndex(i)}
+                                  >
+                                    <img src={img} alt={`תמונה ${i + 1}`} />
+                                    {storyPickedIndex === i && <span className="cp-ig-image-pick-check">✓</span>}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Reels — video required */}
+                        {instagramPublishTypes.includes('REEL') && (
+                          <div className="cp-ig-media-options">
+                            {(() => {
+                              const hasVideo = postImages.some(f => f?.type?.startsWith('video/'))
+                              const hasImages = postImagePreviews.length > 0 && !hasVideo
+                              if (hasVideo) {
+                                return (
+                                  <div className="cp-ig-hint cp-ig-hint-success">
+                                    <span>✅</span>
+                                    <span>סרטון זוהה — הוא ישמש כריל שלך.</span>
+                                  </div>
+                                )
+                              }
+                              if (hasImages) {
+                                return (
+                                  <div className="cp-ig-media-notice cp-ig-media-notice-warn">
+                                    <span className="cp-ig-media-notice-icon">⚠️</span>
+                                    <span>ריל דורש <strong>סרטון</strong>. העלית רק תמונות — חזרי לשלב התוכן והחליפי ל-סרטון, או בחרי סוג פרסום אחר (פוסט/סטורי).</span>
+                                  </div>
+                                )
+                              }
+                              return (
+                                <div className="cp-ig-hint">
+                                  <span>💡</span>
+                                  <span>ריל דורש סרטון. הוסיפי סרטון בשלב התוכן.</span>
+                                </div>
+                              )
+                            })()}
+                          </div>
+                        )}
+
+                        {instagramPublishTypes.includes('FEED') && !postImagePreviews.length && (
+                          <div className="cp-ig-hint">
+                            <span>💡</span>
+                            <span>פוסט בפיד דורש לפחות תמונה אחת. הוסיפי תמונה בשלב התוכן.</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
             {/* STEP 2: Schedule */}
-            {currentStep === 2 && (
+            {currentStep === 2 && (() => {
+              const hasFacebook = selectedGroups.length > 0 || publishToProfile
+              const hasInstagram = instagramEnabled
+              const hasAnyTarget = hasFacebook || hasInstagram
+
+              // Auto-correct platform tab
+              const activePlatform = (schedulePlatformTab === 'facebook' && hasFacebook) ? 'facebook'
+                : (schedulePlatformTab === 'instagram' && hasInstagram) ? 'instagram'
+                : hasFacebook ? 'facebook' : 'instagram'
+
+              // Auto-correct FB sub-tab
+              const activeFbSub = (fbScheduleSubTab === 'groups' && selectedGroups.length > 0) ? 'groups'
+                : (fbScheduleSubTab === 'profile' && publishToProfile) ? 'profile'
+                : selectedGroups.length > 0 ? 'groups' : 'profile'
+
+              return (
               <div className="cp-step-panel">
-                <div className="cp-card">
-                  <div className="cp-card-header">
-                    <h3>מתי לפרסם?</h3>
-                  </div>
-                  <div className="cp-schedule">
-                    <div className="schedule-tabs">
-                      <button type="button" className={`schedule-tab ${scheduleMode === 'now' ? 'active' : ''}`} onClick={() => setScheduleMode('now')}>
-                        <span className="schedule-tab-icon">⚡</span>
-                        <span>פרסם עכשיו</span>
-                      </button>
-                      <button type="button" className={`schedule-tab ${scheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setScheduleMode('scheduled'); setRecurringDays([]); setDayTimes({}); setRecurringStartDate(''); setRecurringEndDate('') }}>
-                        <span className="schedule-tab-icon">📅</span>
-                        <span>פרסום חד-פעמי</span>
-                      </button>
-                      <button type="button" className={`schedule-tab ${scheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setScheduleMode('recurring'); setScheduleDate(''); setScheduleTime('') }}>
-                        <span className="schedule-tab-icon">🔄</span>
-                        <span>פרסום קבוע</span>
-                      </button>
+
+                {!hasAnyTarget && (
+                  <div className="cp-card">
+                    <div className="cp-card-header"><h3>מתי לפרסם?</h3></div>
+                    <div className="schedule-info">
+                      <p className="schedule-info-text">לא נבחרו יעדי פרסום. חזרו לשלב התפוצה.</p>
                     </div>
+                  </div>
+                )}
 
-                    {scheduleMode === 'now' && (
-                      <div className="schedule-info">
-                        <p className="schedule-info-text">הפוסט יפורסם מיד לאחר לחיצה על כפתור הפרסום</p>
+                {hasAnyTarget && (
+                <div className="cp-card">
+                  <div className="cp-card-header"><h3>מתי לפרסם?</h3></div>
+
+                  <div className="cp-schedule-hint-bubble">
+                    בחרו את התזמון לכל פלטפורמה בנפרד: מיידי, חד-פעמי או חוזר.
+                  </div>
+
+                  {/* ─── Level 1: Platform tabs ─── */}
+                  <div className="cp-schedule-sub-tabs">
+                    {hasFacebook && (
+                      <button type="button"
+                        className={`cp-schedule-sub-tab ${activePlatform === 'facebook' ? 'active' : ''}`}
+                        onClick={() => setSchedulePlatformTab('facebook')}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                        <span>Facebook</span>
+                      </button>
+                    )}
+                    {hasInstagram && (
+                      <button type="button"
+                        className={`cp-schedule-sub-tab cp-schedule-sub-tab-ig ${activePlatform === 'instagram' ? 'active' : ''}`}
+                        onClick={() => setSchedulePlatformTab('instagram')}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="url(#ig-sched-grad)">
+                          <defs>
+                            <linearGradient id="ig-sched-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+                              <stop offset="0%" stopColor="#FFDC80" />
+                              <stop offset="50%" stopColor="#E1306C" />
+                              <stop offset="100%" stopColor="#833AB4" />
+                            </linearGradient>
+                          </defs>
+                          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                        </svg>
+                        <span>Instagram</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* ═══ Facebook panel ═══ */}
+                  {activePlatform === 'facebook' && (
+                    <>
+                      {/* Level 2: Facebook sub-tabs (only if both groups & profile) */}
+                      {selectedGroups.length > 0 && publishToProfile && (
+                        <div className="cp-schedule-sub-tabs cp-schedule-sub-tabs-inner">
+                          <button type="button"
+                            className={`cp-schedule-sub-tab ${activeFbSub === 'groups' ? 'active' : ''}`}
+                            onClick={() => setFbScheduleSubTab('groups')}>
+                            <span>קבוצות ({selectedGroups.length})</span>
+                            {scheduleMode !== 'now' && <span className="cp-schedule-sub-tab-badge">📅</span>}
+                          </button>
+                          <button type="button"
+                            className={`cp-schedule-sub-tab ${activeFbSub === 'profile' ? 'active' : ''}`}
+                            onClick={() => setFbScheduleSubTab('profile')}>
+                            <span>פרופיל</span>
+                            {profileScheduleMode !== 'now' && <span className="cp-schedule-sub-tab-badge">📅</span>}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Groups Scheduler */}
+                      {activeFbSub === 'groups' && (
+                    <div className="cp-schedule">
+                      <div className="schedule-tabs">
+                        <button type="button" className={`schedule-tab ${scheduleMode === 'now' ? 'active' : ''}`} onClick={() => setScheduleMode('now')}>
+                          <span className="schedule-tab-icon">⚡</span>
+                          <span>עכשיו</span>
+                        </button>
+                        <button type="button" className={`schedule-tab ${scheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setScheduleMode('scheduled'); setRecurringDays([]); setDayTimes({}); setRecurringStartDate(''); setRecurringEndDate('') }}>
+                          <span className="schedule-tab-icon">📅</span>
+                          <span>חד-פעמי</span>
+                        </button>
+                        <button type="button" className={`schedule-tab ${scheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setScheduleMode('recurring'); setScheduleDate(''); setScheduleTime('') }}>
+                          <span className="schedule-tab-icon">🔄</span>
+                          <span>חוזר</span>
+                        </button>
                       </div>
-                    )}
 
-                    {scheduleMode !== 'now' && (
-                      <OptimalTimesHint
-                        onSelectTime={(time) => {
-                          if (scheduleMode === 'scheduled') setScheduleTime(time)
-                        }}
-                        onSelectDay={(dayNum) => {
-                          if (scheduleMode === 'recurring' && !recurringDays.includes(dayNum)) {
-                            setRecurringDays(prev => [...prev, dayNum])
-                          }
-                        }}
-                      />
-                    )}
+                      {scheduleMode === 'now' && (
+                        <div className="schedule-info">
+                          <p className="schedule-info-text">יפורסם מיד בלחיצה על פרסום</p>
+                        </div>
+                      )}
 
-                    {scheduleMode === 'scheduled' && (
-                      <div className="schedule-fields">
-                        <p className="schedule-desc">בחר תאריך ושעה לפרסום חד-פעמי בעתיד</p>
-                        <div className="schedule-row-centered">
-                          <div className="schedule-field">
-                            <label>תאריך</label>
-                            <SingleDatePicker
-                              value={scheduleDate}
-                              onChange={setScheduleDate}
-                              minDate={toDateStr(new Date())}
-                            />
-                          </div>
-                          <div className="schedule-field schedule-field-time-wrap">
-                            <label>שעה</label>
-                            <div
-                              className="time-input-wrapper"
-                              onClick={(e) => {
-                                if (!scheduleDate) {
-                                  e.preventDefault()
-                                  e.currentTarget.classList.add('show-tooltip')
-                                  setTimeout(() => e.currentTarget.classList.remove('show-tooltip'), 2000)
-                                }
-                              }}
-                            >
-                              <input
-                                type="time"
-                                value={scheduleTime}
-                                onChange={(e) => setScheduleTime(e.target.value)}
-                                disabled={!scheduleDate}
-                                className={!scheduleDate ? 'disabled-input' : ''}
+                      {scheduleMode !== 'now' && (
+                        <OptimalTimesHint
+                          onSelectTime={(time) => {
+                            if (scheduleMode === 'scheduled') setScheduleTime(time)
+                          }}
+                          onSelectDay={(dayNum) => {
+                            if (scheduleMode === 'recurring' && !recurringDays.includes(dayNum)) {
+                              setRecurringDays(prev => [...prev, dayNum])
+                            }
+                          }}
+                        />
+                      )}
+
+                      {scheduleMode === 'scheduled' && (
+                        <div className="schedule-fields">
+                          <div className="schedule-row-centered">
+                            <div className="schedule-field">
+                              <label>תאריך</label>
+                              <SingleDatePicker
+                                value={scheduleDate}
+                                onChange={setScheduleDate}
+                                minDate={toDateStr(new Date())}
                               />
-                              <span className="time-tooltip">נא לבחור תאריך קודם</span>
                             </div>
-                          </div>
-                        </div>
-                        {scheduleDate && scheduleTime && (
-                          <div className="schedule-summary">
-                            📅 יפורסם ב-{new Date(`${scheduleDate}T${scheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} בשעה {scheduleTime}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {scheduleMode === 'recurring' && (
-                      <div className="schedule-fields">
-                        <p className="schedule-desc">בחר ימים והגדר שעות לכל יום, הפוסט יפורסם באופן קבוע</p>
-
-                        <div className="schedule-section">
-                          <label className="schedule-section-label">תקופה</label>
-                          <RecurringDateRange
-                            startDate={recurringStartDate}
-                            endDate={recurringEndDate}
-                            onStartChange={setRecurringStartDate}
-                            onEndChange={setRecurringEndDate}
-                            minDate={toDateStr(new Date())}
-                            initialMonth={recurringStartDate ? new Date(recurringStartDate) : new Date()}
-                          />
-                        </div>
-
-                        <div className="schedule-section">
-                          <label className="schedule-section-label">באילו ימים?</label>
-                          <div className="days-grid">
-                            {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map((day, i) => (
-                              <button
-                                key={i}
-                                type="button"
-                                className={`day-btn ${recurringDays.includes(i) ? 'active' : ''}`}
-                                onClick={() => {
-                                  setRecurringDays(prev => {
-                                    if (prev.includes(i)) {
-                                      setDayTimes(dt => {
-                                        const copy = { ...dt }
-                                        delete copy[i]
-                                        return copy
-                                      })
-                                      return prev.filter(d => d !== i)
-                                    } else {
-                                      setDayTimes(dt => ({ ...dt, [i]: [''] }))
-                                      return [...prev, i]
-                                    }
-                                  })
+                            <div className="schedule-field schedule-field-time-wrap">
+                              <label>שעה</label>
+                              <div
+                                className="time-input-wrapper"
+                                onClick={(e) => {
+                                  if (!scheduleDate) {
+                                    e.preventDefault()
+                                    e.currentTarget.classList.add('show-tooltip')
+                                    setTimeout(() => e.currentTarget.classList.remove('show-tooltip'), 2000)
+                                  }
                                 }}
                               >
-                                {day}
-                              </button>
-                            ))}
-                            <button
-                              type="button"
-                              className={`day-btn day-btn-all ${recurringDays.length === 7 ? 'active' : ''}`}
-                              onClick={() => {
-                                if (recurringDays.length === 7) {
-                                  setRecurringDays([])
-                                  setDayTimes({})
-                                } else {
-                                  setRecurringDays([0, 1, 2, 3, 4, 5, 6])
-                                  setDayTimes(dt => {
-                                    const copy = { ...dt }
-                                    for (let i = 0; i < 7; i++) {
-                                      if (!copy[i]) copy[i] = ['']
-                                    }
-                                    return copy
-                                  })
-                                }
-                              }}
-                            >
-                              כל יום
-                            </button>
-                          </div>
-                        </div>
-
-                        {recurringDays.length > 0 && (
-                          <div className="schedule-section day-times-section">
-                            <label className="schedule-section-label">שעות לכל יום</label>
-                            <div className="day-times-list">
-                              {recurringDays.sort((a, b) => a - b).map(dayIdx => {
-                                const dayName = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'][dayIdx]
-                                const times = dayTimes[dayIdx] || ['']
-                                return (
-                                  <div key={dayIdx} className="day-times-card">
-                                    <div className="day-times-header">
-                                      <span className="day-times-day-name">יום {dayName}</span>
-                                      <span className="day-times-count">{times.filter(t => t).length} שעות</span>
-                                    </div>
-                                    <div className="day-times-slots">
-                                      {times.map((time, ti) => (
-                                        <div key={ti} className="time-slot">
-                                          <input
-                                            type="time"
-                                            value={time}
-                                            onChange={(e) => {
-                                              setDayTimes(dt => {
-                                                const copy = { ...dt }
-                                                copy[dayIdx] = [...(copy[dayIdx] || [''])]
-                                                copy[dayIdx][ti] = e.target.value
-                                                return copy
-                                              })
-                                            }}
-                                          />
-                                          {times.length > 1 && (
-                                            <button type="button" className="time-remove-btn" onClick={() => {
-                                              setDayTimes(dt => {
-                                                const copy = { ...dt }
-                                                copy[dayIdx] = copy[dayIdx].filter((_, idx) => idx !== ti)
-                                                return copy
-                                              })
-                                            }}>✕</button>
-                                          )}
-                                        </div>
-                                      ))}
-                                      {times.length < 5 && (
-                                        <button type="button" className="time-add-btn" onClick={() => {
-                                          setDayTimes(dt => {
-                                            const copy = { ...dt }
-                                            copy[dayIdx] = [...(copy[dayIdx] || ['']), '']
-                                            return copy
-                                          })
-                                        }}>
-                                          + שעה נוספת
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                )
-                              })}
+                                <input
+                                  type="time"
+                                  value={scheduleTime}
+                                  onChange={(e) => setScheduleTime(e.target.value)}
+                                  disabled={!scheduleDate}
+                                  className={!scheduleDate ? 'disabled-input' : ''}
+                                />
+                                <span className="time-tooltip">נא לבחור תאריך קודם</span>
+                              </div>
                             </div>
                           </div>
-                        )}
+                          {scheduleDate && scheduleTime && (
+                            <div className="schedule-summary">
+                              📅 {new Date(`${scheduleDate}T${scheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה {scheduleTime}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-                        {recurringDays.length > 0 && Object.values(dayTimes).some(ts => ts.some(t => t)) && recurringStartDate && (
-                          <div className="schedule-summary">
-                            🔄 לוח פרסום:
-                            {recurringDays.sort((a, b) => a - b).map(d => {
-                              const name = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'][d]
-                              const ts = (dayTimes[d] || []).filter(t => t)
-                              return ts.length ? `\n• ${name}: ${ts.join(', ')}` : null
-                            }).filter(Boolean).join('')}
-                            {`\nהחל מ-${new Date(recurringStartDate).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })}`}
-                            {recurringEndDate && ` עד ${new Date(recurringEndDate).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+                      {scheduleMode === 'recurring' && (
+                        <div className="schedule-fields">
+                          <div className="schedule-section">
+                            <label className="schedule-section-label">תקופה</label>
+                            <RecurringDateRange
+                              startDate={recurringStartDate}
+                              endDate={recurringEndDate}
+                              onStartChange={setRecurringStartDate}
+                              onEndChange={setRecurringEndDate}
+                              minDate={toDateStr(new Date())}
+                              initialMonth={recurringStartDate ? new Date(recurringStartDate) : new Date()}
+                            />
                           </div>
-                        )}
+                          <div className="schedule-section">
+                            <label className="schedule-section-label">באילו ימים?</label>
+                            <div className="days-grid">
+                              {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map((day, i) => (
+                                <button key={i} type="button" className={`day-btn ${recurringDays.includes(i) ? 'active' : ''}`}
+                                  onClick={() => {
+                                    setRecurringDays(prev => {
+                                      if (prev.includes(i)) {
+                                        setDayTimes(dt => { const copy = { ...dt }; delete copy[i]; return copy })
+                                        return prev.filter(d => d !== i)
+                                      } else {
+                                        setDayTimes(dt => ({ ...dt, [i]: [''] }))
+                                        return [...prev, i]
+                                      }
+                                    })
+                                  }}>{day}</button>
+                              ))}
+                              <button type="button" className={`day-btn day-btn-all ${recurringDays.length === 7 ? 'active' : ''}`}
+                                onClick={() => {
+                                  if (recurringDays.length === 7) { setRecurringDays([]); setDayTimes({}) }
+                                  else { setRecurringDays([0,1,2,3,4,5,6]); setDayTimes(dt => { const c = {...dt}; for(let i=0;i<7;i++){if(!c[i])c[i]=['']} return c }) }
+                                }}>כל יום</button>
+                            </div>
+                          </div>
+                          {recurringDays.length > 0 && (
+                            <div className="schedule-section day-times-section">
+                              <label className="schedule-section-label">שעות לכל יום</label>
+                              <div className="day-times-list">
+                                {recurringDays.sort((a,b)=>a-b).map(dayIdx => {
+                                  const dayName = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][dayIdx]
+                                  const times = dayTimes[dayIdx] || ['']
+                                  return (
+                                    <div key={dayIdx} className="day-times-card">
+                                      <div className="day-times-header">
+                                        <span className="day-times-day-name">יום {dayName}</span>
+                                        <span className="day-times-count">{times.filter(t=>t).length} שעות</span>
+                                      </div>
+                                      <div className="day-times-slots">
+                                        {times.map((time,ti) => (
+                                          <div key={ti} className="time-slot">
+                                            <input type="time" value={time} onChange={(e) => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
+                                            {times.length > 1 && <button type="button" className="time-remove-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                          </div>
+                                        ))}
+                                        {times.length < 5 && <button type="button" className="time-add-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {recurringDays.length > 0 && Object.values(dayTimes).some(ts => ts.some(t => t)) && recurringStartDate && (
+                            <div className="schedule-summary">
+                              🔄 {recurringDays.sort((a,b)=>a-b).map(d => { const n=['א','ב','ג','ד','ה','ו','ש'][d]; const ts=(dayTimes[d]||[]).filter(t=>t); return ts.length?`${n}: ${ts.join(', ')}`:null }).filter(Boolean).join(' | ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ═══ Profile Scheduler ═══ */}
+                  {activeFbSub === 'profile' && (
+                    <div className="cp-schedule">
+                      <div className="schedule-tabs">
+                        <button type="button" className={`schedule-tab ${profileScheduleMode === 'now' ? 'active' : ''}`} onClick={() => setProfileScheduleMode('now')}>
+                          <span className="schedule-tab-icon">⚡</span>
+                          <span>עכשיו</span>
+                        </button>
+                        <button type="button" className={`schedule-tab ${profileScheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setProfileScheduleMode('scheduled'); setProfileRecurringDays([]); setProfileDayTimes({}) }}>
+                          <span className="schedule-tab-icon">📅</span>
+                          <span>חד-פעמי</span>
+                        </button>
+                        <button type="button" className={`schedule-tab ${profileScheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setProfileScheduleMode('recurring'); setProfileScheduleDate(''); setProfileScheduleTime('') }}>
+                          <span className="schedule-tab-icon">🔄</span>
+                          <span>חוזר</span>
+                        </button>
                       </div>
-                    )}
-                  </div>
+
+                      {profileScheduleMode === 'now' && (
+                        <div className="schedule-info">
+                          <p className="schedule-info-text">יפורסם בפרופיל מיד עם יצירת הקמפיין</p>
+                        </div>
+                      )}
+
+                      {profileScheduleMode === 'scheduled' && (
+                        <div className="schedule-fields">
+                          <div className="schedule-row-centered">
+                            <div className="schedule-field">
+                              <label>תאריך</label>
+                              <SingleDatePicker
+                                value={profileScheduleDate}
+                                onChange={setProfileScheduleDate}
+                                minDate={toDateStr(new Date())}
+                              />
+                            </div>
+                            <div className="schedule-field schedule-field-time-wrap">
+                              <label>שעה</label>
+                              <input
+                                type="time"
+                                value={profileScheduleTime}
+                                onChange={(e) => setProfileScheduleTime(e.target.value)}
+                                disabled={!profileScheduleDate}
+                                className={!profileScheduleDate ? 'disabled-input' : ''}
+                              />
+                            </div>
+                          </div>
+                          {profileScheduleDate && profileScheduleTime && (
+                            <div className="schedule-summary">
+                              📅 {new Date(`${profileScheduleDate}T${profileScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה {profileScheduleTime}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {profileScheduleMode === 'recurring' && (
+                        <div className="schedule-fields">
+                          <div className="schedule-section">
+                            <label className="schedule-section-label">תקופה</label>
+                            <RecurringDateRange
+                              startDate={profileRecurringStartDate}
+                              endDate={profileRecurringEndDate}
+                              onStartChange={setProfileRecurringStartDate}
+                              onEndChange={setProfileRecurringEndDate}
+                              minDate={toDateStr(new Date())}
+                              initialMonth={profileRecurringStartDate ? new Date(profileRecurringStartDate) : new Date()}
+                            />
+                          </div>
+                          <div className="schedule-section">
+                            <label className="schedule-section-label">באילו ימים?</label>
+                            <div className="days-grid">
+                              {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
+                                <button key={i} type="button" className={`day-btn ${profileRecurringDays.includes(i)?'active':''}`}
+                                  onClick={() => {
+                                    setProfileRecurringDays(prev => {
+                                      if(prev.includes(i)){setProfileDayTimes(dt=>{const c={...dt};delete c[i];return c});return prev.filter(d=>d!==i)}
+                                      else{setProfileDayTimes(dt=>({...dt,[i]:['']}));return[...prev,i]}
+                                    })
+                                  }}>{day}</button>
+                              ))}
+                              <button type="button" className={`day-btn day-btn-all ${profileRecurringDays.length===7?'active':''}`}
+                                onClick={() => {
+                                  if(profileRecurringDays.length===7){setProfileRecurringDays([]);setProfileDayTimes({})}
+                                  else{setProfileRecurringDays([0,1,2,3,4,5,6]);setProfileDayTimes(dt=>{const c={...dt};for(let i=0;i<7;i++){if(!c[i])c[i]=['']}return c})}
+                                }}>כל יום</button>
+                            </div>
+                          </div>
+                          {profileRecurringDays.length > 0 && (
+                            <div className="schedule-section day-times-section">
+                              <label className="schedule-section-label">שעות לכל יום</label>
+                              <div className="day-times-list">
+                                {profileRecurringDays.sort((a,b)=>a-b).map(dayIdx => {
+                                  const dayName = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][dayIdx]
+                                  const times = profileDayTimes[dayIdx] || ['']
+                                  return (
+                                    <div key={dayIdx} className="day-times-card">
+                                      <div className="day-times-header">
+                                        <span className="day-times-day-name">יום {dayName}</span>
+                                        <span className="day-times-count">{times.filter(t=>t).length} שעות</span>
+                                      </div>
+                                      <div className="day-times-slots">
+                                        {times.map((time,ti) => (
+                                          <div key={ti} className="time-slot">
+                                            <input type="time" value={time} onChange={(e) => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
+                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                          </div>
+                                        ))}
+                                        {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  </>
+                  )}
+
+                  {/* ═══ Instagram panel ═══ */}
+                  {activePlatform === 'instagram' && (
+                    <>
+                      {/* Level 2: IG type badges */}
+                      {instagramPublishTypes.length > 0 && (
+                        <div className="cp-schedule-sub-tabs cp-schedule-sub-tabs-inner">
+                          {instagramPublishTypes.includes('FEED') && (
+                            <span className="cp-schedule-sub-tab cp-schedule-sub-tab-ig active">📷 פוסט</span>
+                          )}
+                          {instagramPublishTypes.includes('STORY') && (
+                            <span className="cp-schedule-sub-tab cp-schedule-sub-tab-ig active">📱 סטורי</span>
+                          )}
+                          {instagramPublishTypes.includes('REEL') && (
+                            <span className="cp-schedule-sub-tab cp-schedule-sub-tab-ig active">🎬 ריל</span>
+                          )}
+                        </div>
+                      )}
+
+                      {instagramPublishTypes.includes('STORY') && (
+                        <div className="cp-ig-hint" style={{ marginBottom: 12 }}>
+                          <span>💡</span>
+                          <span>סטורי נעלם אחרי 24 שעות מרגע הפרסום</span>
+                        </div>
+                      )}
+
+                    <div className="cp-schedule">
+                      <div className="schedule-tabs">
+                        <button type="button" className={`schedule-tab ${igScheduleMode === 'now' ? 'active' : ''}`} onClick={() => setIgScheduleMode('now')}>
+                          <span className="schedule-tab-icon">⚡</span>
+                          <span>עכשיו</span>
+                        </button>
+                        <button type="button" className={`schedule-tab ${igScheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setIgScheduleMode('scheduled'); setIgRecurringDays([]); setIgDayTimes({}) }}>
+                          <span className="schedule-tab-icon">📅</span>
+                          <span>חד-פעמי</span>
+                        </button>
+                        <button type="button" className={`schedule-tab ${igScheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setIgScheduleMode('recurring'); setIgScheduleDate(''); setIgScheduleTime('') }}>
+                          <span className="schedule-tab-icon">🔄</span>
+                          <span>חוזר</span>
+                        </button>
+                      </div>
+
+                      {igScheduleMode === 'now' && (
+                        <div className="schedule-info">
+                          <p className="schedule-info-text">יפורסם באינסטגרם מיד עם יצירת הקמפיין</p>
+                        </div>
+                      )}
+
+                      {igScheduleMode === 'scheduled' && (
+                        <div className="schedule-fields">
+                          <div className="schedule-row-centered">
+                            <div className="schedule-field">
+                              <label>תאריך</label>
+                              <SingleDatePicker
+                                value={igScheduleDate}
+                                onChange={setIgScheduleDate}
+                                minDate={toDateStr(new Date())}
+                              />
+                            </div>
+                            <div className="schedule-field schedule-field-time-wrap">
+                              <label>שעה</label>
+                              <input
+                                type="time"
+                                value={igScheduleTime}
+                                onChange={(e) => setIgScheduleTime(e.target.value)}
+                                disabled={!igScheduleDate}
+                                className={!igScheduleDate ? 'disabled-input' : ''}
+                              />
+                            </div>
+                          </div>
+                          {igScheduleDate && igScheduleTime && (
+                            <div className="schedule-summary">
+                              📅 {new Date(`${igScheduleDate}T${igScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה {igScheduleTime}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {igScheduleMode === 'recurring' && (
+                        <div className="schedule-fields">
+                          <div className="schedule-section">
+                            <label className="schedule-section-label">תקופה</label>
+                            <RecurringDateRange
+                              startDate={igRecurringStartDate}
+                              endDate={igRecurringEndDate}
+                              onStartChange={setIgRecurringStartDate}
+                              onEndChange={setIgRecurringEndDate}
+                              minDate={toDateStr(new Date())}
+                              initialMonth={igRecurringStartDate ? new Date(igRecurringStartDate) : new Date()}
+                            />
+                          </div>
+                          <div className="schedule-section">
+                            <label className="schedule-section-label">באילו ימים?</label>
+                            <div className="days-grid">
+                              {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
+                                <button key={i} type="button" className={`day-btn ${igRecurringDays.includes(i)?'active':''}`}
+                                  onClick={() => {
+                                    setIgRecurringDays(prev => {
+                                      if(prev.includes(i)){setIgDayTimes(dt=>{const c={...dt};delete c[i];return c});return prev.filter(d=>d!==i)}
+                                      else{setIgDayTimes(dt=>({...dt,[i]:['']}));return[...prev,i]}
+                                    })
+                                  }}>{day}</button>
+                              ))}
+                              <button type="button" className={`day-btn day-btn-all ${igRecurringDays.length===7?'active':''}`}
+                                onClick={() => {
+                                  if(igRecurringDays.length===7){setIgRecurringDays([]);setIgDayTimes({})}
+                                  else{setIgRecurringDays([0,1,2,3,4,5,6]);setIgDayTimes(dt=>{const c={...dt};for(let i=0;i<7;i++){if(!c[i])c[i]=['']}return c})}
+                                }}>כל יום</button>
+                            </div>
+                          </div>
+                          {igRecurringDays.length > 0 && (
+                            <div className="schedule-section day-times-section">
+                              <label className="schedule-section-label">שעות לכל יום</label>
+                              <div className="day-times-list">
+                                {igRecurringDays.sort((a,b)=>a-b).map(dayIdx => {
+                                  const dayName = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][dayIdx]
+                                  const times = igDayTimes[dayIdx] || ['']
+                                  return (
+                                    <div key={dayIdx} className="day-times-card">
+                                      <div className="day-times-header">
+                                        <span className="day-times-day-name">יום {dayName}</span>
+                                        <span className="day-times-count">{times.filter(t=>t).length} שעות</span>
+                                      </div>
+                                      <div className="day-times-slots">
+                                        {times.map((time,ti) => (
+                                          <div key={ti} className="time-slot">
+                                            <input type="time" value={time} onChange={(e) => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
+                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                          </div>
+                                        ))}
+                                        {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      </div>
+                    </>
+                  )}
+
                 </div>
+                )}
               </div>
-            )}
+              )
+            })()}
 
             {/* STEP 3: Review */}
             {currentStep === 3 && (
@@ -1539,24 +2126,65 @@ export default function CreatePost() {
                     )}
 
                     <div className="cp-review-section">
-                      <span className="cp-review-label">קבוצות פרסום:</span>
+                      <span className="cp-review-label">יעדי פרסום:</span>
                       <div className="cp-review-groups">
                         {publishToProfile && <span className="cp-review-chip cp-chip-profile">👤 פרופיל אישי</span>}
                         {selectedGroups.slice(0, 5).map(g => (
                           <span key={g.id} className="cp-review-chip">{g.name}</span>
                         ))}
                         {selectedGroups.length > 5 && <span className="cp-review-chip cp-chip-more">+{selectedGroups.length - 5} נוספות</span>}
-                        {!publishToProfile && selectedGroups.length === 0 && <span className="cp-review-value">לא נבחרו קבוצות</span>}
+                        {instagramEnabled && (
+                          <span className="cp-review-chip cp-chip-instagram">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                            {' '}Instagram — {instagramPublishTypes.map(t => t === 'FEED' ? 'פוסט' : t === 'STORY' ? 'סטורי' : 'ריל').join(', ')}
+                            {instagramPublishTypes.includes('STORY') && postImagePreviews.length > 1 && storyMediaMode === 'all' && ` (${postImagePreviews.length} סטוריז)`}
+                            {instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' && ` (תמונה ${storyPickedIndex + 1})`}
+                          </span>
+                        )}
+                        {!publishToProfile && selectedGroups.length === 0 && !instagramEnabled && <span className="cp-review-value">לא נבחרו יעדים</span>}
                       </div>
                     </div>
 
                     <div className="cp-review-section">
                       <span className="cp-review-label">תזמון:</span>
-                      <span className="cp-review-value">
-                        {scheduleMode === 'now' && '⚡ פרסום מיידי'}
-                        {scheduleMode === 'scheduled' && `📅 ${new Date(`${scheduleDate}T${scheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה ${scheduleTime}`}
-                        {scheduleMode === 'recurring' && `🔄 ${recurringDays.length} ימים בשבוע`}
-                      </span>
+                      <div className="cp-review-schedule-list">
+                        {selectedGroups.length > 0 && (
+                          <div className="cp-review-schedule-item">
+                            <span className="cp-review-schedule-platform">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                              {' '}קבוצות:
+                            </span>
+                            <span>
+                              {scheduleMode === 'now' && '⚡ מיידי'}
+                              {scheduleMode === 'scheduled' && `📅 ${scheduleDate && scheduleTime ? new Date(`${scheduleDate}T${scheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + scheduleTime : 'לא הוגדר'}`}
+                              {scheduleMode === 'recurring' && `🔄 ${recurringDays.length} ימים בשבוע`}
+                            </span>
+                          </div>
+                        )}
+                        {publishToProfile && (
+                          <div className="cp-review-schedule-item">
+                            <span className="cp-review-schedule-platform">👤 פרופיל:</span>
+                            <span>
+                              {profileScheduleMode === 'now' && '⚡ מיידי'}
+                              {profileScheduleMode === 'scheduled' && `📅 ${profileScheduleDate && profileScheduleTime ? new Date(`${profileScheduleDate}T${profileScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + profileScheduleTime : 'לא הוגדר'}`}
+                              {profileScheduleMode === 'recurring' && `🔄 ${profileRecurringDays.length} ימים בשבוע`}
+                            </span>
+                          </div>
+                        )}
+                        {instagramEnabled && (
+                          <div className="cp-review-schedule-item">
+                            <span className="cp-review-schedule-platform">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="#e1306c"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                              {' '}Instagram:
+                            </span>
+                            <span>
+                              {igScheduleMode === 'now' && '⚡ מיידי'}
+                              {igScheduleMode === 'scheduled' && `📅 ${igScheduleDate && igScheduleTime ? new Date(`${igScheduleDate}T${igScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + igScheduleTime : 'לא הוגדר'}`}
+                              {igScheduleMode === 'recurring' && `🔄 ${igRecurringDays.length} ימים בשבוע`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
 
@@ -1600,22 +2228,18 @@ export default function CreatePost() {
                 disabled={publishing}
               >
                 <span className="cp-publish-full">
-                  {publishing
-                    ? publishToProfile && selectedGroups.length === 0
-                      ? 'מפרסם בפרופיל...'
-                      : `מפרסם ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}...`
-                    : scheduleMode === 'recurring'
-                      ? publishToProfile && selectedGroups.length === 0
-                        ? '🔄 תזמן חוזר בפרופיל'
-                        : `🔄 תזמן חוזר ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
-                      : scheduleMode === 'scheduled'
-                        ? publishToProfile && selectedGroups.length === 0
-                          ? '📅 תזמן בפרופיל'
-                          : `📅 תזמן ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
-                        : publishToProfile && selectedGroups.length === 0
-                          ? '🚀 פרסם בפרופיל האישי'
-                          : `🚀 פרסם ב-${selectedGroups.length} קבוצות${publishToProfile ? ' + פרופיל' : ''}`
-                  }
+                  {(() => {
+                    const targets = []
+                    if (selectedGroups.length > 0) targets.push(`${selectedGroups.length} קבוצות`)
+                    if (publishToProfile) targets.push('פרופיל')
+                    if (instagramEnabled) targets.push('Instagram')
+                    const targetStr = targets.join(' + ')
+
+                    if (publishing) return `⏳ מפרסם ${targetStr ? `ב-${targetStr}` : ''}...`
+                    if (scheduleMode === 'recurring') return `🔄 תזמן חוזר ${targetStr ? `ב-${targetStr}` : ''}`
+                    if (scheduleMode === 'scheduled') return `📅 תזמן ${targetStr ? `ב-${targetStr}` : ''}`
+                    return `🚀 פרסם ${targetStr ? `ב-${targetStr}` : ''}`
+                  })()}
                 </span>
                 <span className="cp-publish-short">{publishing ? '⏳' : '🚀 פרסם'}</span>
               </button>
@@ -1628,14 +2252,48 @@ export default function CreatePost() {
           <div className="fbp-modal-overlay" onClick={() => setShowMobilePreview(false)}>
             <div className="fbp-modal-content" onClick={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}>
               <button className="fbp-modal-close" onClick={() => setShowMobilePreview(false)}>✕</button>
-              <FacebookPreview
-                text={postText}
-                images={postImagePreviews}
-                groupName={selectedGroups[0]?.name}
-                userName={user?.name}
-                whatsappNumber={whatsappNumber}
-                isAnonymous={isAnonymous}
-              />
+              <div className="cp-preview-toggle" style={{ marginBottom: 8 }}>
+                <button
+                  type="button"
+                  className={`cp-preview-toggle-btn ${previewMode === 'facebook' ? 'active' : ''}`}
+                  onClick={() => setPreviewMode('facebook')}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                  FB
+                </button>
+                <button
+                  type="button"
+                  className={`cp-preview-toggle-btn ${previewMode.startsWith('ig-') ? 'active' : ''}`}
+                  onClick={() => setPreviewMode(prev => prev.startsWith('ig-') ? prev : 'ig-feed')}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                  IG
+                </button>
+              </div>
+              {previewMode.startsWith('ig-') && (
+                <div className="cp-preview-sub-toggle" style={{ marginBottom: 10 }}>
+                  <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-feed' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-feed')}>🖼️ פוסט</button>
+                  <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-story' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-story')}>⏱️ סטורי</button>
+                  <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-reel' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-reel')}>🎬 רילס</button>
+                </div>
+              )}
+              {previewMode === 'facebook' ? (
+                <FacebookPreview
+                  text={postText}
+                  images={postImagePreviews}
+                  groupName={selectedGroups[0]?.name}
+                  userName={user?.name}
+                  whatsappNumber={whatsappNumber}
+                  isAnonymous={isAnonymous}
+                />
+              ) : (
+                <InstagramPreview
+                  text={postText}
+                  images={postImagePreviews}
+                  userName={user?.name}
+                  mode={previewMode === 'ig-story' ? 'STORY' : previewMode === 'ig-reel' ? 'REEL' : 'FEED'}
+                />
+              )}
             </div>
           </div>
         )}

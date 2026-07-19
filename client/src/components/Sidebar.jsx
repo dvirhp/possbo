@@ -8,7 +8,7 @@ import NotificationSettings from './NotificationSettings'
 import {
   LayoutDashboard, Users, FileText, CalendarDays, BarChart3,
   History, LayoutTemplate, Settings, Bell, SquarePen, Plus, RefreshCw, Sparkles,
-  Moon, Sun, LogOut, ChevronDown, ChevronLeft, ChevronUp, CreditCard, BookOpen
+  Moon, Sun, LogOut, ChevronDown, ChevronLeft, ChevronUp, CreditCard, BookOpen, MessageSquareHeart
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { id: 'analytics', icon: BarChart3, label: 'סטטיסטיקות', action: 'navigate', path: '/dashboard', tab: 'stats' },
   { id: 'templates', icon: LayoutTemplate, label: 'טמפלייטים', action: 'navigate', path: '/templates' },
   { id: 'history', icon: History, label: 'דוחות וסיכום', action: 'navigate', path: '/reports' },
+  { id: 'feedback', icon: MessageSquareHeart, label: 'פידבק', action: 'navigate', path: '/feedback' },
 ]
 
 export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
@@ -170,6 +171,19 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
             <LogOut size={18} />
           </button>
         </div>
+
+        {/* Google Play Download */}
+        <a
+          href="https://play.google.com/store"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="sidebar-download-btn"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.198l2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.626L15.206 12l2.492-2.491zM5.864 2.658L16.8 8.99l-2.3 2.3-8.636-8.632z"/>
+          </svg>
+          הורדת האפליקציה
+        </a>
       </div>
       <NotificationSettings open={notifOpen} onClose={() => setNotifOpen(false)} />
     </aside>

@@ -61,6 +61,11 @@ export const authAPI = {
   updateWhatsapp: (data) => http.patch("/auth/whatsapp", data),
   disconnectFacebook: () => http.post("/auth/disconnect-facebook"),
   verifyFacebook: () => http.post("/auth/verify-facebook"),
+  // Instagram
+  getInstagramStatus: () => http.get("/instagram/status"),
+  getInstagramAuthUrl: () => http.get("/instagram/auth-url"),
+  disconnectInstagram: () => http.post("/instagram/disconnect"),
+  publishToInstagram: (data) => http.post("/instagram/publish", data),
   updateNotificationSettings: (settings) =>
     http.patch("/auth/notification-settings", settings),
   uploadAvatar: (file) => {

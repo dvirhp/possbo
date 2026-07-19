@@ -163,133 +163,140 @@ router.get(
       return res.json(cached.data);
     }
     // All data in one request — parallel queries for speed
-    const [jobs, history, publishedCount, campaigns, fbGroups, templates, topPostsWithMetrics] =
-      await Promise.all([
-        // Jobs
-        prisma.publicationJob.findMany({
-          where: {
-            postGroup: { userId },
-            status: { in: ["PENDING", "RUNNING"] },
+    const [
+      jobs,
+      history,
+      publishedCount,
+      campaigns,
+      fbGroups,
+      templates,
+      topPostsWithMetrics,
+    ] = await Promise.all([
+      // Jobs
+      prisma.publicationJob.findMany({
+        where: {
+          postGroup: { userId },
+          status: { in: ["PENDING", "RUNNING"] },
+        },
+        select: {
+          id: true,
+          scheduledAt: true,
+          status: true,
+          attempts: true,
+          maxAttempts: true,
+          lastError: true,
+          targetType: true,
+          postGroup: {
+            select: {
+              id: true,
+              post: { select: { id: true, title: true, content: true } },
+              group: { select: { id: true, name: true } },
+            },
           },
-          select: {
-            id: true,
-            scheduledAt: true,
-            status: true,
-            attempts: true,
-            maxAttempts: true,
-            lastError: true,
-            targetType: true,
-            postGroup: {
-              select: {
-                id: true,
-                post: { select: { id: true, title: true, content: true } },
-                group: { select: { id: true, name: true } },
+        },
+        orderBy: { scheduledAt: "asc" },
+      }),
+      // History
+      prisma.publicationHistory.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          postId: true,
+          groupId: true,
+          publishedAt: true,
+          externalPostUrl: true,
+          screenshotUrl: true,
+          status: true,
+          errorMessage: true,
+          targetType: true,
+        },
+        orderBy: { publishedAt: "desc" },
+        take: 20,
+      }),
+      // Published count
+      prisma.publicationHistory.count({
+        where: { userId, status: "SUCCESS" },
+      }),
+      // Campaigns (recent posts — dashboard shows limited set)
+      prisma.post.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          title: true,
+          content: true,
+          templateName: true,
+          imageUrl: true,
+          campaignType: true,
+          status: true,
+          isPaused: true,
+          isAnonymous: true,
+          location: true,
+          recurringDays: true,
+          recurringTime: true,
+          recurringTimes: true,
+          recurringStart: true,
+          recurringEnd: true,
+          dayTimes: true,
+          createdAt: true,
+          updatedAt: true,
+          media: {
+            orderBy: { orderIndex: "asc" },
+            select: { url: true },
+          },
+          postGroups: {
+            select: {
+              group: {
+                select: {
+                  id: true,
+                  name: true,
+                  memberCount: true,
+                  pictureUrl: true,
+                },
+              },
+              schedules: {
+                where: { isActive: true },
+                take: 1,
+                select: { nextRunAt: true },
               },
             },
           },
-          orderBy: { scheduledAt: "asc" },
-        }),
-        // History
-        prisma.publicationHistory.findMany({
-          where: { userId },
-          select: {
-            id: true,
-            postId: true,
-            groupId: true,
-            publishedAt: true,
-            externalPostUrl: true,
-            screenshotUrl: true,
-            status: true,
-            errorMessage: true,
-            targetType: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+      }),
+      // Saved Facebook groups
+      prisma.facebookGroup.findMany({
+        where: { userId },
+        select: {
+          groupId: true,
+          groupName: true,
+          groupImage: true,
+          memberCount: true,
+          privacyType: true,
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      // Templates
+      prisma.postTemplate.findMany({
+        where: { userId },
+        orderBy: { updatedAt: "desc" },
+      }),
+      // Top posts with metrics (likes/comments)
+      prisma.publicationHistory.findMany({
+        where: { userId, status: "SUCCESS", metrics: { some: {} } },
+        include: {
+          post: { select: { id: true, title: true, content: true } },
+          group: { select: { id: true, name: true } },
+          metrics: {
+            orderBy: { collectedAt: "desc" },
+            take: 1,
+            select: { likesCount: true, commentsCount: true },
           },
-          orderBy: { publishedAt: "desc" },
-          take: 20,
-        }),
-        // Published count
-        prisma.publicationHistory.count({
-          where: { userId, status: "SUCCESS" },
-        }),
-        // Campaigns (recent posts — dashboard shows limited set)
-        prisma.post.findMany({
-          where: { userId },
-          select: {
-            id: true,
-            title: true,
-            content: true,
-            templateName: true,
-            imageUrl: true,
-            campaignType: true,
-            status: true,
-            isPaused: true,
-            isAnonymous: true,
-            location: true,
-            recurringDays: true,
-            recurringTime: true,
-            recurringTimes: true,
-            recurringStart: true,
-            recurringEnd: true,
-            dayTimes: true,
-            createdAt: true,
-            updatedAt: true,
-            media: {
-              orderBy: { orderIndex: "asc" },
-              select: { url: true },
-            },
-            postGroups: {
-              select: {
-                group: {
-                  select: {
-                    id: true,
-                    name: true,
-                    memberCount: true,
-                    pictureUrl: true,
-                  },
-                },
-                schedules: {
-                  where: { isActive: true },
-                  take: 1,
-                  select: { nextRunAt: true },
-                },
-              },
-            },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 30,
-        }),
-        // Saved Facebook groups
-        prisma.facebookGroup.findMany({
-          where: { userId },
-          select: {
-            groupId: true,
-            groupName: true,
-            groupImage: true,
-            memberCount: true,
-            privacyType: true,
-          },
-          orderBy: { createdAt: "desc" },
-        }),
-        // Templates
-        prisma.postTemplate.findMany({
-          where: { userId },
-          orderBy: { updatedAt: "desc" },
-        }),
-        // Top posts with metrics (likes/comments)
-        prisma.publicationHistory.findMany({
-          where: { userId, status: "SUCCESS", metrics: { some: {} } },
-          include: {
-            post: { select: { id: true, title: true, content: true } },
-            group: { select: { id: true, name: true } },
-            metrics: {
-              orderBy: { collectedAt: "desc" },
-              take: 1,
-              select: { likesCount: true, commentsCount: true },
-            },
-          },
-          orderBy: { publishedAt: "desc" },
-          take: 20,
-        }),
-      ]);
+        },
+        orderBy: { publishedAt: "desc" },
+        take: 20,
+      }),
+    ]);
 
     // Stats — scheduledCount from jobs array, groupsCount from fbGroups
     const stats = {
@@ -474,14 +481,14 @@ router.get(
 
     // Format top posts with metrics
     const formattedTopPosts = topPostsWithMetrics
-      .map(pub => {
+      .map((pub) => {
         const m = pub.metrics[0];
         if (!m) return null;
         return {
           id: pub.id,
           postId: pub.post?.id,
-          title: pub.post?.title || pub.post?.content?.slice(0, 60) || '',
-          groupName: pub.group?.name || '',
+          title: pub.post?.title || pub.post?.content?.slice(0, 60) || "",
+          groupName: pub.group?.name || "",
           publishedAt: pub.publishedAt,
           likes: m.likesCount,
           comments: m.commentsCount,
@@ -738,6 +745,8 @@ router.post(
       recurringEndDate,
       campaignType,
       publishToProfile,
+      instagramEnabled,
+      instagramPublishType,
       templateName,
     } = req.body;
 
@@ -752,15 +761,18 @@ router.post(
     if (anonymous === "false") anonymous = false;
     if (publishToProfile === "true") publishToProfile = true;
     if (publishToProfile === "false") publishToProfile = false;
+    if (instagramEnabled === "true") instagramEnabled = true;
+    if (instagramEnabled === "false") instagramEnabled = false;
 
     if (!text) {
       return res.status(400).json({ error: "text is required" });
     }
 
-    // Allow saving without groups (draft only) — unless publishing to profile
+    // Allow saving without groups (draft only) — unless publishing to profile or Instagram
     if (
       !groupIds?.length &&
       !publishToProfile &&
+      !instagramEnabled &&
       scheduleMode &&
       scheduleMode !== "draft"
     ) {
@@ -867,6 +879,10 @@ router.post(
         isAnonymous: anonymous || false,
         location: location || null,
         publishToProfile: publishToProfile || false,
+        instagramEnabled: instagramEnabled || false,
+        instagramPublishType: instagramEnabled
+          ? instagramPublishType || null
+          : null,
         templateName: templateName || null,
         campaignType: campaignType || "ONE_TIME",
         recurringDays: recurringDays || [],
@@ -1060,6 +1076,24 @@ router.post(
             postId: post.id,
             scheduledAt,
             targetType: "PROFILE",
+          },
+        });
+      }
+    }
+
+    // Create an Instagram publication job if instagramEnabled is true
+    if (instagramEnabled) {
+      const igScheduledAt =
+        scheduleMode === "now"
+          ? new Date()
+          : scheduledAt || recurringScheduledAt;
+      if (igScheduledAt) {
+        await prisma.publicationJob.create({
+          data: {
+            postId: post.id,
+            scheduledAt: igScheduledAt,
+            targetType: "INSTAGRAM",
+            platform: "INSTAGRAM",
           },
         });
       }

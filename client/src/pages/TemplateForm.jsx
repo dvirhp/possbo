@@ -269,6 +269,8 @@ export default function TemplateForm() {
   const [waTempMessage, setWaTempMessage] = useState('')
   const [waSaving, setWaSaving] = useState(false)
   const [waEditingMsg, setWaEditingMsg] = useState(false)
+
+  // Groups scheduling
   const [scheduleMode, setScheduleMode] = useState('now')
   const [scheduleDate, setScheduleDate] = useState('')
   const [scheduleTime, setScheduleTime] = useState('')
@@ -276,6 +278,34 @@ export default function TemplateForm() {
   const [recurringStartDate, setRecurringStartDate] = useState('')
   const [recurringEndDate, setRecurringEndDate] = useState('')
   const [dayTimes, setDayTimes] = useState({})
+
+  // Profile scheduling
+  const [publishToProfile, setPublishToProfile] = useState(false)
+  const [profileScheduleMode, setProfileScheduleMode] = useState('now')
+  const [profileScheduleDate, setProfileScheduleDate] = useState('')
+  const [profileScheduleTime, setProfileScheduleTime] = useState('')
+  const [profileRecurringDays, setProfileRecurringDays] = useState([])
+  const [profileDayTimes, setProfileDayTimes] = useState({})
+  const [profileRecurringStartDate, setProfileRecurringStartDate] = useState('')
+  const [profileRecurringEndDate, setProfileRecurringEndDate] = useState('')
+
+  // Instagram scheduling
+  const [instagramEnabled, setInstagramEnabled] = useState(false)
+  const [instagramPublishTypes, setInstagramPublishTypes] = useState(['FEED']) // array of 'FEED' | 'STORY' | 'REEL'
+  const [storyMediaMode, setStoryMediaMode] = useState('first') // 'first' | 'all' | 'pick'
+  const [storyPickedIndex, setStoryPickedIndex] = useState(0)
+  const [igScheduleMode, setIgScheduleMode] = useState('now')
+  const [igScheduleDate, setIgScheduleDate] = useState('')
+  const [igScheduleTime, setIgScheduleTime] = useState('')
+  const [igRecurringDays, setIgRecurringDays] = useState([])
+  const [igDayTimes, setIgDayTimes] = useState({})
+  const [igRecurringStartDate, setIgRecurringStartDate] = useState('')
+  const [igRecurringEndDate, setIgRecurringEndDate] = useState('')
+
+  // Schedule sub-tab
+  const [scheduleSubTab, setScheduleSubTab] = useState('groups')
+  // Distribution view tab (which panel is shown — both can be enabled)
+  const [distPlatformTab, setDistPlatformTab] = useState('facebook')
 
   // Track unsaved changes
   useEffect(() => {
@@ -301,6 +331,7 @@ export default function TemplateForm() {
   const [existingImages, setExistingImages] = useState([])
   const [newImages, setNewImages] = useState([])
   const [newImagePreviews, setNewImagePreviews] = useState([])
+  const allImagePreviews = [...existingImages, ...newImagePreviews]
   const fileInputRef = useRef(null)
   const contentTextareaRef = useRef(null)
 
@@ -360,6 +391,28 @@ export default function TemplateForm() {
         setDayTimes(t.dayTimes || {})
         setSelectedGroupIds(t.groupIds || [])
         setExistingImages(t.imageUrls || [])
+        // Profile
+        setPublishToProfile(!!t.publishToProfile)
+        setProfileScheduleMode(t.profileScheduleMode || 'now')
+        setProfileScheduleDate(t.profileScheduleDate || '')
+        setProfileScheduleTime(t.profileScheduleTime || '')
+        setProfileRecurringDays(t.profileRecurringDays || [])
+        setProfileDayTimes(t.profileDayTimes || {})
+        setProfileRecurringStartDate(t.profileRecurringStartDate || '')
+        setProfileRecurringEndDate(t.profileRecurringEndDate || '')
+        // Instagram
+        setInstagramEnabled(!!t.instagramEnabled)
+        const igTypes = t.instagramPublishTypes || (t.instagramPublishType ? [t.instagramPublishType] : ['FEED'])
+        setInstagramPublishTypes(igTypes)
+        setStoryMediaMode(t.storyMediaMode || 'first')
+        setStoryPickedIndex(t.storyPickedIndex || 0)
+        setIgScheduleMode(t.igScheduleMode || 'now')
+        setIgScheduleDate(t.igScheduleDate || '')
+        setIgScheduleTime(t.igScheduleTime || '')
+        setIgRecurringDays(t.igRecurringDays || [])
+        setIgDayTimes(t.igDayTimes || {})
+        setIgRecurringStartDate(t.igRecurringStartDate || '')
+        setIgRecurringEndDate(t.igRecurringEndDate || '')
       }
     } catch {
       setError('שגיאה בטעינת הטמפלייט')
@@ -428,6 +481,27 @@ export default function TemplateForm() {
         dayTimes,
         groupIds: selectedGroupIds,
         existingImages,
+        // Profile scheduling
+        publishToProfile,
+        profileScheduleMode,
+        profileScheduleDate: profileScheduleMode === 'scheduled' ? profileScheduleDate || null : null,
+        profileScheduleTime: profileScheduleMode === 'scheduled' ? profileScheduleTime || null : null,
+        profileRecurringDays: profileScheduleMode === 'recurring' ? profileRecurringDays : null,
+        profileDayTimes: profileScheduleMode === 'recurring' ? profileDayTimes : null,
+        profileRecurringStartDate: profileScheduleMode === 'recurring' ? profileRecurringStartDate || null : null,
+        profileRecurringEndDate: profileScheduleMode === 'recurring' ? profileRecurringEndDate || null : null,
+        // Instagram scheduling
+        instagramEnabled,
+        instagramPublishTypes: instagramEnabled ? instagramPublishTypes : null,
+        storyMediaMode: instagramEnabled && instagramPublishTypes.includes('STORY') ? storyMediaMode : null,
+        storyPickedIndex: instagramEnabled && instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' ? storyPickedIndex : null,
+        igScheduleMode,
+        igScheduleDate: igScheduleMode === 'scheduled' ? igScheduleDate || null : null,
+        igScheduleTime: igScheduleMode === 'scheduled' ? igScheduleTime || null : null,
+        igRecurringDays: igScheduleMode === 'recurring' ? igRecurringDays : null,
+        igDayTimes: igScheduleMode === 'recurring' ? igDayTimes : null,
+        igRecurringStartDate: igScheduleMode === 'recurring' ? igRecurringStartDate || null : null,
+        igRecurringEndDate: igScheduleMode === 'recurring' ? igRecurringEndDate || null : null,
       }
 
       if (isEdit) {
@@ -652,302 +726,578 @@ export default function TemplateForm() {
             </div>
           </div>
 
-          {/* Groups */}
+          {/* ═══ Distribution — Platform Toggles ═══ */}
           <div className="tpl-field">
-            <label className="tpl-label">קבוצות</label>
+            <label className="tpl-label">תפוצה</label>
+            <div className="tpl-platform-tabs">
+              <button type="button" className={`tpl-platform-tab ${distPlatformTab === 'facebook' ? 'active' : ''}`} onClick={() => setDistPlatformTab('facebook')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                <span>Facebook</span>
+              </button>
+              <button type="button" className={`tpl-platform-tab tpl-platform-tab-ig ${distPlatformTab === 'instagram' ? 'active' : ''}`} onClick={() => { setDistPlatformTab('instagram'); setInstagramEnabled(true) }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#ig-dist-tab)">
+                  <defs>
+                    <linearGradient id="ig-dist-tab" x1="0%" y1="100%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#FFDC80" />
+                      <stop offset="50%" stopColor="#E1306C" />
+                      <stop offset="100%" stopColor="#833AB4" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                </svg>
+                <span>Instagram</span>
+                {instagramEnabled && <span className="tpl-platform-badge">✓</span>}
+              </button>
+            </div>
 
-            {/* Selected groups chips */}
-            {selectedGroups.length > 0 && (
-              <div className="tpl-selected-groups">
-                <div className="tpl-selected-chips">
-                  {visibleSelectedGroups.map(g => (
-                    <div key={g.id} className="tpl-selected-chip">
-                      {g.pictureUrl ? <img src={g.pictureUrl} alt="" className="tpl-chip-avatar" /> : <span className="tpl-chip-avatar tpl-chip-avatar-fallback">{g.name?.[0]}</span>}
-                      <span className="tpl-chip-name">{g.name}</span>
-                      <button type="button" className="tpl-chip-remove" onClick={() => toggleGroup(g.id)}><X size={12} /></button>
-                    </div>
-                  ))}
-                  {selectedGroups.length > 5 && !showAllSelectedGroups && (
-                    <button type="button" className="tpl-selected-more" onClick={() => setShowAllSelectedGroups(true)}>
-                      +{selectedGroups.length - 5} נוספות
-                    </button>
-                  )}
-                  {showAllSelectedGroups && selectedGroups.length > 5 && (
-                    <button type="button" className="tpl-selected-more" onClick={() => setShowAllSelectedGroups(false)}>
-                      הצג פחות
-                    </button>
-                  )}
-                </div>
-                <div className="tpl-selected-summary">
-                  <span className="tpl-groups-count-inline">{selectedGroups.length} קבוצות נבחרו</span>
-                  {totalReach > 0 && (
-                    <span className="tpl-reach-badge">
-                      <Eye size={13} />
-                      {formatNumber(totalReach)} חשיפה
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* ─── Facebook content ─── */}
+            {distPlatformTab === 'facebook' && (
+            <div className="tpl-platform-content">
+              {/* Groups */}
+              <div className="tpl-platform-section">
+                <div className="tpl-platform-section-title">👥 קבוצות</div>
 
-            {loadingGroups ? (
-              <div className="tpl-loading-inline">טוען קבוצות...</div>
-            ) : groups.length === 0 ? (
-              <div className="tpl-no-groups">אין קבוצות שמורות</div>
-            ) : (
-              <>
-                <button type="button" className="tpl-groups-picker-toggle" onClick={() => setShowGroupsPicker(!showGroupsPicker)}>
-                  {showGroupsPicker ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  {showGroupsPicker ? 'סגור בחירת קבוצות' : 'בחר קבוצות'}
-                </button>
-                {showGroupsPicker && (
-                  <>
-                    <div className="tpl-groups-toolbar">
-                      <input
-                        type="text"
-                        className="tpl-group-search"
-                        placeholder="חפש קבוצה..."
-                        value={groupSearch}
-                        onChange={e => setGroupSearch(e.target.value)}
-                      />
-                      <button type="button" className="tpl-groups-toggle" onClick={selectAllGroups}>בחר הכל</button>
-                      <button type="button" className="tpl-groups-toggle" onClick={deselectAll}>נקה</button>
-                    </div>
-                    <div className="tpl-groups-list">
-                      {filteredGroups.map(g => (
-                        <label key={g.id} className={`tpl-group-item ${selectedGroupIds.includes(g.id) ? 'selected' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={selectedGroupIds.includes(g.id)}
-                            onChange={() => toggleGroup(g.id)}
-                          />
-                          <span className="tpl-group-name">{g.name}</span>
-                          {g.memberCount > 0 && <span className="tpl-group-members">{formatNumber(g.memberCount)} חברים</span>}
-                        </label>
+                {selectedGroups.length > 0 && (
+                  <div className="tpl-selected-groups">
+                    <div className="tpl-selected-chips">
+                      {visibleSelectedGroups.map(g => (
+                        <div key={g.id} className="tpl-selected-chip">
+                          {g.pictureUrl ? <img src={g.pictureUrl} alt="" className="tpl-chip-avatar" /> : <span className="tpl-chip-avatar tpl-chip-avatar-fallback">{g.name?.[0]}</span>}
+                          <span className="tpl-chip-name">{g.name}</span>
+                          <button type="button" className="tpl-chip-remove" onClick={() => toggleGroup(g.id)}><X size={12} /></button>
+                        </div>
                       ))}
+                      {selectedGroups.length > 5 && !showAllSelectedGroups && (
+                        <button type="button" className="tpl-selected-more" onClick={() => setShowAllSelectedGroups(true)}>
+                          +{selectedGroups.length - 5} נוספות
+                        </button>
+                      )}
+                      {showAllSelectedGroups && selectedGroups.length > 5 && (
+                        <button type="button" className="tpl-selected-more" onClick={() => setShowAllSelectedGroups(false)}>
+                          הצג פחות
+                        </button>
+                      )}
                     </div>
+                    <div className="tpl-selected-summary">
+                      <span className="tpl-groups-count-inline">{selectedGroups.length} קבוצות נבחרו</span>
+                      {totalReach > 0 && (
+                        <span className="tpl-reach-badge">
+                          <Eye size={13} />
+                          {formatNumber(totalReach)} חשיפה
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {loadingGroups ? (
+                  <div className="tpl-loading-inline">טוען קבוצות...</div>
+                ) : groups.length === 0 ? (
+                  <div className="tpl-no-groups">אין קבוצות שמורות</div>
+                ) : (
+                  <>
+                    <button type="button" className="tpl-groups-picker-toggle" onClick={() => setShowGroupsPicker(!showGroupsPicker)}>
+                      {showGroupsPicker ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      {showGroupsPicker ? 'סגור בחירת קבוצות' : 'בחר קבוצות'}
+                    </button>
+                    {showGroupsPicker && (
+                      <>
+                        <div className="tpl-groups-toolbar">
+                          <input type="text" className="tpl-group-search" placeholder="חפש קבוצה..." value={groupSearch} onChange={e => setGroupSearch(e.target.value)} />
+                          <button type="button" className="tpl-groups-toggle" onClick={selectAllGroups}>בחר הכל</button>
+                          <button type="button" className="tpl-groups-toggle" onClick={deselectAll}>נקה</button>
+                        </div>
+                        <div className="tpl-groups-list">
+                          {filteredGroups.map(g => (
+                            <label key={g.id} className={`tpl-group-item ${selectedGroupIds.includes(g.id) ? 'selected' : ''}`}>
+                              <input type="checkbox" checked={selectedGroupIds.includes(g.id)} onChange={() => toggleGroup(g.id)} />
+                              <span className="tpl-group-name">{g.name}</span>
+                              {g.memberCount > 0 && <span className="tpl-group-members">{formatNumber(g.memberCount)} חברים</span>}
+                            </label>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
-              </>
+              </div>
+
+              {/* Profile */}
+              <div className="tpl-platform-section" style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.06))', paddingTop: 14, marginTop: 14 }}>
+                <label className="tpl-toggle-row">
+                  <input type="checkbox" checked={publishToProfile} onChange={(e) => setPublishToProfile(e.target.checked)} />
+                  <span>👤 פרסום לפרופיל אישי</span>
+                </label>
+              </div>
+            </div>
+            )}
+
+            {/* ─── Instagram content ─── */}
+            {distPlatformTab === 'instagram' && (
+              <div className="tpl-platform-content">
+                <div className="tpl-platform-section-title" style={{ marginBottom: 10 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#ig-section-tpl)" style={{ verticalAlign: 'middle', marginLeft: 6 }}>
+                    <defs><linearGradient id="ig-section-tpl" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stopColor="#FFDC80" /><stop offset="50%" stopColor="#E1306C" /><stop offset="100%" stopColor="#833AB4" /></linearGradient></defs>
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                  </svg>
+                  סוג פרסום באינסטגרם
+                </div>
+                <div className="tpl-ig-type-select">
+                  {[
+                    { val: 'FEED', label: 'פוסט', icon: '📷' },
+                    { val: 'STORY', label: 'סטורי', icon: '📱' },
+                    { val: 'REEL', label: 'ריל', icon: '🎬' },
+                  ].map(t => (
+                    <button
+                      key={t.val}
+                      type="button"
+                      className={`tpl-ig-type-btn ${instagramPublishTypes.includes(t.val) ? 'active' : ''}`}
+                      onClick={() => {
+                        setInstagramPublishTypes(prev => {
+                          if (prev.includes(t.val)) {
+                            return prev.length > 1 ? prev.filter(v => v !== t.val) : prev
+                          }
+                          return [...prev, t.val]
+                        })
+                      }}
+                    >
+                      {t.icon} {t.label}
+                    </button>
+                  ))}
+                </div>
+                {instagramPublishTypes.length > 1 && (
+                  <div className="cp-ig-hint" style={{ marginTop: 10 }}>
+                    <span>✨</span>
+                    <span>התוכן יפורסם ב-{instagramPublishTypes.length} סוגים במקביל</span>
+                  </div>
+                )}
+
+                {/* Story options */}
+                {instagramPublishTypes.includes('STORY') && (
+                  <div className="cp-ig-media-options" style={{ marginTop: 12 }}>
+                    <div className="cp-ig-hint">
+                      <span>💡</span>
+                      <span>סטורי נעלם אחרי 24 שעות מרגע הפרסום</span>
+                    </div>
+                    {allImagePreviews.length > 1 && (
+                      <>
+                        <div className="cp-ig-media-notice" style={{ marginTop: 8 }}>
+                          <span className="cp-ig-media-notice-icon">ℹ️</span>
+                          <span>סטורי תומך בתמונה/סרטון <strong>אחד בלבד</strong>. יש {allImagePreviews.length} קבצים — בחרי מה לעשות:</span>
+                        </div>
+                        <div className="cp-ig-media-choices">
+                          <label className={`cp-ig-media-choice ${storyMediaMode === 'first' ? 'active' : ''}`}>
+                            <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'first'} onChange={() => setStoryMediaMode('first')} />
+                            <div className="cp-ig-media-choice-content">
+                              <span className="cp-ig-media-choice-title">📸 פרסם רק את הראשונה</span>
+                              <span className="cp-ig-media-choice-desc">סטורי אחד עם התמונה הראשונה</span>
+                            </div>
+                          </label>
+                          <label className={`cp-ig-media-choice ${storyMediaMode === 'all' ? 'active' : ''}`}>
+                            <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'all'} onChange={() => setStoryMediaMode('all')} />
+                            <div className="cp-ig-media-choice-content">
+                              <span className="cp-ig-media-choice-title">📚 פרסם סטורי לכל תמונה</span>
+                              <span className="cp-ig-media-choice-desc">{allImagePreviews.length} סטוריז נפרדים</span>
+                            </div>
+                          </label>
+                          <label className={`cp-ig-media-choice ${storyMediaMode === 'pick' ? 'active' : ''}`}>
+                            <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'pick'} onChange={() => setStoryMediaMode('pick')} />
+                            <div className="cp-ig-media-choice-content">
+                              <span className="cp-ig-media-choice-title">🎯 בחר תמונה ספציפית</span>
+                              <span className="cp-ig-media-choice-desc">בחרי איזו תמונה תופיע בסטורי</span>
+                            </div>
+                          </label>
+                        </div>
+                        {storyMediaMode === 'pick' && (
+                          <div className="cp-ig-image-picker">
+                            {allImagePreviews.map((img, i) => (
+                              <button key={i} type="button" className={`cp-ig-image-pick-item ${storyPickedIndex === i ? 'active' : ''}`} onClick={() => setStoryPickedIndex(i)}>
+                                <img src={img} alt={`תמונה ${i + 1}`} />
+                                {storyPickedIndex === i && <span className="cp-ig-image-pick-check">✓</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Reel options */}
+                {instagramPublishTypes.includes('REEL') && (
+                  <div className="cp-ig-media-options" style={{ marginTop: 12 }}>
+                    {(() => {
+                      const hasVideo = newImages.some(f => f?.type?.startsWith('video/'))
+                      const hasOnlyImages = allImagePreviews.length > 0 && !hasVideo
+                      if (hasVideo) {
+                        return <div className="cp-ig-hint cp-ig-hint-success"><span>✅</span><span>סרטון זוהה — הוא ישמש כריל שלך.</span></div>
+                      }
+                      if (hasOnlyImages) {
+                        return (
+                          <div className="cp-ig-media-notice cp-ig-media-notice-warn">
+                            <span className="cp-ig-media-notice-icon">⚠️</span>
+                            <span>ריל דורש <strong>סרטון</strong>. הועלו רק תמונות — החליפי לסרטון או בחרי סוג פרסום אחר.</span>
+                          </div>
+                        )
+                      }
+                      return <div className="cp-ig-hint"><span>💡</span><span>ריל דורש סרטון. הוסיפי סרטון בקטע המדיה.</span></div>
+                    })()}
+                  </div>
+                )}
+
+                {/* Feed hint */}
+                {instagramPublishTypes.includes('FEED') && allImagePreviews.length === 0 && (
+                  <div className="cp-ig-hint" style={{ marginTop: 12 }}>
+                    <span>💡</span>
+                    <span>פוסט בפיד דורש לפחות תמונה אחת. הוסיפי תמונה בקטע המדיה.</span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
           {/* Schedule Mode */}
-          <div className="tpl-field">
-            <label className="tpl-label">מצב תזמון</label>
-            <div className="tpl-schedule-modes">
-              {[
-                { val: 'now', label: 'מיידי', icon: '⚡' },
-                { val: 'scheduled', label: 'מתוזמן', icon: '📅' },
-                { val: 'recurring', label: 'חוזר', icon: '🔄' },
-              ].map(m => (
-                <button
-                  key={m.val}
-                  type="button"
-                  className={`tpl-mode-btn ${scheduleMode === m.val ? 'active' : ''}`}
-                  onClick={() => setScheduleMode(m.val)}
-                >
-                  {m.icon} {m.label}
-                </button>
-              ))}
-            </div>
+          {(() => {
+            const targets = []
+            if (selectedGroupIds.length > 0) targets.push('groups')
+            if (publishToProfile) targets.push('profile')
+            if (instagramEnabled) targets.push('instagram')
+            const activeTab = targets.includes(scheduleSubTab) ? scheduleSubTab : targets[0]
+            const showSubTabs = targets.length > 1
 
-            {scheduleMode !== 'now' && (
-              <OptimalTimesHint
-                onSelectTime={(time) => {
-                  if (scheduleMode === 'scheduled') setScheduleTime(time)
-                }}
-                onSelectDay={(dayNum) => {
-                  if (scheduleMode === 'recurring' && !recurringDays.includes(dayNum)) {
-                    setRecurringDays(prev => [...prev, dayNum])
-                    setDayTimes(dt => ({ ...dt, [dayNum]: dt[dayNum] || [''] }))
-                  }
-                }}
-              />
-            )}
+            if (targets.length === 0) return null
 
-            {scheduleMode === 'scheduled' && (
-              <div className="schedule-fields">
-                <p className="schedule-desc">בחר תאריך ושעה לפרסום חד-פעמי בעתיד</p>
-                <div className="schedule-row-centered">
-                  <div className="schedule-field">
-                    <label>תאריך</label>
-                    <SingleDatePicker
-                      value={scheduleDate}
-                      onChange={setScheduleDate}
-                      minDate={toDateStr(new Date())}
-                    />
+            return (
+            <div className="tpl-field">
+              <label className="tpl-label">מצב תזמון</label>
+
+              <div className="cp-schedule-hint-bubble">
+                בחרו את התזמון לכל פלטפורמה בנפרד: מיידי, חד-פעמי או חוזר.
+              </div>
+
+              {/* Sub-tabs */}
+              {showSubTabs && (
+                <div className="cp-schedule-sub-tabs" style={{ padding: 0, marginBottom: 14 }}>
+                  {selectedGroupIds.length > 0 && (
+                    <button type="button" className={`cp-schedule-sub-tab ${activeTab === 'groups' ? 'active' : ''}`} onClick={() => setScheduleSubTab('groups')}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                      <span>קבוצות ({selectedGroupIds.length})</span>
+                      {scheduleMode !== 'now' && <span className="cp-schedule-sub-tab-badge">📅</span>}
+                    </button>
+                  )}
+                  {publishToProfile && (
+                    <button type="button" className={`cp-schedule-sub-tab ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setScheduleSubTab('profile')}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                      <span>פרופיל</span>
+                      {profileScheduleMode !== 'now' && <span className="cp-schedule-sub-tab-badge">📅</span>}
+                    </button>
+                  )}
+                  {instagramEnabled && (
+                    <button type="button" className={`cp-schedule-sub-tab cp-schedule-sub-tab-ig ${activeTab === 'instagram' ? 'active' : ''}`} onClick={() => setScheduleSubTab('instagram')}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="url(#ig-subtab-tpl)">
+                        <defs>
+                          <linearGradient id="ig-subtab-tpl" x1="0%" y1="100%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#FFDC80" />
+                            <stop offset="50%" stopColor="#E1306C" />
+                            <stop offset="100%" stopColor="#833AB4" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                      </svg>
+                      <span>{instagramPublishTypes.map(t => t === 'FEED' ? 'פוסט' : t === 'STORY' ? 'סטורי' : 'ריל').join(', ')}</span>
+                      {igScheduleMode !== 'now' && <span className="cp-schedule-sub-tab-badge">📅</span>}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* ═══ Groups Scheduler ═══ */}
+              {activeTab === 'groups' && (
+                <div className="cp-schedule">
+                  <div className="schedule-tabs">
+                    <button type="button" className={`schedule-tab ${scheduleMode === 'now' ? 'active' : ''}`} onClick={() => setScheduleMode('now')}>
+                      <span className="schedule-tab-icon">⚡</span><span>עכשיו</span>
+                    </button>
+                    <button type="button" className={`schedule-tab ${scheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setScheduleMode('scheduled'); setRecurringDays([]); setDayTimes({}); setRecurringStartDate(''); setRecurringEndDate('') }}>
+                      <span className="schedule-tab-icon">📅</span><span>חד-פעמי</span>
+                    </button>
+                    <button type="button" className={`schedule-tab ${scheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setScheduleMode('recurring'); setScheduleDate(''); setScheduleTime('') }}>
+                      <span className="schedule-tab-icon">🔄</span><span>חוזר</span>
+                    </button>
                   </div>
-                  <div className="schedule-field schedule-field-time-wrap">
-                    <label>שעה</label>
-                    <div
-                      className="time-input-wrapper"
-                      onClick={(e) => {
-                        if (!scheduleDate) {
-                          e.preventDefault()
-                          e.currentTarget.classList.add('show-tooltip')
-                          setTimeout(() => e.currentTarget.classList.remove('show-tooltip'), 2000)
+
+                  {scheduleMode === 'now' && (
+                    <div className="schedule-info"><p className="schedule-info-text">יפורסם מיד בלחיצה על פרסום</p></div>
+                  )}
+
+                  {scheduleMode !== 'now' && (
+                    <OptimalTimesHint
+                      onSelectTime={(time) => { if (scheduleMode === 'scheduled') setScheduleTime(time) }}
+                      onSelectDay={(dayNum) => {
+                        if (scheduleMode === 'recurring' && !recurringDays.includes(dayNum)) {
+                          setRecurringDays(prev => [...prev, dayNum])
+                          setDayTimes(dt => ({ ...dt, [dayNum]: dt[dayNum] || [''] }))
                         }
                       }}
-                    >
-                      <input
-                        type="time"
-                        value={scheduleTime}
-                        onChange={(e) => setScheduleTime(e.target.value)}
-                        disabled={!scheduleDate}
-                        className={!scheduleDate ? 'disabled-input' : ''}
-                      />
-                      <span className="time-tooltip">נא לבחור תאריך קודם</span>
-                    </div>
-                  </div>
-                </div>
-                {scheduleDate && scheduleTime && (
-                  <div className="schedule-summary">
-                    📅 יפורסם ב-{new Date(`${scheduleDate}T${scheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} בשעה {scheduleTime}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                    />
+                  )}
 
-          {/* Recurring config */}
-          {scheduleMode === 'recurring' && (
-            <div className="schedule-fields">
-              <p className="schedule-desc">בחר ימים והגדר שעות לכל יום, הפוסט יפורסם באופן קבוע</p>
-
-              <div className="schedule-section">
-                <label className="schedule-section-label">תקופה</label>
-                <RecurringDateRange
-                  startDate={recurringStartDate}
-                  endDate={recurringEndDate}
-                  onStartChange={setRecurringStartDate}
-                  onEndChange={setRecurringEndDate}
-                  minDate={toDateStr(new Date())}
-                  initialMonth={recurringStartDate ? new Date(recurringStartDate) : new Date()}
-                />
-              </div>
-
-              <div className="schedule-section">
-                <label className="schedule-section-label">באילו ימים?</label>
-                <div className="days-grid">
-                  {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map((day, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className={`day-btn ${recurringDays.includes(i) ? 'active' : ''}`}
-                      onClick={() => {
-                        setRecurringDays(prev => {
-                          if (prev.includes(i)) {
-                            setDayTimes(dt => {
-                              const copy = { ...dt }
-                              delete copy[i]
-                              return copy
-                            })
-                            return prev.filter(d => d !== i)
-                          } else {
-                            setDayTimes(dt => ({ ...dt, [i]: [''] }))
-                            return [...prev, i]
-                          }
-                        })
-                      }}
-                    >
-                      {day}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className={`day-btn day-btn-all ${recurringDays.length === 7 ? 'active' : ''}`}
-                    onClick={() => {
-                      if (recurringDays.length === 7) {
-                        setRecurringDays([])
-                        setDayTimes({})
-                      } else {
-                        setRecurringDays([0, 1, 2, 3, 4, 5, 6])
-                        setDayTimes(dt => {
-                          const copy = { ...dt }
-                          for (let i = 0; i < 7; i++) {
-                            if (!copy[i]) copy[i] = ['']
-                          }
-                          return copy
-                        })
-                      }
-                    }}
-                  >
-                    כל יום
-                  </button>
-                </div>
-              </div>
-
-              {recurringDays.length > 0 && (
-                <div className="schedule-section day-times-section">
-                  <label className="schedule-section-label">שעות לכל יום</label>
-                  <div className="day-times-list">
-                    {recurringDays.sort((a, b) => a - b).map(dayIdx => {
-                      const times = dayTimes[dayIdx] || ['']
-                      return (
-                        <div key={dayIdx} className="day-times-card">
-                          <div className="day-times-header">
-                            <span className="day-times-day-name">יום {DAY_NAMES[dayIdx]}</span>
-                            <span className="day-times-count">{times.filter(t => t).length} שעות</span>
-                          </div>
-                          <div className="day-times-slots">
-                            {times.map((time, ti) => (
-                              <div key={ti} className="time-slot">
-                                <input
-                                  type="time"
-                                  value={time}
-                                  onChange={(e) => {
-                                    setDayTimes(dt => {
-                                      const copy = { ...dt }
-                                      copy[dayIdx] = [...(copy[dayIdx] || [''])]
-                                      copy[dayIdx][ti] = e.target.value
-                                      return copy
-                                    })
-                                  }}
-                                />
-                                {times.length > 1 && (
-                                  <button type="button" className="time-remove-btn" onClick={() => {
-                                    setDayTimes(dt => {
-                                      const copy = { ...dt }
-                                      copy[dayIdx] = copy[dayIdx].filter((_, idx) => idx !== ti)
-                                      return copy
-                                    })
-                                  }}>✕</button>
-                                )}
-                              </div>
-                            ))}
-                            {times.length < 5 && (
-                              <button type="button" className="time-add-btn" onClick={() => {
-                                setDayTimes(dt => {
-                                  const copy = { ...dt }
-                                  copy[dayIdx] = [...(copy[dayIdx] || ['']), '']
-                                  return copy
-                                })
-                              }}>
-                                + שעה נוספת
-                              </button>
-                            )}
+                  {scheduleMode === 'scheduled' && (
+                    <div className="schedule-fields">
+                      <div className="schedule-row-centered">
+                        <div className="schedule-field">
+                          <label>תאריך</label>
+                          <SingleDatePicker value={scheduleDate} onChange={setScheduleDate} minDate={toDateStr(new Date())} />
+                        </div>
+                        <div className="schedule-field schedule-field-time-wrap">
+                          <label>שעה</label>
+                          <div className="time-input-wrapper" onClick={(e) => { if (!scheduleDate) { e.preventDefault(); e.currentTarget.classList.add('show-tooltip'); setTimeout(() => e.currentTarget.classList.remove('show-tooltip'), 2000) } }}>
+                            <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} disabled={!scheduleDate} className={!scheduleDate ? 'disabled-input' : ''} />
+                            <span className="time-tooltip">נא לבחור תאריך קודם</span>
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
+                      </div>
+                      {scheduleDate && scheduleTime && (
+                        <div className="schedule-summary">📅 {new Date(`${scheduleDate}T${scheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה {scheduleTime}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {scheduleMode === 'recurring' && (
+                    <div className="schedule-fields">
+                      <div className="schedule-section">
+                        <label className="schedule-section-label">תקופה</label>
+                        <RecurringDateRange startDate={recurringStartDate} endDate={recurringEndDate} onStartChange={setRecurringStartDate} onEndChange={setRecurringEndDate} minDate={toDateStr(new Date())} initialMonth={recurringStartDate ? new Date(recurringStartDate) : new Date()} />
+                      </div>
+                      <div className="schedule-section">
+                        <label className="schedule-section-label">באילו ימים?</label>
+                        <div className="days-grid">
+                          {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
+                            <button key={i} type="button" className={`day-btn ${recurringDays.includes(i)?'active':''}`}
+                              onClick={() => { setRecurringDays(prev => { if(prev.includes(i)){setDayTimes(dt=>{const c={...dt};delete c[i];return c});return prev.filter(d=>d!==i)} else{setDayTimes(dt=>({...dt,[i]:['']}));return[...prev,i]} }) }}>{day}</button>
+                          ))}
+                          <button type="button" className={`day-btn day-btn-all ${recurringDays.length===7?'active':''}`}
+                            onClick={() => { if(recurringDays.length===7){setRecurringDays([]);setDayTimes({})} else{setRecurringDays([0,1,2,3,4,5,6]);setDayTimes(dt=>{const c={...dt};for(let i=0;i<7;i++){if(!c[i])c[i]=['']}return c})} }}>כל יום</button>
+                        </div>
+                      </div>
+                      {recurringDays.length > 0 && (
+                        <div className="schedule-section day-times-section">
+                          <label className="schedule-section-label">שעות לכל יום</label>
+                          <div className="day-times-list">
+                            {recurringDays.sort((a,b)=>a-b).map(dayIdx => {
+                              const times = dayTimes[dayIdx] || ['']
+                              return (
+                                <div key={dayIdx} className="day-times-card">
+                                  <div className="day-times-header">
+                                    <span className="day-times-day-name">יום {DAY_NAMES[dayIdx]}</span>
+                                    <span className="day-times-count">{times.filter(t=>t).length} שעות</span>
+                                  </div>
+                                  <div className="day-times-slots">
+                                    {times.map((time,ti) => (
+                                      <div key={ti} className="time-slot">
+                                        <input type="time" value={time} onChange={(e) => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
+                                        {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                      </div>
+                                    ))}
+                                    {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {recurringDays.length > 0 && Object.values(dayTimes).some(ts => ts.some(t => t)) && recurringStartDate && (
+                        <div className="schedule-summary">
+                          🔄 {recurringDays.sort((a,b)=>a-b).map(d => { const ts=(dayTimes[d]||[]).filter(t=>t); return ts.length?`${DAY_NAMES[d]}: ${ts.join(', ')}`:null }).filter(Boolean).join(' | ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {recurringDays.length > 0 && Object.values(dayTimes).some(ts => ts.some(t => t)) && recurringStartDate && (
-                <div className="schedule-summary">
-                  🔄 לוח פרסום:
-                  {recurringDays.sort((a, b) => a - b).map(d => {
-                    const ts = (dayTimes[d] || []).filter(t => t)
-                    return ts.length ? `\n• ${DAY_NAMES[d]}: ${ts.join(', ')}` : null
-                  }).filter(Boolean).join('')}
-                  {`\nהחל מ-${new Date(recurringStartDate).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })}`}
-                  {recurringEndDate && ` עד ${new Date(recurringEndDate).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+              {/* ═══ Profile Scheduler ═══ */}
+              {activeTab === 'profile' && (
+                <div className="cp-schedule">
+                  <div className="schedule-tabs">
+                    <button type="button" className={`schedule-tab ${profileScheduleMode === 'now' ? 'active' : ''}`} onClick={() => setProfileScheduleMode('now')}>
+                      <span className="schedule-tab-icon">⚡</span><span>עכשיו</span>
+                    </button>
+                    <button type="button" className={`schedule-tab ${profileScheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setProfileScheduleMode('scheduled'); setProfileRecurringDays([]); setProfileDayTimes({}) }}>
+                      <span className="schedule-tab-icon">📅</span><span>חד-פעמי</span>
+                    </button>
+                    <button type="button" className={`schedule-tab ${profileScheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setProfileScheduleMode('recurring'); setProfileScheduleDate(''); setProfileScheduleTime('') }}>
+                      <span className="schedule-tab-icon">🔄</span><span>חוזר</span>
+                    </button>
+                  </div>
+
+                  {profileScheduleMode === 'now' && (
+                    <div className="schedule-info"><p className="schedule-info-text">יפורסם בפרופיל מיד עם יצירת הקמפיין</p></div>
+                  )}
+
+                  {profileScheduleMode === 'scheduled' && (
+                    <div className="schedule-fields">
+                      <div className="schedule-row-centered">
+                        <div className="schedule-field">
+                          <label>תאריך</label>
+                          <SingleDatePicker value={profileScheduleDate} onChange={setProfileScheduleDate} minDate={toDateStr(new Date())} />
+                        </div>
+                        <div className="schedule-field schedule-field-time-wrap">
+                          <label>שעה</label>
+                          <input type="time" value={profileScheduleTime} onChange={(e) => setProfileScheduleTime(e.target.value)} disabled={!profileScheduleDate} className={!profileScheduleDate ? 'disabled-input' : ''} />
+                        </div>
+                      </div>
+                      {profileScheduleDate && profileScheduleTime && (
+                        <div className="schedule-summary">📅 {new Date(`${profileScheduleDate}T${profileScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה {profileScheduleTime}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {profileScheduleMode === 'recurring' && (
+                    <div className="schedule-fields">
+                      <div className="schedule-section">
+                        <label className="schedule-section-label">תקופה</label>
+                        <RecurringDateRange startDate={profileRecurringStartDate} endDate={profileRecurringEndDate} onStartChange={setProfileRecurringStartDate} onEndChange={setProfileRecurringEndDate} minDate={toDateStr(new Date())} initialMonth={profileRecurringStartDate ? new Date(profileRecurringStartDate) : new Date()} />
+                      </div>
+                      <div className="schedule-section">
+                        <label className="schedule-section-label">באילו ימים?</label>
+                        <div className="days-grid">
+                          {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
+                            <button key={i} type="button" className={`day-btn ${profileRecurringDays.includes(i)?'active':''}`}
+                              onClick={() => { setProfileRecurringDays(prev => { if(prev.includes(i)){setProfileDayTimes(dt=>{const c={...dt};delete c[i];return c});return prev.filter(d=>d!==i)} else{setProfileDayTimes(dt=>({...dt,[i]:['']}));return[...prev,i]} }) }}>{day}</button>
+                          ))}
+                          <button type="button" className={`day-btn day-btn-all ${profileRecurringDays.length===7?'active':''}`}
+                            onClick={() => { if(profileRecurringDays.length===7){setProfileRecurringDays([]);setProfileDayTimes({})} else{setProfileRecurringDays([0,1,2,3,4,5,6]);setProfileDayTimes(dt=>{const c={...dt};for(let i=0;i<7;i++){if(!c[i])c[i]=['']}return c})} }}>כל יום</button>
+                        </div>
+                      </div>
+                      {profileRecurringDays.length > 0 && (
+                        <div className="schedule-section day-times-section">
+                          <label className="schedule-section-label">שעות לכל יום</label>
+                          <div className="day-times-list">
+                            {profileRecurringDays.sort((a,b)=>a-b).map(dayIdx => {
+                              const times = profileDayTimes[dayIdx] || ['']
+                              return (
+                                <div key={dayIdx} className="day-times-card">
+                                  <div className="day-times-header">
+                                    <span className="day-times-day-name">יום {DAY_NAMES[dayIdx]}</span>
+                                    <span className="day-times-count">{times.filter(t=>t).length} שעות</span>
+                                  </div>
+                                  <div className="day-times-slots">
+                                    {times.map((time,ti) => (
+                                      <div key={ti} className="time-slot">
+                                        <input type="time" value={time} onChange={(e) => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
+                                        {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                      </div>
+                                    ))}
+                                    {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ═══ Instagram Scheduler ═══ */}
+              {activeTab === 'instagram' && (
+                <div className="cp-schedule">
+                  {instagramPublishTypes.includes('STORY') && (
+                    <div className="cp-ig-hint" style={{ marginBottom: 12 }}>
+                      <span>💡</span>
+                      <span>סטורי נעלם אחרי 24 שעות מרגע הפרסום</span>
+                    </div>
+                  )}
+
+                  <div className="schedule-tabs">
+                    <button type="button" className={`schedule-tab ${igScheduleMode === 'now' ? 'active' : ''}`} onClick={() => setIgScheduleMode('now')}>
+                      <span className="schedule-tab-icon">⚡</span><span>עכשיו</span>
+                    </button>
+                    <button type="button" className={`schedule-tab ${igScheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setIgScheduleMode('scheduled'); setIgRecurringDays([]); setIgDayTimes({}) }}>
+                      <span className="schedule-tab-icon">📅</span><span>חד-פעמי</span>
+                    </button>
+                    <button type="button" className={`schedule-tab ${igScheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setIgScheduleMode('recurring'); setIgScheduleDate(''); setIgScheduleTime('') }}>
+                      <span className="schedule-tab-icon">🔄</span><span>חוזר</span>
+                    </button>
+                  </div>
+
+                  {igScheduleMode === 'now' && (
+                    <div className="schedule-info"><p className="schedule-info-text">יפורסם באינסטגרם מיד עם יצירת הקמפיין</p></div>
+                  )}
+
+                  {igScheduleMode === 'scheduled' && (
+                    <div className="schedule-fields">
+                      <div className="schedule-row-centered">
+                        <div className="schedule-field">
+                          <label>תאריך</label>
+                          <SingleDatePicker value={igScheduleDate} onChange={setIgScheduleDate} minDate={toDateStr(new Date())} />
+                        </div>
+                        <div className="schedule-field schedule-field-time-wrap">
+                          <label>שעה</label>
+                          <input type="time" value={igScheduleTime} onChange={(e) => setIgScheduleTime(e.target.value)} disabled={!igScheduleDate} className={!igScheduleDate ? 'disabled-input' : ''} />
+                        </div>
+                      </div>
+                      {igScheduleDate && igScheduleTime && (
+                        <div className="schedule-summary">📅 {new Date(`${igScheduleDate}T${igScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה {igScheduleTime}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {igScheduleMode === 'recurring' && (
+                    <div className="schedule-fields">
+                      <div className="schedule-section">
+                        <label className="schedule-section-label">תקופה</label>
+                        <RecurringDateRange startDate={igRecurringStartDate} endDate={igRecurringEndDate} onStartChange={setIgRecurringStartDate} onEndChange={setIgRecurringEndDate} minDate={toDateStr(new Date())} initialMonth={igRecurringStartDate ? new Date(igRecurringStartDate) : new Date()} />
+                      </div>
+                      <div className="schedule-section">
+                        <label className="schedule-section-label">באילו ימים?</label>
+                        <div className="days-grid">
+                          {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
+                            <button key={i} type="button" className={`day-btn ${igRecurringDays.includes(i)?'active':''}`}
+                              onClick={() => { setIgRecurringDays(prev => { if(prev.includes(i)){setIgDayTimes(dt=>{const c={...dt};delete c[i];return c});return prev.filter(d=>d!==i)} else{setIgDayTimes(dt=>({...dt,[i]:['']}));return[...prev,i]} }) }}>{day}</button>
+                          ))}
+                          <button type="button" className={`day-btn day-btn-all ${igRecurringDays.length===7?'active':''}`}
+                            onClick={() => { if(igRecurringDays.length===7){setIgRecurringDays([]);setIgDayTimes({})} else{setIgRecurringDays([0,1,2,3,4,5,6]);setIgDayTimes(dt=>{const c={...dt};for(let i=0;i<7;i++){if(!c[i])c[i]=['']}return c})} }}>כל יום</button>
+                        </div>
+                      </div>
+                      {igRecurringDays.length > 0 && (
+                        <div className="schedule-section day-times-section">
+                          <label className="schedule-section-label">שעות לכל יום</label>
+                          <div className="day-times-list">
+                            {igRecurringDays.sort((a,b)=>a-b).map(dayIdx => {
+                              const times = igDayTimes[dayIdx] || ['']
+                              return (
+                                <div key={dayIdx} className="day-times-card">
+                                  <div className="day-times-header">
+                                    <span className="day-times-day-name">יום {DAY_NAMES[dayIdx]}</span>
+                                    <span className="day-times-count">{times.filter(t=>t).length} שעות</span>
+                                  </div>
+                                  <div className="day-times-slots">
+                                    {times.map((time,ti) => (
+                                      <div key={ti} className="time-slot">
+                                        <input type="time" value={time} onChange={(e) => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
+                                        {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                      </div>
+                                    ))}
+                                    {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
+            )
+          })()}
 
           {/* Error banner */}
           {error && (

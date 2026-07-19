@@ -84,6 +84,8 @@ import schedulerRoutes from "./routes/scheduler.js";
 import templateRoutes from "./routes/templates.js";
 import subscriptionRoutes from "./routes/subscription.js";
 import aiRoutes from "./routes/ai.js";
+import feedbackRoutes from "./routes/feedback.js";
+import instagramRoutes from "./routes/instagram.js";
 
 // Use routes
 app.use("/api/auth/refresh", refreshLimiter);
@@ -96,6 +98,8 @@ app.use("/api/scheduler", schedulerRoutes);
 app.use("/api/templates", templateRoutes);
 app.use("/api/subscription", subscriptionRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/feedback", feedbackRoutes);
+app.use("/api/instagram", instagramRoutes);
 
 // Basic route
 app.get("/", (req, res) => {
