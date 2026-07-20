@@ -300,6 +300,79 @@
 }
 .reports-drp-apply:hover { background: var(--indigo); }
 
+/* Platform Filter */
+.reports-platform-filter {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.rpf-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.rpf-btn.active {
+  background: var(--indigo);
+  color: #fff;
+  border-color: var(--indigo);
+}
+
+.rpf-btn:hover:not(.active) {
+  border-color: var(--indigo);
+  color: var(--indigo);
+}
+
+/* Platform breakdown */
+.reports-platform-breakdown {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.rpb-item {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+}
+
+.rpb-facebook {
+  background: rgba(24, 119, 242, 0.1);
+  color: #1877f2;
+}
+
+.rpb-instagram {
+  background: linear-gradient(135deg, rgba(253, 29, 29, 0.08), rgba(131, 58, 180, 0.08));
+  color: #c13584;
+}
+
+/* Platform tag in table */
+.reports-platform-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.rpt-fb {
+  background: rgba(24, 119, 242, 0.1);
+  color: #1877f2;
+}
+
+.rpt-ig {
+  background: linear-gradient(135deg, rgba(253, 29, 29, 0.08), rgba(131, 58, 180, 0.08));
+  color: #c13584;
+}
+
 /* KPI Cards */
 .reports-kpis {
   display: grid;
@@ -368,7 +441,8 @@
   background: var(--bg-card, #1e2128);
   border: 1px solid var(--border, rgba(255,255,255,0.06));
   border-radius: 12px;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .reports-table {
@@ -382,13 +456,15 @@
 }
 
 .reports-table th:nth-child(1),
-.reports-table td:nth-child(1) { width: 30%; }
+.reports-table td:nth-child(1) { width: 25%; }
 .reports-table th:nth-child(2),
-.reports-table td:nth-child(2) { width: 30%; }
+.reports-table td:nth-child(2) { width: 20%; }
 .reports-table th:nth-child(3),
 .reports-table td:nth-child(3) { width: 15%; }
 .reports-table th:nth-child(4),
-.reports-table td:nth-child(4) { width: 25%; }
+.reports-table td:nth-child(4) { width: 15%; }
+.reports-table th:nth-child(5),
+.reports-table td:nth-child(5) { width: 25%; }
 
 .reports-table th {
   padding: 10px 14px;
@@ -819,18 +895,31 @@
   .reports-kpis { grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .reports-kpi { padding: 12px 8px; }
   .reports-kpi-val { font-size: 20px; }
+
+  /* Hide "יעד פרסום" column (2nd) on mobile */
   .reports-table th:nth-child(2),
   .reports-table td:nth-child(2) { display: none; }
+
+  /* Adjust remaining columns */
   .reports-table th:nth-child(1),
-  .reports-table td:nth-child(1) { width: 40%; }
+  .reports-table td:nth-child(1) { width: 35%; }
   .reports-table th:nth-child(3),
   .reports-table td:nth-child(3) { width: 25%; }
   .reports-table th:nth-child(4),
-  .reports-table td:nth-child(4) { width: 35%; }
+  .reports-table td:nth-child(4) { width: 20%; }
+  .reports-table th:nth-child(5),
+  .reports-table td:nth-child(5) { width: 20%; }
+
   .reports-popup { width: 95%; max-height: 85vh; border-radius: 12px; }
   .reports-detail-modal { width: 95%; max-height: 85vh; border-radius: 12px; }
   .reports-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .reports-table { min-width: 500px; }
   .reports-section-title { font-size: 14px; }
+
+  /* Platform filter responsive */
+  .reports-platform-filter { flex-wrap: wrap; gap: 6px; }
+  .rpf-btn { padding: 5px 12px; font-size: 12px; }
+  .reports-platform-breakdown { flex-wrap: wrap; gap: 8px; }
 
   .reports-date-wrap .drp-dropdown {
     position: fixed !important;

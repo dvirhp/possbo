@@ -150,6 +150,7 @@ export function DataProvider({ children }) {
 
     try {
       const refreshRes = await authAPI.refresh()
+      console.log('[DataProvider] refresh response:', refreshRes?.data?.user?.instagramConnected, refreshRes?.data?.user?.instagramUsername)
       // Use user data from refresh response if available (avoids extra getMe call)
       const userData = refreshRes?.data?.user
       if (userData) {

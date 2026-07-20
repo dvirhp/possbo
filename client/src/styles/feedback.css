@@ -1,0 +1,213 @@
+/* ══════════════════════════════════════════════════════════════
+   Feedback Page
+   ══════════════════════════════════════════════════════════════ */
+
+.feedback-page {
+  padding: 24px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.feedback-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 8px;
+  color: var(--indigo);
+}
+
+.feedback-header h1 {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.feedback-subtitle {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 0 0 36px;
+}
+
+/* ── Sections ─────────────────────────────────────────────── */
+
+.feedback-section {
+  margin-bottom: 28px;
+}
+
+.feedback-question {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--indigo);
+  margin: 0 0 10px;
+  text-align: right;
+}
+
+/* ── Feature chips ────────────────────────────────────────── */
+
+.feedback-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.feedback-chip {
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.feedback-chip:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+}
+
+.feedback-chip.active {
+  border-color: var(--violet);
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+
+/* ── Textareas ────────────────────────────────────────────── */
+
+.feedback-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s;
+  direction: rtl;
+  box-sizing: border-box;
+}
+
+.feedback-textarea::placeholder {
+  color: var(--text-dim);
+}
+
+.feedback-textarea:focus {
+  outline: none;
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 3px var(--indigo-soft);
+}
+
+.feedback-textarea-lg {
+  min-height: 110px;
+}
+
+/* ── Prompt hint ──────────────────────────────────────────── */
+
+.feedback-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: -4px 0 10px;
+  text-align: right;
+}
+
+/* ── Submit ───────────────────────────────────────────────── */
+
+.feedback-submit-wrap {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.feedback-submit-btn {
+  padding: 12px 40px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--gradient-brand);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.feedback-submit-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.feedback-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Error ────────────────────────────────────────────────── */
+
+.feedback-error {
+  color: var(--rose);
+  font-size: 14px;
+  margin: 8px 0 0;
+  text-align: right;
+}
+
+/* ── Success ──────────────────────────────────────────────── */
+
+.feedback-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  margin-top: 40px;
+}
+
+.feedback-success-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.feedback-success h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.feedback-success p {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Mobile ───────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .feedback-page {
+    padding: 16px;
+  }
+
+  .feedback-header h1 {
+    font-size: 24px;
+  }
+
+  .feedback-submit-wrap {
+    justify-content: stretch;
+  }
+
+  .feedback-submit-btn {
+    width: 100%;
+  }
+}

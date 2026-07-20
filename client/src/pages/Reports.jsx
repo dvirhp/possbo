@@ -287,6 +287,7 @@ export default function Reports() {
   const navigate = useNavigate()
   const { user, authChecked, posts, campaigns, groups, jobs, ensureFresh, forceRefresh } = useAppData()
   const [period, setPeriod] = useState('weekly')
+  const [platformFilter, setPlatformFilter] = useState('all') // 'all' | 'facebook' | 'instagram'
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showMoreHistory, setShowMoreHistory] = useState(false)
@@ -406,22 +407,35 @@ export default function Reports() {
     })
   }, [posts, campaigns])
 
+  // Helper: resolve effective platform from platform + targetType fields
+  const getEffectivePlatform = (p) => p.platform || (p.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK')
+
   // Compute stats based on period
   const stats = useMemo(() => {
-    if (!posts?.length) return { total: 0, success: 0, failed: 0, successRate: 0, groups: 0, exposure: 0 }
+    if (!posts?.length) return { total: 0, success: 0, failed: 0, successRate: 0, groups: 0, exposure: 0, fbCount: 0, igCount: 0 }
 
-    const filtered = posts.filter(p => {
+    let filtered = posts.filter(p => {
       const d = new Date(p.publishedAt || p.createdAt)
       return d >= startDate && d <= endDate
     })
+
+    // Apply platform filter
+    if (platformFilter === 'facebook') {
+      filtered = filtered.filter(p => getEffectivePlatform(p) !== 'INSTAGRAM')
+    } else if (platformFilter === 'instagram') {
+      filtered = filtered.filter(p => getEffectivePlatform(p) === 'INSTAGRAM')
+    }
+
     const success = filtered.filter(p => p.status === 'SUCCESS').length
     const failed = filtered.filter(p => p.status === 'FAILED').length
     const total = filtered.length
     const uniqueGroups = new Set(filtered.map(p => p.groupId).filter(Boolean)).size
     const exposure = filtered.reduce((sum, p) => sum + (p.groupMemberCount || 0), 0)
+    const fbCount = filtered.filter(p => getEffectivePlatform(p) !== 'INSTAGRAM').length
+    const igCount = filtered.filter(p => getEffectivePlatform(p) === 'INSTAGRAM').length
 
-    return { total, success, failed, successRate: total ? Math.round((success / total) * 100) : 0, groups: uniqueGroups, exposure }
-  }, [posts, startDate, endDate])
+    return { total, success, failed, successRate: total ? Math.round((success / total) * 100) : 0, groups: uniqueGroups, exposure, fbCount, igCount }
+  }, [posts, startDate, endDate, platformFilter])
 
   // Recent activity log
   const recentActivity = useMemo(() => {
@@ -429,7 +443,10 @@ export default function Reports() {
     return [...posts]
       .filter(p => {
         const d = new Date(p.publishedAt || p.createdAt)
-        return d >= startDate && d <= endDate
+        if (d < startDate || d > endDate) return false
+        if (platformFilter === 'facebook') return getEffectivePlatform(p) !== 'INSTAGRAM'
+        if (platformFilter === 'instagram') return getEffectivePlatform(p) === 'INSTAGRAM'
+        return true
       })
       .sort((a, b) => new Date(b.publishedAt || b.createdAt) - new Date(a.publishedAt || a.createdAt))
       .slice(0, showMoreHistory ? 30 : 10)
@@ -438,11 +455,13 @@ export default function Reports() {
         postId: p.postGroupId || p.postId || p.id,
         campaignName: p.post?.title || p.campaignTitle || p.title || p.post?.content?.slice(0, 40) || 'ללא שם',
         groupName: p.group?.name || p.groupName || 'לא ידוע',
+        platform: p.platform || (p.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'),
+        targetType: p.targetType || 'GROUP',
         status: p.status,
         date: p.publishedAt || p.createdAt,
         error: p.errorMessage || p.error,
       }))
-  }, [posts, showMoreHistory, startDate, endDate])
+  }, [posts, showMoreHistory, startDate, endDate, platformFilter])
 
   // Success/Failed lists for KPI popups
   const successList = useMemo(() => {
@@ -580,12 +599,14 @@ export default function Reports() {
           const key = `job-${j.id}`
           if (!seen.has(key)) {
             seen.add(key)
+            const jobPlatform = j.platform || (j.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK')
             items.push({
               id: j.id,
               postId: j.postGroup?.post?.id || j.postGroupId || j.id,
               campaignName: j.postGroup?.post?.title || j.postGroup?.post?.content?.slice(0, 40) || 'ללא שם',
-              groupName: j.postGroup?.group?.name || 'קבוצה',
+              groupName: j.targetType === 'INSTAGRAM' ? 'אינסטגרם' : (j.postGroup?.group?.name || 'קבוצה'),
               scheduledAt: j.scheduledAt,
+              platform: jobPlatform,
             })
           }
         }
@@ -616,20 +637,32 @@ export default function Reports() {
 
         seen.add(key)
         const groupName = c.groupNames?.join(', ') || `${c.groupCount || 0} קבוצות`
+        const hasFb = (c.groupCount > 0 || c.publishToProfile)
+        const hasIg = c.instagramEnabled
+        const campPlatform = (hasFb && hasIg) ? 'BOTH' : hasIg ? 'INSTAGRAM' : 'FACEBOOK'
         items.push({
           id: c.id,
           postId: c.id,
           campaignName: c.title || c.content?.substring(0, 40) || 'ללא שם',
           groupName,
           scheduledAt: nextAt,
+          platform: campPlatform,
         })
       })
     }
 
-    return items
+    // Apply platform filter
+    let filtered = items
+    if (platformFilter === 'facebook') {
+      filtered = items.filter(i => i.platform !== 'INSTAGRAM')
+    } else if (platformFilter === 'instagram') {
+      filtered = items.filter(i => i.platform === 'INSTAGRAM' || i.platform === 'BOTH')
+    }
+
+    return filtered
       .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
       .slice(0, showMoreScheduled ? 20 : 7)
-  }, [jobs, campaigns, showMoreScheduled])
+  }, [jobs, campaigns, showMoreScheduled, platformFilter])
 
   const formatDate = (d) => {
     if (!d) return ''
@@ -759,6 +792,13 @@ export default function Reports() {
 
       <div className="reports-content">
 
+        {/* Platform Filter */}
+        <div className="reports-platform-filter">
+          <button className={`rpf-btn ${platformFilter === 'all' ? 'active' : ''}`} onClick={() => setPlatformFilter('all')}>הכל</button>
+          <button className={`rpf-btn ${platformFilter === 'facebook' ? 'active' : ''}`} onClick={() => setPlatformFilter('facebook')}>פייסבוק</button>
+          <button className={`rpf-btn ${platformFilter === 'instagram' ? 'active' : ''}`} onClick={() => setPlatformFilter('instagram')}>אינסטגרם</button>
+        </div>
+
         {/* KPI Cards */}
         <div className="reports-kpis">
           <div className="reports-kpi clickable" onClick={() => stats.total > 0 && setKpiPopup('all')}>
@@ -793,6 +833,14 @@ export default function Reports() {
           </div>
         </div>
 
+        {/* Platform breakdown mini stats */}
+        {platformFilter === 'all' && (stats.fbCount > 0 || stats.igCount > 0) && (
+          <div className="reports-platform-breakdown">
+            {stats.fbCount > 0 && <span className="rpb-item rpb-facebook">פייסבוק: {stats.fbCount}</span>}
+            {stats.igCount > 0 && <span className="rpb-item rpb-instagram">אינסטגרם: {stats.igCount}</span>}
+          </div>
+        )}
+
         {/* Activity Log */}
         <div className="reports-section">
           <h2 className="reports-section-title">פעילות אחרונה</h2>
@@ -804,7 +852,8 @@ export default function Reports() {
                 <thead>
                   <tr>
                     <th>שם קמפיין</th>
-                    <th>קבוצת פרסום</th>
+                    <th>יעד פרסום</th>
+                    <th>פלטפורמה</th>
                     <th>סטטוס</th>
                     <th>תאריך</th>
                   </tr>
@@ -814,6 +863,7 @@ export default function Reports() {
                     <tr key={a.id} onClick={() => openDetail(a)}>
                       <td className="reports-cell-campaign">{a.campaignName}</td>
                       <td className="reports-cell-group">{a.groupName}</td>
+                      <td><span className={`reports-platform-tag ${a.platform === 'INSTAGRAM' ? 'rpt-ig' : 'rpt-fb'}`}>{a.platform === 'INSTAGRAM' ? 'אינסטגרם' : a.targetType === 'PROFILE' ? 'פרופיל' : 'פייסבוק'}{a.targetType === 'INSTAGRAM' && a.platform === 'INSTAGRAM' ? '' : ''}</span></td>
                       <td>
                         <span className={`reports-status ${a.status === 'SUCCESS' ? 'success' : 'failed'}`}>
                           {a.status === 'SUCCESS' ? <><CheckCircle size={14} /> הצלחה</> : <><XCircle size={14} /> נכשל</>}

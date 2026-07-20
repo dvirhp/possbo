@@ -144,9 +144,9 @@ describe('Dashboard page', () => {
     renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getAllByText('קבוצות').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/קבוצות/).length).toBeGreaterThanOrEqual(1);
     });
-    fireEvent.click(screen.getAllByText('קבוצות')[0]);
+    fireEvent.click(screen.getAllByText(/קבוצות/)[0]);
 
     await waitFor(() => {
       expect(screen.getByText('אין קבוצות שמורות')).toBeInTheDocument();
@@ -159,9 +159,9 @@ describe('Dashboard page', () => {
     renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getAllByText('קבוצות').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/קבוצות/).length).toBeGreaterThanOrEqual(1);
     });
-    fireEvent.click(screen.getAllByText('קבוצות')[0]);
+    fireEvent.click(screen.getAllByText(/קבוצות/)[0]);
 
     await waitFor(() => {
       expect(screen.getByText('קבוצת טסט')).toBeInTheDocument();

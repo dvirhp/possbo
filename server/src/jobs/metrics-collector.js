@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import {
   scrapeUserPublicationMetrics,
   savePublicationMetrics,
+  refreshInstagramMetrics,
 } from "../utils/metrics-scraper.js";
 import { createLogger } from "../utils/logger.js";
 
@@ -10,7 +11,7 @@ const prisma = new PrismaClient();
 
 /**
  * Collect engagement metrics for all publications from the last 30 days
- * across all users with valid Facebook sessions.
+ * across all users with valid Facebook sessions or Instagram connections.
  */
 export async function collectAllMetrics() {
   log.info("Starting metrics collection job");
@@ -24,7 +25,18 @@ export async function collectAllMetrics() {
     select: { id: true },
   });
 
-  if (users.length === 0) {
+  // Also find users with active IG connections (might not have FB session)
+  const igUsers = await prisma.connectedAccount.findMany({
+    where: { provider: "INSTAGRAM", status: "ACTIVE" },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+  const allUserIds = new Set([
+    ...users.map((u) => u.id),
+    ...igUsers.map((u) => u.userId),
+  ]);
+
+  if (allUserIds.size === 0) {
     log.info("No users with valid sessions, skipping metrics collection");
     return;
   }
@@ -32,13 +44,14 @@ export async function collectAllMetrics() {
   let totalScraped = 0;
   let totalSaved = 0;
 
-  for (const user of users) {
+  for (const userId of allUserIds) {
     try {
-      // Get publications from last 30 days with a valid URL
-      const publications = await prisma.publicationHistory.findMany({
+      // Get FB publications from last 30 days with a valid URL
+      const fbPublications = await prisma.publicationHistory.findMany({
         where: {
-          userId: user.id,
+          userId,
           status: "SUCCESS",
+          platform: "FACEBOOK",
           externalPostUrl: { not: null },
           publishedAt: { gte: thirtyDaysAgo },
         },
@@ -46,36 +59,69 @@ export async function collectAllMetrics() {
         orderBy: { publishedAt: "desc" },
       });
 
-      if (publications.length === 0) {
-        log.debug(`User ${user.id}: no recent publications to scrape`);
+      // Get IG publications from last 30 days with externalPostId
+      const igPublications = await prisma.publicationHistory.findMany({
+        where: {
+          userId,
+          status: "SUCCESS",
+          platform: "INSTAGRAM",
+          externalPostId: { not: null },
+          publishedAt: { gte: thirtyDaysAgo },
+        },
+        select: { id: true, externalPostId: true },
+        orderBy: { publishedAt: "desc" },
+      });
+
+      if (fbPublications.length === 0 && igPublications.length === 0) {
+        log.debug(`User ${userId}: no recent publications to scrape`);
         continue;
       }
 
-      log.info(
-        `User ${user.id}: scraping metrics for ${publications.length} publications`,
-      );
-
-      const results = await scrapeUserPublicationMetrics(user.id, publications);
-
-      for (const result of results) {
-        if (result.likes > 0 || result.comments > 0) {
-          await savePublicationMetrics(
-            result.publicationId,
-            result.likes,
-            result.comments,
-          );
-          totalSaved++;
+      // Facebook metrics via Playwright scraping
+      if (fbPublications.length > 0) {
+        log.info(
+          `User ${userId}: scraping FB metrics for ${fbPublications.length} publications`,
+        );
+        const results = await scrapeUserPublicationMetrics(
+          userId,
+          fbPublications,
+        );
+        for (const result of results) {
+          if (result.likes > 0 || result.comments > 0) {
+            await savePublicationMetrics(
+              result.publicationId,
+              result.likes,
+              result.comments,
+            );
+            totalSaved++;
+          }
         }
+        totalScraped += results.length;
       }
 
-      totalScraped += results.length;
+      // Instagram metrics via Graph API
+      if (igPublications.length > 0) {
+        log.info(
+          `User ${userId}: fetching IG metrics for ${igPublications.length} publications`,
+        );
+        const igResults = await refreshInstagramMetrics(userId, igPublications);
+        for (const result of igResults) {
+          if (result.likes > 0 || result.comments > 0) {
+            await savePublicationMetrics(
+              result.publicationId,
+              result.likes,
+              result.comments,
+            );
+            totalSaved++;
+          }
+        }
+        totalScraped += igResults.length;
+      }
 
       // Delay between users to avoid rate limiting
-      if (users.indexOf(user) < users.length - 1) {
-        await new Promise((r) => setTimeout(r, 10000 + Math.random() * 5000));
-      }
+      await new Promise((r) => setTimeout(r, 5000 + Math.random() * 5000));
     } catch (err) {
-      log.error(`Error collecting metrics for user ${user.id}:`, err.message);
+      log.error(`Error collecting metrics for user ${userId}:`, err.message);
     }
   }
 

@@ -100,9 +100,8 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
       {/* Table Header */}
       <div className="pdt-header">
         <span className="pdt-col pdt-col-post">פוסט</span>
-        <span className="pdt-col pdt-col-groups">קבוצות</span>
+        <span className="pdt-col pdt-col-platform">פלטפורמות</span>
         <span className="pdt-col pdt-col-status">סטטוס</span>
-        <span className="pdt-col pdt-col-exposure">חשיפה</span>
         <span className="pdt-col pdt-col-time">זמן מתוזמן</span>
         <span className="pdt-col pdt-col-actions"></span>
       </div>
@@ -146,24 +145,11 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
                 </div>
               </div>
 
-              {/* Groups column */}
-              <div className="pdt-col pdt-col-groups">
-                <div className="pdt-group-avatars">
-                  {campaign.publishToProfile && (
-                    <div className="pdt-group-avatar pdt-profile-badge" title="פרופיל אישי">
-                      <span>👤</span>
-                    </div>
-                  )}
-                  {groups.slice(0, 2).map((g, i) => (
-                    <div key={i} className="pdt-group-avatar" title={g.name}>
-                      {g.pictureUrl || g.image ? (
-                        <img src={g.pictureUrl || g.image} alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex') }} />
-                      ) : null}
-                      <span style={g.pictureUrl || g.image ? { display: 'none' } : {}}>{g.name?.[0] || '?'}</span>
-                    </div>
-                  ))}
-                  {groupCount > 2 && <span className="pdt-group-more">+{groupCount - 2}</span>}
-                  {!campaign.publishToProfile && groupCount === 0 && <span className="pdt-group-more">0 קבוצות</span>}
+              {/* Platform column */}
+              <div className="pdt-col pdt-col-platform">
+                <div className="pdt-platform-tags">
+                  {(groupCount > 0 || campaign.publishToProfile) && <span className="platform-badge platform-facebook">FB</span>}
+                  {campaign.instagramEnabled && <span className="platform-badge platform-instagram">IG</span>}
                 </div>
               </div>
 
@@ -175,10 +161,7 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
                 </span>
               </div>
 
-              {/* Exposure column */}
-              <div className="pdt-col pdt-col-exposure">
-                <span className="pdt-exposure-val">{campaign.totalExposure ? formatExposure(campaign.totalExposure) : '0'}</span>
-              </div>
+
 
               {/* Time column */}
               <div className="pdt-col pdt-col-time">

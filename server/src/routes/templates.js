@@ -158,6 +158,27 @@ router.post(
       recurringTimes,
       dayTimes,
       groupIds,
+      // Profile publishing
+      publishToProfile,
+      profileScheduleMode,
+      profileScheduleDate,
+      profileScheduleTime,
+      profileRecurringDays,
+      profileDayTimes,
+      profileRecurringStartDate,
+      profileRecurringEndDate,
+      // Instagram publishing
+      instagramEnabled,
+      instagramPublishTypes,
+      storyMediaMode,
+      storyPickedIndex,
+      igScheduleMode,
+      igScheduleDate,
+      igScheduleTime,
+      igRecurringDays,
+      igDayTimes,
+      igRecurringStartDate,
+      igRecurringEndDate,
     } = req.body;
 
     if (!name?.trim()) {
@@ -190,6 +211,30 @@ router.post(
         dayTimes: safeParse(dayTimes, null),
         groupIds: safeParse(groupIds, []),
         imageUrls,
+        // Profile publishing
+        publishToProfile:
+          publishToProfile === "true" || publishToProfile === true,
+        profileScheduleMode: profileScheduleMode || null,
+        profileScheduleDate: profileScheduleDate?.trim?.() || null,
+        profileScheduleTime: profileScheduleTime?.trim?.() || null,
+        profileRecurringDays: safeParse(profileRecurringDays, []),
+        profileDayTimes: safeParse(profileDayTimes, null),
+        profileRecurringStartDate: profileRecurringStartDate?.trim?.() || null,
+        profileRecurringEndDate: profileRecurringEndDate?.trim?.() || null,
+        // Instagram publishing
+        instagramEnabled:
+          instagramEnabled === "true" || instagramEnabled === true,
+        instagramPublishTypes: safeParse(instagramPublishTypes, []),
+        storyMediaMode: storyMediaMode || null,
+        storyPickedIndex:
+          storyPickedIndex != null ? parseInt(storyPickedIndex, 10) : null,
+        igScheduleMode: igScheduleMode || null,
+        igScheduleDate: igScheduleDate?.trim?.() || null,
+        igScheduleTime: igScheduleTime?.trim?.() || null,
+        igRecurringDays: safeParse(igRecurringDays, []),
+        igDayTimes: safeParse(igDayTimes, null),
+        igRecurringStartDate: igRecurringStartDate?.trim?.() || null,
+        igRecurringEndDate: igRecurringEndDate?.trim?.() || null,
       },
     });
 
@@ -225,6 +270,27 @@ router.put(
       dayTimes,
       groupIds,
       existingImages,
+      // Profile publishing
+      publishToProfile,
+      profileScheduleMode,
+      profileScheduleDate,
+      profileScheduleTime,
+      profileRecurringDays,
+      profileDayTimes,
+      profileRecurringStartDate,
+      profileRecurringEndDate,
+      // Instagram publishing
+      instagramEnabled,
+      instagramPublishTypes,
+      storyMediaMode,
+      storyPickedIndex,
+      igScheduleMode,
+      igScheduleDate,
+      igScheduleTime,
+      igRecurringDays,
+      igDayTimes,
+      igRecurringStartDate,
+      igRecurringEndDate,
     } = req.body;
 
     const newImageUrls = (req.files || []).map(
@@ -252,6 +318,30 @@ router.put(
         dayTimes: safeParse(dayTimes, null),
         groupIds: safeParse(groupIds, []),
         imageUrls,
+        // Profile publishing
+        publishToProfile:
+          publishToProfile === "true" || publishToProfile === true,
+        profileScheduleMode: profileScheduleMode || null,
+        profileScheduleDate: profileScheduleDate?.trim?.() || null,
+        profileScheduleTime: profileScheduleTime?.trim?.() || null,
+        profileRecurringDays: safeParse(profileRecurringDays, []),
+        profileDayTimes: safeParse(profileDayTimes, null),
+        profileRecurringStartDate: profileRecurringStartDate?.trim?.() || null,
+        profileRecurringEndDate: profileRecurringEndDate?.trim?.() || null,
+        // Instagram publishing
+        instagramEnabled:
+          instagramEnabled === "true" || instagramEnabled === true,
+        instagramPublishTypes: safeParse(instagramPublishTypes, []),
+        storyMediaMode: storyMediaMode || null,
+        storyPickedIndex:
+          storyPickedIndex != null ? parseInt(storyPickedIndex, 10) : null,
+        igScheduleMode: igScheduleMode || null,
+        igScheduleDate: igScheduleDate?.trim?.() || null,
+        igScheduleTime: igScheduleTime?.trim?.() || null,
+        igRecurringDays: safeParse(igRecurringDays, []),
+        igDayTimes: safeParse(igDayTimes, null),
+        igRecurringStartDate: igRecurringStartDate?.trim?.() || null,
+        igRecurringEndDate: igRecurringEndDate?.trim?.() || null,
       },
     });
 

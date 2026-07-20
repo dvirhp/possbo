@@ -22,6 +22,7 @@ const mockUserFindUnique = vi.fn();
 const mockUserFindFirst = vi.fn();
 const mockUserUpdate = vi.fn();
 const mockSubscriptionFindFirst = vi.fn();
+const mockConnectedAccountFindFirst = vi.fn();
 
 vi.mock("@prisma/client", () => ({
   PrismaClient: vi.fn(() => ({
@@ -33,6 +34,9 @@ vi.mock("@prisma/client", () => ({
     },
     subscription: {
       findFirst: mockSubscriptionFindFirst,
+    },
+    connectedAccount: {
+      findFirst: mockConnectedAccountFindFirst,
     },
   })),
 }));
@@ -68,6 +72,8 @@ beforeEach(async () => {
   mockUserFindUnique.mockReset();
   mockUserFindFirst.mockReset().mockResolvedValue(null);
   mockUserUpdate.mockReset().mockResolvedValue({});
+  mockSubscriptionFindFirst.mockReset().mockResolvedValue(null);
+  mockConnectedAccountFindFirst.mockReset().mockResolvedValue(null);
 
   const authModule = await import("../../src/routes/auth.js");
 
@@ -518,13 +524,11 @@ describe("POST /api/auth/reset-password", () => {
   });
 
   it("should return 400 when no pending reset code", async () => {
-    const res = await request(app)
-      .post("/api/auth/reset-password")
-      .send({
-        email: "nobody@test.com",
-        code: "123456",
-        newPassword: "newpass123",
-      });
+    const res = await request(app).post("/api/auth/reset-password").send({
+      email: "nobody@test.com",
+      code: "123456",
+      newPassword: "newpass123",
+    });
     expect(res.status).toBe(400);
   });
 
@@ -539,13 +543,11 @@ describe("POST /api/auth/reset-password", () => {
       .send({ email: "reset@test.com" });
 
     mockUserUpdate.mockResolvedValue({});
-    const res = await request(app)
-      .post("/api/auth/reset-password")
-      .send({
-        email: "reset@test.com",
-        code: "123456",
-        newPassword: "newpassword123",
-      });
+    const res = await request(app).post("/api/auth/reset-password").send({
+      email: "reset@test.com",
+      code: "123456",
+      newPassword: "newpassword123",
+    });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);

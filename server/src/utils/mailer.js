@@ -167,3 +167,88 @@ export async function sendPasswordResetEmail(to, code) {
 export function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
+
+/**
+ * Send feedback email to the site admin
+ */
+export async function sendFeedbackEmail({
+  userName,
+  userEmail,
+  features,
+  answers,
+  prompt,
+}) {
+  const questionLabels = {
+    favorite: "מה הכי אהבת?",
+    leastFavorite: "מה הכי פחות אהבת?",
+    searchFeedback: "מה דעתך על החיפוש?",
+    jobScreenFeedback: "מסך משרה – מה היית רוצה לשנות או לשפר?",
+    missingFree: "מה חסר לך היום בגרסה החינמית?",
+    upgradeTrigger: "מה היה גורם לך לשדרג למנוי פרימיום?",
+  };
+
+  const answersHtml = Object.entries(answers)
+    .filter(([, v]) => v && v.trim())
+    .map(
+      ([k, v]) => `
+      <tr><td style="padding:8px 12px;font-weight:600;color:#6366f1;vertical-align:top;white-space:nowrap;">${questionLabels[k] || k}</td></tr>
+      <tr><td style="padding:4px 12px 16px;color:#1a1a2e;">${v.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td></tr>
+    `,
+    )
+    .join("");
+
+  const bodyContent = `
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1a1a2e;text-align:center;">📝 פידבק חדש</h2>
+    <table role="presentation" width="100%" style="margin-bottom:16px;">
+      <tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;"><strong>משתמש:</strong> ${userName.replace(/</g, "&lt;")} (${userEmail})</td></tr>
+    </table>
+    ${
+      features.length > 0
+        ? `
+    <div style="padding:8px 12px;margin-bottom:16px;">
+      <strong style="color:#6366f1;font-size:14px;">פיצ׳רים שנוסו:</strong><br/>
+      <span style="font-size:13px;color:#1a1a2e;">${features.map((f) => f.replace(/</g, "&lt;")).join(", ")}</span>
+    </div>`
+        : ""
+    }
+    <table role="presentation" width="100%">
+      ${answersHtml}
+    </table>
+    ${
+      prompt.trim()
+        ? `
+    <div style="padding:12px;margin-top:8px;background:#f0f0ff;border-radius:8px;">
+      <strong style="color:#6366f1;font-size:14px;">פרומפט מוצע:</strong>
+      <p style="margin:8px 0 0;font-size:13px;color:#1a1a2e;white-space:pre-wrap;">${prompt.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+    </div>`
+        : ""
+    }
+  `;
+
+  const html = buildEmailHtml({ title: "פידבק חדש - PostIt", bodyContent });
+
+  const textParts = [`פידבק חדש מ-${userName} (${userEmail})`];
+  if (features.length > 0) textParts.push(`פיצ'רים: ${features.join(", ")}`);
+  Object.entries(answers)
+    .filter(([, v]) => v?.trim())
+    .forEach(([k, v]) => {
+      textParts.push(`${questionLabels[k] || k}: ${v}`);
+    });
+  if (prompt.trim()) textParts.push(`פרומפט: ${prompt}`);
+
+  try {
+    await transporter.sendMail({
+      from: `"PostIt Feedback" <${process.env.SMTP_USER}>`,
+      to: process.env.SMTP_USER,
+      replyTo: userEmail,
+      subject: `📝 פידבק חדש מ-${userName}`,
+      html,
+      text: textParts.join("\n\n"),
+    });
+    log.info(`Feedback email sent from ${userEmail}`);
+    return true;
+  } catch (error) {
+    log.error("Failed to send feedback email", error);
+    throw error;
+  }
+}

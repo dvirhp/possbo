@@ -6,7 +6,7 @@ import { useNavigationGuard } from '../context/NavigationGuard'
 import {
   LayoutDashboard, SquarePen, Users, CalendarDays, BarChart3,
   LayoutTemplate, History, BookOpen, Settings, Moon, Sun, LogOut,
-  Menu, X, Bell, Home, Sparkles, ChevronLeft, ChevronDown, CreditCard
+  Menu, X, Bell, Home, Sparkles, ChevronLeft, ChevronDown, CreditCard, MessageSquareHeart
 } from 'lucide-react'
 import NotificationSettings from './NotificationSettings'
 import '../styles/bottom-nav.css'
@@ -22,13 +22,14 @@ const MAIN_ITEMS = [
 
 const DRAWER_ITEMS = [
   { path: '/dashboard?tab=overview', icon: LayoutDashboard, label: 'דשבורד' },
-  { path: '/dashboard?tab=groups', icon: Users, label: 'קבוצות' },
+  { path: '/dashboard?tab=groups', icon: Users, label: 'קבוצות FB' },
   { path: '/dashboard?tab=campaigns', icon: SquarePen, label: 'קמפיינים' },
   { path: '/scheduled', icon: CalendarDays, label: 'יומן' },
   { path: '/dashboard?tab=stats', icon: BarChart3, label: 'סטטיסטיקות' },
   { path: '/templates', icon: LayoutTemplate, label: 'טמפלייטים' },
   { path: '/reports', icon: History, label: 'דוחות וסיכום' },
   { path: '/generate-post', icon: Sparkles, label: 'יצירת פוסט AI' },
+  { path: '/feedback', icon: MessageSquareHeart, label: 'פידבק' },
 ]
 
 export default function BottomNav() {

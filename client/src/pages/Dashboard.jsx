@@ -105,7 +105,7 @@ import OtpInput from '../components/OtpInput'
 
 const TABS = [
   { id: 'campaigns', icon: '📅', label: 'קמפיינים' },
-  { id: 'groups', icon: '👥', label: 'קבוצות' },
+  { id: 'groups', icon: '👥', label: 'קבוצות פייסבוק' },
   { id: 'posts', icon: '📝', label: 'פרסומים' },
   { id: 'stats', icon: '📊', label: 'סטטיסטיקה' },
   { id: 'account', icon: '👤', label: 'ניהול חשבון' },
@@ -113,7 +113,7 @@ const TABS = [
 
 const NAV_ITEMS = [
   { id: 'campaigns', icon: 'calendar', label: 'קמפיינים' },
-  { id: 'groups', icon: 'users', label: 'קבוצות' },
+  { id: 'groups', icon: 'users', label: 'קבוצות פייסבוק' },
   { id: 'posts', icon: 'send', label: 'פרסומים' },
   { id: 'stats', icon: 'chart', label: 'סטטיסטיקה' },
   { id: 'account', icon: 'account', label: 'ניהול חשבון' },
@@ -172,6 +172,7 @@ export default function Dashboard() {
   // Filters
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [platformFilter, setPlatformFilter] = useState('all') // 'all' | 'facebook' | 'instagram' | 'both'
   const [groupFilter, setGroupFilter] = useState('all')
   const [groupFilterOpen, setGroupFilterOpen] = useState(false)
   const [groupFilterSearch, setGroupFilterSearch] = useState('')
@@ -343,6 +344,7 @@ export default function Dashboard() {
   useEffect(() => {
     setSearch('')
     setStatusFilter('all')
+    setPlatformFilter('all')
     setGroupFilter('all')
     setGroupFilterOpen(false)
     setGroupFilterSearch('')
@@ -354,10 +356,11 @@ export default function Dashboard() {
     window.scrollTo(0, 0)
   }, [activeTab])
 
-  const hasActiveFilters = statusFilter !== 'all' || groupFilter !== 'all' || templateFilter !== 'all' || sortBy !== 'date'
+  const hasActiveFilters = statusFilter !== 'all' || platformFilter !== 'all' || groupFilter !== 'all' || templateFilter !== 'all' || sortBy !== 'date'
 
   const resetFilters = () => {
     setStatusFilter('all')
+    setPlatformFilter('all')
     setGroupFilter('all')
     setTemplateFilter('all')
     setSortBy(activeTab === 'groups' ? 'name' : 'date')
@@ -404,6 +407,16 @@ export default function Dashboard() {
       list = list.filter(c => c.status === statusFilter)
     }
 
+    if (platformFilter !== 'all') {
+      if (platformFilter === 'facebook') {
+        list = list.filter(c => (c.groupCount > 0 || c.publishToProfile) && !c.instagramEnabled)
+      } else if (platformFilter === 'instagram') {
+        list = list.filter(c => c.instagramEnabled && c.groupCount === 0 && !c.publishToProfile)
+      } else if (platformFilter === 'both') {
+        list = list.filter(c => c.instagramEnabled && (c.groupCount > 0 || c.publishToProfile))
+      }
+    }
+
     if (groupFilter !== 'all') {
       list = list.filter(c => c.groupNames?.includes(groupFilter))
     }
@@ -420,7 +433,7 @@ export default function Dashboard() {
       list = [...list].sort((a, b) => (a.title || a.content || '').localeCompare(b.title || b.content || ''))
     }
     return list
-  }, [campaigns, search, statusFilter, groupFilter, templateFilter, sortBy, dashDateRange])
+  }, [campaigns, search, statusFilter, platformFilter, groupFilter, templateFilter, sortBy, dashDateRange])
 
   const filteredGroups = useMemo(() => {
     let list = groups
@@ -817,6 +830,15 @@ export default function Dashboard() {
                       </select>
                     )}
 
+                    {activeTab === 'campaigns' && (
+                      <select value={platformFilter} onChange={e => setPlatformFilter(e.target.value)} className="filter-select">
+                        <option value="all">כל הפלטפורמות</option>
+                        <option value="facebook">פייסבוק בלבד</option>
+                        <option value="instagram">אינסטגרם בלבד</option>
+                        <option value="both">פייסבוק + אינסטגרם</option>
+                      </select>
+                    )}
+
 
 
                     {activeTab === 'campaigns' && campaignGroupNames.length > 1 && (
@@ -1040,6 +1062,29 @@ export default function Dashboard() {
                               onClick={() => setStatusFilter(opt.value)}
                             >
                               {opt.label} ({opt.count})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Platform filter */}
+                    {activeTab === 'campaigns' && (
+                      <div className="filter-sheet-section">
+                        <label className="filter-sheet-label">פלטפורמה</label>
+                        <div className="filter-sheet-chips">
+                          {[
+                            { value: 'all', label: 'הכל' },
+                            { value: 'facebook', label: 'פייסבוק' },
+                            { value: 'instagram', label: 'אינסטגרם' },
+                            { value: 'both', label: 'שתיהן' },
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              className={`filter-chip ${platformFilter === opt.value ? 'active' : ''}`}
+                              onClick={() => setPlatformFilter(opt.value)}
+                            >
+                              {opt.label}
                             </button>
                           ))}
                         </div>
@@ -1471,14 +1516,11 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
           <span className="cl-col cl-col-post cl-sortable" onClick={() => handleCampaignSort('name')}>
             פוסט {sortKey === 'name' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
           </span>
-          <span className="cl-col cl-col-groups cl-sortable" onClick={() => handleCampaignSort('groups')}>
-            קבוצות {sortKey === 'groups' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+          <span className="cl-col cl-col-platform">
+            פלטפורמות
           </span>
           <span className="cl-col cl-col-status cl-sortable" onClick={() => handleCampaignSort('status')}>
             סטטוס {sortKey === 'status' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
-          </span>
-          <span className="cl-col cl-col-exposure cl-sortable" onClick={() => handleCampaignSort('exposure')}>
-            חשיפה {sortKey === 'exposure' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
           </span>
           <span className="cl-col cl-col-date cl-sortable" onClick={() => handleCampaignSort('date')}>
             תאריך {sortKey === 'date' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
@@ -1511,29 +1553,17 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
                   {campaign.content && <span className="cl-post-subtitle">{campaign.content.length > 50 ? campaign.content.slice(0, 50) + '...' : campaign.content}</span>}
                 </div>
               </div>
-              {/* Groups */}
-              <div className="cl-col cl-col-groups">
-                <div className="cl-group-avatars">
-                  {(campaign.groups || []).slice(0, 2).map((g, i) => (
-                    <div key={i} className="cl-group-avatar" title={g.name}>
-                      {g.image ? <img src={g.image} alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex') }} /> : null}
-                      <span style={g.image ? { display: 'none' } : {}}>{g.name?.[0] || '?'}</span>
-                    </div>
-                  ))}
-                  {(campaign.groupCount || 0) > 2 && <span className="cl-group-more">+{campaign.groupCount - 2}</span>}
+              {/* Platform */}
+              <div className="cl-col cl-col-platform">
+                <div className="cl-platform-tags">
+                  {(campaign.groupCount > 0 || campaign.publishToProfile) && <span className="platform-badge platform-facebook">FB</span>}
+                  {campaign.instagramEnabled && <span className="platform-badge platform-instagram">IG</span>}
                 </div>
               </div>
               {/* Status */}
               <div className="cl-col cl-col-status">
                 <span className={`cl-status-badge ${STATUS_CLASSES[campaign.status] || 'badge-active'}`}>
                   {STATUS_LABELS[campaign.status] || campaign.status}
-                </span>
-              </div>
-              {/* Exposure */}
-              <div className="cl-col cl-col-exposure">
-                <span className="cl-exposure-val">
-                  {formatExposure(campaign.totalExposure)}
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </span>
               </div>
               {/* Date */}
@@ -1688,8 +1718,20 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
                 {(campaign.groupCount || 0) > 3 && <span className="campaign-card-avatar-more">+{campaign.groupCount - 3}</span>}
               </div>
               <span className="campaign-card-group-label">
-                {campaign.groupCount === 1 ? campaign.groupNames?.[0] || 'קבוצה אחת' : `${campaign.groupCount} קבוצות`}
+                {campaign.groupCount === 1 ? campaign.groupNames?.[0] || 'קבוצה אחת' : campaign.groupCount > 0 ? `${campaign.groupCount} קבוצות` : ''}
               </span>
+            </div>
+
+            {/* Platform badges */}
+            <div className="campaign-card-platforms">
+              {(campaign.groupCount > 0 || campaign.publishToProfile) && (
+                <span className="platform-badge platform-facebook">פייסבוק{campaign.publishToProfile ? ' + פרופיל' : ''}</span>
+              )}
+              {campaign.instagramEnabled && (
+                <span className="platform-badge platform-instagram">
+                  אינסטגרם{campaign.instagramPublishType === 'STORY' ? ' · סטורי' : campaign.instagramPublishType === 'REEL' ? ' · ריל' : ' · פיד'}
+                </span>
+              )}
             </div>
 
             {/* Footer: exposure | date */}
@@ -2319,6 +2361,7 @@ function StatsPanel({ stats }) {
 
   // Top posts state
   const [topPostsSort, setTopPostsSort] = useState('likes')
+  const [topPostsPlatform, setTopPostsPlatform] = useState('all')
   const [refreshingAll, setRefreshingAll] = useState(false)
 
   // Cache helpers
@@ -2601,7 +2644,7 @@ function StatsPanel({ stats }) {
                 if (refreshingAll) return
                 setRefreshingAll(true)
                 window.dispatchEvent(new CustomEvent('postit-op-start', {
-                  detail: { id: 'refresh-all-metrics', msg: '🔄 מרענן נתוני מעורבות מפייסבוק... ניתן להמשיך לגלוש באתר' }
+                  detail: { id: 'refresh-all-metrics', msg: '🔄 מרענן נתוני מעורבות מפייסבוק ואינסטגרם... ניתן להמשיך לגלוש באתר' }
                 }))
                 groupsService.refreshAllMetrics()
                   .then(async (refreshRes) => {
@@ -2647,15 +2690,31 @@ function StatsPanel({ stats }) {
             </div>
           </div>
         </div>
+        <div className="top-posts-platform-filter">
+          <button className={`top-posts-platform-btn ${topPostsPlatform === 'all' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('all')}>הכל</button>
+          <button className={`top-posts-platform-btn ${topPostsPlatform === 'facebook' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('facebook')}>Facebook</button>
+          <button className={`top-posts-platform-btn ${topPostsPlatform === 'instagram' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('instagram')}>Instagram</button>
+        </div>
         {topPostsLoading ? (
           <div className="top-posts-loading">טוען...</div>
         ) : topPosts.length === 0 ? (
           <div className="top-posts-empty">
             <p>אין עדיין נתוני מעורבות. לחץ על כפתור הרענון (🔄) ליד כל פרסום כדי למשוך לייקים ותגובות.</p>
           </div>
-        ) : (
+        ) : (() => {
+          const filtered = topPosts.filter(p => {
+            if (topPostsPlatform === 'all') return true
+            if (topPostsPlatform === 'facebook') return (p.platform || 'FACEBOOK') === 'FACEBOOK'
+            if (topPostsPlatform === 'instagram') return p.platform === 'INSTAGRAM'
+            return true
+          })
+          return filtered.length === 0 ? (
+            <div className="top-posts-empty">
+              <p>אין פוסטים עבור הפלטפורמה שנבחרה</p>
+            </div>
+          ) : (
           <div className="top-posts-list">
-            {topPosts.slice(0, topPostsVisible).map((p, i) => (
+            {filtered.slice(0, topPostsVisible).map((p, i) => (
               <Fragment key={p.id}>
                 <div
                   className={`top-post-row ${i === 0 ? 'top-post-gold' : i === 1 ? 'top-post-silver' : i === 2 ? 'top-post-bronze' : ''} ${expandedPostId === p.id ? 'top-post-expanded' : ''}`}
@@ -2665,7 +2724,12 @@ function StatsPanel({ stats }) {
                   <span className="top-post-rank">{i + 1}</span>
                   <div className="top-post-info">
                     <span className="top-post-title">{p.title || 'ללא כותרת'}</span>
-                    <span className="top-post-group">{p.groupName}</span>
+                    <span className="top-post-group">
+                      <span className={`top-post-platform-badge ${p.platform === 'INSTAGRAM' ? 'ig' : 'fb'}`}>
+                        {p.platform === 'INSTAGRAM' ? (p.igType === 'REEL' ? 'ריל' : p.igType === 'STORY' ? 'סטורי' : 'פוסט IG') : 'Facebook'}
+                      </span>
+                      {p.groupName ? ` • ${p.groupName}` : ''}
+                    </span>
                   </div>
                   <div className="top-post-metrics">
                     <span className="top-post-metric" title="לייקים">
@@ -2701,20 +2765,21 @@ function StatsPanel({ stats }) {
                     {p.externalPostUrl && (
                       <a href={p.externalPostUrl} target="_blank" rel="noopener noreferrer" className="top-post-fb-link">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                        צפה בפוסט בפייסבוק
+                        {p.platform === 'INSTAGRAM' ? 'צפה בפוסט באינסטגרם' : 'צפה בפוסט בפייסבוק'}
                       </a>
                     )}
                   </div>
                 )}
               </Fragment>
             ))}
-            {topPosts.length > topPostsVisible && (
+            {filtered.length > topPostsVisible && (
               <button className="top-posts-show-more" onClick={() => setTopPostsVisible(prev => prev + 10)}>
-                הצג עוד ({topPosts.length - topPostsVisible} נוספים)
+                הצג עוד ({filtered.length - topPostsVisible} נוספים)
               </button>
             )}
           </div>
-        )}
+          )
+        })()}
       </div>
 
       {/* Best Posting Times */}
@@ -2986,7 +3051,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
 
   return (
     <div className="settings-page">
-      {/* ═══ Profile Hero (Centered Avatar + Name) ═══ */}
+      {/* ═══ Profile Hero ═══ */}
       <div className="settings-hero">
         <div className="settings-avatar-wrap">
           <div className="settings-avatar">
@@ -3012,174 +3077,121 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
         <p className="settings-hero-email">{user?.email || ''}</p>
       </div>
 
-      {/* ═══ Cards Grid ═══ */}
-      <div className="settings-grid">
-        {/* ─── Profile Card ─── */}
-        <section className="settings-card">
-          <div className="settings-card-header">
-            <div className="settings-card-icon">👤</div>
-            <h3>פרטי משתמש</h3>
+      {/* ═══ Sections ═══ */}
+      <div className="settings-sections-wrap">
+
+        {/* ─── Basic Info Section ─── */}
+        <section className="settings-sect">
+          <div className="settings-sect-header">
+            <h3 className="settings-sect-title">מידע בסיסי</h3>
             {!editing && (
-              <button className="settings-edit-btn" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }}>
-                ✏️ ערוך
+              <button className="settings-sect-edit" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
               </button>
             )}
           </div>
-          <div className="settings-card-body">
+          <div className="settings-sect-body">
             {editing ? (
               <>
-                <div className="settings-field">
-                  <label>שם</label>
-                  <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="השם שלך" />
-                </div>
-                <div className="settings-field">
-                  <label>אימייל</label>
-                  <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="email@example.com" type="email" dir="ltr" />
+                <div className="settings-fields-grid">
+                  <div className="settings-field">
+                    <label>שם</label>
+                    <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="השם שלך" />
+                  </div>
+                  <div className="settings-field">
+                    <label>אימייל</label>
+                    <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="email@example.com" type="email" dir="ltr" />
+                  </div>
                 </div>
                 {editError && <div className="settings-msg settings-msg-error">{editError}</div>}
                 <div className="settings-field-actions">
                   <button className="settings-btn-save" onClick={handleSaveProfile} disabled={saving}>
-                    {saving ? '⏳ שומר...' : '💾 שמור שינויים'}
+                    {saving ? '⏳ שומר...' : 'שמור שינויים'}
                   </button>
                   <button className="settings-btn-cancel" onClick={() => setEditing(false)}>ביטול</button>
                 </div>
               </>
             ) : (
-              <>
-                <div className="settings-info-row">
-                  <span className="settings-info-label">שם</span>
-                  <span className="settings-info-value">{user?.name || ''}</span>
+              <div className="settings-fields-grid">
+                <div className="settings-field-display">
+                  <span className="settings-field-label">שם פרטי</span>
+                  <span className="settings-field-value">{user?.name || '—'}</span>
                 </div>
-                <div className="settings-info-row">
-                  <span className="settings-info-label">אימייל</span>
-                  <span className="settings-info-value">{user?.email || ''}</span>
-                </div>
-              </>
-            )}
-
-            {/* Password change */}
-            <div className="settings-divider" />
-            {!showPassword ? (
-              <button className="settings-btn-outline" onClick={() => setShowPassword(true)}>
-                🔒 שנה סיסמה
-              </button>
-            ) : (
-              <div className="settings-password-form">
-                {pwStep === 1 ? (
-                  <div className="settings-field">
-                    <label>סיסמה נוכחית</label>
-                    <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="הזן סיסמה נוכחית" dir="ltr" />
-                    <span className="settings-field-hint hint-info">לאחר אימות, ישלח קוד למייל שלך</span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="settings-msg settings-msg-success" style={{ marginBottom: 12 }}>
-                      📧 קוד אימות נשלח ל-{user?.email}
-                    </div>
-                    <div className="settings-field">
-                      <label>קוד אימות</label>
-                      <OtpInput length={6} value={pwCode} onChange={setPwCode} />
-                    </div>
-                    <div className="settings-field">
-                      <label>סיסמה חדשה</label>
-                      <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="לפחות 6 תווים" dir="ltr" />
-                    </div>
-                    <div className="settings-field">
-                      <label>אימות סיסמה חדשה</label>
-                      <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="הזן שוב" dir="ltr" />
-                    </div>
-                  </>
-                )}
-                {pwError && <div className="settings-msg settings-msg-error">{pwError}</div>}
-                {pwSuccess && <div className="settings-msg settings-msg-success">✓ הסיסמה שונתה בהצלחה!</div>}
-                <div className="settings-field-actions">
-                  <button className="settings-btn-save" onClick={handleChangePassword} disabled={pwSaving || (pwStep === 1 ? !currentPassword : (!pwCode || !newPassword))}>
-                    {pwSaving ? '⏳' : pwStep === 1 ? '📧 שלח קוד אימות' : '🔑 שנה סיסמה'}
-                  </button>
-                  <button className="settings-btn-cancel" onClick={() => { setShowPassword(false); setPwError(null); setPwStep(1); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPwCode('') }}>ביטול</button>
+                <div className="settings-field-display">
+                  <span className="settings-field-label">אימייל</span>
+                  <span className="settings-field-value">{user?.email || '—'}</span>
                 </div>
               </div>
             )}
           </div>
         </section>
 
-        {/* ─── Connections Card ─── */}
-        <section className="settings-card">
-          <div className="settings-card-header">
-            <div className="settings-card-icon">🔗</div>
-            <h3>חיבורים</h3>
+        {/* ─── Connections Section ─── */}
+        <section className="settings-sect">
+          <div className="settings-sect-header">
+            <h3 className="settings-sect-title">חיבורים</h3>
           </div>
-          <div className="settings-card-body">
-            {/* Facebook */}
-            <div className={`settings-connection-item ${!user?.fbSessionValid ? 'connection-disconnected' : ''}`}>
-              <div className="settings-connection-info">
-                <span className="settings-connection-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          <div className="settings-sect-body">
+            <div className="settings-fields-grid">
+              {/* Facebook */}
+              <div className="settings-field-display">
+                <span className="settings-field-label">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2" style={{ verticalAlign: 'middle', marginLeft: 6 }}><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                  פייסבוק
                 </span>
-                <div>
-                  <span className="settings-connection-name">פייסבוק</span>
-                  <span className={`settings-connection-status ${user?.fbSessionValid ? 'status-ok' : 'status-err'}`}>
-                    {user?.fbSessionValid ? '✓ מחובר' : '✗ לא מחובר'}
-                  </span>
+                <span className={`settings-field-value ${user?.fbSessionValid ? 'value-ok' : 'value-muted'}`}>
+                  {user?.fbSessionValid ? '✓ מחובר' : '✗ לא מחובר'}
+                </span>
+                <div className="settings-field-inline-actions">
+                  {user?.fbSessionValid ? (
+                    <>
+                      <button className="settings-link-btn" onClick={handleBootstrap} disabled={bootstrapping}>
+                        {bootstrapping ? '⏳' : 'החלף'}
+                      </button>
+                      <button className="settings-link-btn settings-link-btn-danger" onClick={handleDisconnectFB} disabled={disconnecting}>
+                        {disconnecting ? '⏳' : 'נתק'}
+                      </button>
+                    </>
+                  ) : (
+                    <button className="settings-link-btn settings-link-btn-connect" onClick={handleBootstrap} disabled={bootstrapping}>
+                      {bootstrapping ? '⏳ ממתין...' : 'קשר חיבור'}
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="settings-connection-actions">
-                {user?.fbSessionValid ? (
-                  <>
-                    <button className="settings-btn-outline settings-btn-sm" onClick={handleBootstrap} disabled={bootstrapping}>
-                      {bootstrapping ? '⏳' : '🔄'} החלף
+
+              {/* WhatsApp */}
+              <div className="settings-field-display">
+                <span className="settings-field-label">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366" style={{ verticalAlign: 'middle', marginLeft: 6 }}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                  וואטסאפ
+                </span>
+                <span className={`settings-field-value ${user?.whatsappNumber ? 'value-ok' : 'value-muted'}`}>
+                  {user?.whatsappNumber ? user.whatsappNumber : '—'}
+                </span>
+                <div className="settings-field-inline-actions">
+                  {user?.whatsappNumber && !waEditing ? (
+                    <>
+                      <button className="settings-link-btn" onClick={() => { setWaEditing(true); setWaNumber(user.whatsappNumber); setWaMessage(user.whatsappMessage || ''); setWaValidation(null) }}>
+                        ערוך
+                      </button>
+                      <button className="settings-link-btn settings-link-btn-danger" onClick={handleRemoveWhatsapp} disabled={waSaving}>
+                        הסר
+                      </button>
+                    </>
+                  ) : !user?.whatsappNumber && !waEditing ? (
+                    <button className="settings-link-btn settings-link-btn-connect" onClick={() => setWaEditing(true)}>
+                      קשר חיבור
                     </button>
-                    <button className="settings-btn-danger-sm" onClick={handleDisconnectFB} disabled={disconnecting}>
-                      {disconnecting ? '⏳' : '🔌'} נתק
-                    </button>
-                  </>
-                ) : (
-                  <button className="settings-btn-primary-sm" onClick={handleBootstrap} disabled={bootstrapping}>
-                    {bootstrapping ? '⏳ ממתין...' : '🔗 קשר חיבור'}
-                  </button>
-                )}
+                  ) : null}
+                </div>
               </div>
             </div>
 
-            {/* WhatsApp */}
-            <div className={`settings-connection-item ${!user?.whatsappNumber ? 'connection-disconnected' : ''}`}>
-              <div className="settings-connection-info">
-                <span className="settings-connection-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                </span>
-                <div>
-                  <span className="settings-connection-name">וואטסאפ</span>
-                  <span className={`settings-connection-status ${user?.whatsappNumber ? 'status-ok' : 'status-err'}`}>
-                    {user?.whatsappNumber ? `✓ ${user.whatsappNumber}` : '✗ לא מקושר'}
-                  </span>
-                </div>
-              </div>
-              <div className="settings-connection-actions">
-                {user?.whatsappNumber && !waEditing ? (
-                  <>
-                    <button className="settings-btn-outline settings-btn-sm" onClick={() => { setWaEditing(true); setWaNumber(user.whatsappNumber); setWaMessage(user.whatsappMessage || ''); setWaValidation(null) }}>
-                      ✏️ ערוך
-                    </button>
-                    <button className="settings-btn-danger-sm" onClick={handleRemoveWhatsapp} disabled={waSaving}>
-                      🗑️ הסר
-                    </button>
-                  </>
-                ) : !user?.whatsappNumber && !waEditing ? (
-                  <button className="settings-btn-primary-sm" onClick={() => setWaEditing(true)}>
-                    🔗 קשר חיבור
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            {/* WhatsApp bottom-sheet form */}
+            {/* WhatsApp edit form */}
             {waEditing && (
-              <div className="settings-bottomsheet">
-                <div className="settings-bottomsheet-header">
-                  <h4>קישור וואטסאפ</h4>
-                  <button className="settings-bottomsheet-close" onClick={() => { setWaEditing(false); setWaValidation(null) }}>✕</button>
-                </div>
-                <div className="settings-bottomsheet-body">
+              <div className="settings-inline-form">
+                <div className="settings-fields-grid">
                   <div className="settings-field">
                     <label>מספר טלפון</label>
                     <input
@@ -3203,22 +3215,21 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                       placeholder="היי, ראיתי את הפוסט שלך..."
                       dir="rtl"
                     />
-                    <span className="settings-field-hint hint-info">הודעה שתופיע אוטומטית כשמישהו לוחץ על קישור הוואטסאפ שלך</span>
                   </div>
-                  {waError && <div className="settings-msg settings-msg-error">{waError}</div>}
-                  <div className="settings-field-actions">
-                    <button className="settings-btn-save" onClick={handleSaveWhatsapp} disabled={waSaving || !waNumber.trim()}>
-                      {waSaving ? '⏳ שומר...' : '💾 שמור'}
-                    </button>
-                    <button className="settings-btn-cancel" onClick={() => { setWaEditing(false); setWaValidation(null) }}>ביטול</button>
-                  </div>
+                </div>
+                {waError && <div className="settings-msg settings-msg-error">{waError}</div>}
+                <div className="settings-field-actions">
+                  <button className="settings-btn-save" onClick={handleSaveWhatsapp} disabled={waSaving || !waNumber.trim()}>
+                    {waSaving ? '⏳ שומר...' : 'שמור'}
+                  </button>
+                  <button className="settings-btn-cancel" onClick={() => { setWaEditing(false); setWaValidation(null) }}>ביטול</button>
                 </div>
               </div>
             )}
 
-            {/* WhatsApp message edit (when already linked and not editing) */}
+            {/* WhatsApp message quick-edit */}
             {user?.whatsappNumber && !waEditing && (
-              <div className="settings-wa-message-edit">
+              <div className="settings-fields-grid" style={{ marginTop: 4 }}>
                 <div className="settings-field">
                   <label>הודעה מותאמת</label>
                   <div className="settings-field-row">
@@ -3235,39 +3246,188 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                 </div>
               </div>
             )}
+
+            {/* Instagram */}
+            <div className="settings-fields-grid" style={{ marginTop: 12 }}>
+              <div className="settings-field-display">
+                <span className="settings-field-label">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#ig-settings-gradient)" style={{ verticalAlign: 'middle', marginLeft: 6 }}>
+                    <defs>
+                      <linearGradient id="ig-settings-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#FFDC80" />
+                        <stop offset="25%" stopColor="#F77737" />
+                        <stop offset="50%" stopColor="#E1306C" />
+                        <stop offset="75%" stopColor="#C13584" />
+                        <stop offset="100%" stopColor="#833AB4" />
+                      </linearGradient>
+                    </defs>
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                  </svg>
+                  אינסטגרם
+                </span>
+                <span className={`settings-field-value ${user?.instagramConnected ? 'value-ok' : 'value-muted'}`}>
+                  {user?.instagramConnected ? `✓ @${user.instagramUsername}` : '✗ לא מחובר'}
+                </span>
+                <div className="settings-field-inline-actions">
+                  {user?.instagramConnected ? (
+                    <button className="settings-link-btn settings-link-btn-danger" onClick={async () => {
+                      setConfirmAction({
+                        title: 'ניתוק אינסטגרם',
+                        message: 'האם אתה בטוח שברצונך לנתק את חיבור האינסטגרם? לא תוכל לפרסם באינסטגרם עד שתתחבר מחדש.',
+                        action: async () => {
+                          try {
+                            await authAPI.disconnectInstagram()
+                            setUser(prev => ({ ...prev, instagramConnected: false, instagramUsername: null }))
+                          } catch { /* ignore */ }
+                        }
+                      })
+                    }}>
+                      נתק
+                    </button>
+                  ) : (
+                    <button className="settings-link-btn settings-link-btn-connect" onClick={async () => {
+                      try {
+                        const res = await authAPI.getInstagramAuthUrl()
+                        if (res.data.authUrl) {
+                          const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+                          console.log('[IG-Connect] Popup opened:', !!popup)
+                          const handleMessage = (event) => {
+                            console.log('[IG-Connect] postMessage received:', event.data)
+                            if (!event.data || event.data.type !== 'instagram-oauth-callback') return
+                            window.removeEventListener('message', handleMessage)
+                            if (event.data.success) {
+                              console.log('[IG-Connect] SUCCESS via postMessage, username:', event.data.username)
+                              setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
+                            }
+                          }
+                          window.addEventListener('message', handleMessage)
+                          // Poll until popup closes, then check server status
+                          const timer = setInterval(async () => {
+                            if (popup?.closed) {
+                              clearInterval(timer)
+                              window.removeEventListener('message', handleMessage)
+                              console.log('[IG-Connect] Popup closed, checking status...')
+                              try {
+                                const statusRes = await authAPI.getInstagramStatus()
+                                console.log('[IG-Connect] Status response:', statusRes?.data)
+                                if (statusRes?.data?.connected) {
+                                  setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: statusRes.data.account?.username }))
+                                  console.log('[IG-Connect] User state updated!')
+                                }
+                              } catch (err) { console.error('[IG-Connect] Status check FAILED:', err.message, err.response?.status, err.response?.data) }
+                            }
+                          }, 500)
+                        }
+                      } catch (err) {
+                        console.error('[IG-Connect] Auth URL FAILED:', err)
+                        window.alert('שגיאה ביצירת קישור חיבור')
+                      }
+                    }}>
+                      חבר חשבון
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {!user?.instagramConnected && (
+              <div className="settings-ig-notice">
+                <span className="settings-ig-notice-icon">⚠️</span>
+                <span>חיבור אינסטגרם דורש חשבון מסוג <strong>Business</strong> או <strong>Creator</strong>. חשבון אישי רגיל לא נתמך.</span>
+              </div>
+            )}
           </div>
         </section>
 
-        {/* ─── Appearance Card ─── */}
-        <section className="settings-card">
-          <div className="settings-card-header">
-            <div className="settings-card-icon">🎨</div>
-            <h3>מראה</h3>
+        {/* ─── Security Section ─── */}
+        <section className="settings-sect">
+          <div className="settings-sect-header">
+            <h3 className="settings-sect-title">אבטחה</h3>
           </div>
-          <div className="settings-card-body">
-            <div className="settings-theme-row">
-              <span>ערכת נושא</span>
-              <div className="theme-toggle">
-                <button
-                  className={`theme-toggle-btn ${theme === 'dark' ? 'active' : ''}`}
-                  onClick={() => setTheme('dark')}
-                >
-                  🌙 כהה
-                </button>
-                <button
-                  className={`theme-toggle-btn ${theme === 'light' ? 'active' : ''}`}
-                  onClick={() => setTheme('light')}
-                >
-                  ☀️ בהיר
-                </button>
+          <div className="settings-sect-body">
+            {!showPassword ? (
+              <div className="settings-fields-grid">
+                <div className="settings-field-display">
+                  <span className="settings-field-label">סיסמה</span>
+                  <span className="settings-field-value value-muted">••••••••</span>
+                  <div className="settings-field-inline-actions">
+                    <button className="settings-link-btn" onClick={() => setShowPassword(true)}>שנה סיסמה</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="settings-password-form">
+                {pwStep === 1 ? (
+                  <div className="settings-field">
+                    <label>סיסמה נוכחית</label>
+                    <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="הזן סיסמה נוכחית" dir="ltr" />
+                    <span className="settings-field-hint hint-info">לאחר אימות, ישלח קוד למייל שלך</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="settings-msg settings-msg-success" style={{ marginBottom: 8 }}>
+                      📧 קוד אימות נשלח ל-{user?.email}
+                    </div>
+                    <div className="settings-field">
+                      <label>קוד אימות</label>
+                      <OtpInput length={6} value={pwCode} onChange={setPwCode} />
+                    </div>
+                    <div className="settings-fields-grid">
+                      <div className="settings-field">
+                        <label>סיסמה חדשה</label>
+                        <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="לפחות 6 תווים" dir="ltr" />
+                      </div>
+                      <div className="settings-field">
+                        <label>אימות סיסמה חדשה</label>
+                        <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="הזן שוב" dir="ltr" />
+                      </div>
+                    </div>
+                  </>
+                )}
+                {pwError && <div className="settings-msg settings-msg-error">{pwError}</div>}
+                {pwSuccess && <div className="settings-msg settings-msg-success">✓ הסיסמה שונתה בהצלחה!</div>}
+                <div className="settings-field-actions">
+                  <button className="settings-btn-save" onClick={handleChangePassword} disabled={pwSaving || (pwStep === 1 ? !currentPassword : (!pwCode || !newPassword))}>
+                    {pwSaving ? '⏳' : pwStep === 1 ? 'שלח קוד אימות' : 'שנה סיסמה'}
+                  </button>
+                  <button className="settings-btn-cancel" onClick={() => { setShowPassword(false); setPwError(null); setPwStep(1); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPwCode('') }}>ביטול</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ─── Appearance Section ─── */}
+        <section className="settings-sect">
+          <div className="settings-sect-header">
+            <h3 className="settings-sect-title">מראה</h3>
+          </div>
+          <div className="settings-sect-body">
+            <div className="settings-fields-grid">
+              <div className="settings-field-display">
+                <span className="settings-field-label">ערכת נושא</span>
+                <div className="theme-toggle">
+                  <button
+                    className={`theme-toggle-btn ${theme === 'dark' ? 'active' : ''}`}
+                    onClick={() => setTheme('dark')}
+                  >
+                    🌙 כהה
+                  </button>
+                  <button
+                    className={`theme-toggle-btn ${theme === 'light' ? 'active' : ''}`}
+                    onClick={() => setTheme('light')}
+                  >
+                    ☀️ בהיר
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ─── Danger Zone Card ─── */}
-        <section className="settings-card settings-card-danger">
-          <div className="settings-card-body">
+        {/* ─── Danger Zone ─── */}
+        <section className="settings-sect settings-sect-danger">
+          <div className="settings-sect-body">
             <button className="settings-logout-btn" onClick={handleLogout}>
               🚪 התנתק מהמערכת
             </button>
@@ -3688,7 +3848,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
     try {
       const res = await groupsService.refreshPublicationMetrics(pubId)
       if (res.data.success) {
-        setPubHistory(prev => prev?.map(h => h.id === pubId ? { ...h, likes: res.data.metrics.likes, comments: res.data.metrics.comments } : h))
+        setPubHistory(prev => prev?.map(h => (h.id === pubId || h.originalId === pubId) ? { ...h, likes: res.data.metrics.likes, comments: res.data.metrics.comments } : h))
         window.dispatchEvent(new CustomEvent('postit-op-done', { detail: { id: `refresh-${pubId}`, success: true, msg: `✅ מידע עודכן: ${res.data.metrics.likes} לייקים, ${res.data.metrics.comments} תגובות` } }))
       }
     } catch {
@@ -3828,6 +3988,47 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                 <button className="lightbox-nav lightbox-next" onClick={e => { e.stopPropagation(); setLightboxIdx(i => (i + 1) % images.length) }}>›</button>
                 <span className="lightbox-count">{lightboxIdx + 1} / {images.length}</span>
               </>
+            )}
+          </div>
+        )}
+
+        {/* Per-type IG media */}
+        {!editing && campaign.igTypeMedia && (campaign.igTypeMedia.FEED?.length > 0 || campaign.igTypeMedia.STORY?.length > 0 || campaign.igTypeMedia.REEL?.length > 0) && (
+          <div className="detail-ig-type-media">
+            <h4 className="detail-ig-type-media-title">📌 מדיה ספציפית לפי סוג:</h4>
+            {campaign.igTypeMedia.FEED?.length > 0 && (
+              <div className="detail-ig-type-media-section">
+                <span className="detail-ig-type-label">🖼️ פיד:</span>
+                <div className="detail-ig-type-media-thumbs">
+                  {campaign.igTypeMedia.FEED.map((m, i) => (
+                    m.mediaType === 'VIDEO'
+                      ? <video key={i} src={imgSrc(m.url)} className="detail-ig-type-thumb" />
+                      : <img key={i} src={imgSrc(m.url)} alt="" className="detail-ig-type-thumb" />
+                  ))}
+                </div>
+              </div>
+            )}
+            {campaign.igTypeMedia.STORY?.length > 0 && (
+              <div className="detail-ig-type-media-section">
+                <span className="detail-ig-type-label">📸 סטורי:</span>
+                <div className="detail-ig-type-media-thumbs">
+                  {campaign.igTypeMedia.STORY.map((m, i) => (
+                    m.mediaType === 'VIDEO'
+                      ? <video key={i} src={imgSrc(m.url)} className="detail-ig-type-thumb" />
+                      : <img key={i} src={imgSrc(m.url)} alt="" className="detail-ig-type-thumb" />
+                  ))}
+                </div>
+              </div>
+            )}
+            {campaign.igTypeMedia.REEL?.length > 0 && (
+              <div className="detail-ig-type-media-section">
+                <span className="detail-ig-type-label">🎬 ריל:</span>
+                <div className="detail-ig-type-media-thumbs">
+                  {campaign.igTypeMedia.REEL.map((m, i) => (
+                    <video key={i} src={imgSrc(m.url)} className="detail-ig-type-thumb" />
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -3972,9 +4173,22 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                 </div>
               )}
               <div className="detail-meta-item">
-                <span className="detail-label">קבוצות</span>
-                <span>👥 {campaign.groupCount || campaign.groupNames?.length || 0} {campaign.groupNames?.join(', ') || ''}</span>
+                <span className="detail-label">פלטפורמות</span>
+                <span className="detail-platforms-list">
+                  {(campaign.groupCount > 0) && <span className="detail-platform-chip">קבוצות פייסבוק</span>}
+                  {campaign.publishToProfile && <span className="detail-platform-chip">פרופיל אישי</span>}
+                  {campaign.instagramEnabled && campaign.instagramPublishType?.includes('FEED') && <span className="detail-platform-chip">אינסטגרם פוסט</span>}
+                  {campaign.instagramEnabled && campaign.instagramPublishType?.includes('STORY') && <span className="detail-platform-chip">אינסטגרם סטורי</span>}
+                  {campaign.instagramEnabled && campaign.instagramPublishType?.includes('REEL') && <span className="detail-platform-chip">אינסטגרם רילס</span>}
+                  {campaign.instagramEnabled && !campaign.instagramPublishType && <span className="detail-platform-chip">אינסטגרם</span>}
+                </span>
               </div>
+              {(campaign.groupCount > 0 || campaign.groupNames?.length > 0) && (
+                <div className="detail-meta-item">
+                  <span className="detail-label">קבוצות פייסבוק</span>
+                  <span>👥 {campaign.groupCount || campaign.groupNames?.length || 0} {campaign.groupNames?.join(', ') || ''}</span>
+                </div>
+              )}
               {campaign.isAnonymous && (
                 <div className="detail-meta-item">
                   <span className="detail-label">אנונימי</span>
@@ -3994,7 +4208,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
               {campaign.postUrl && (
                 <div className="detail-meta-item">
                   <span className="detail-label">קישור לפוסט</span>
-                  <a href={campaign.postUrl} target="_blank" rel="noopener noreferrer" className="detail-link">🔗 צפה בפוסט בפייסבוק</a>
+                  <a href={campaign.postUrl} target="_blank" rel="noopener noreferrer" className="detail-link">🔗 צפה בפוסט {campaign.postUrl.includes('instagram.com') ? 'באינסטגרם' : 'בפייסבוק'}</a>
                 </div>
               )}
 
@@ -4032,26 +4246,30 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                             </span>
                           </div>
                           <div className="detail-history-card-stats">
-                            <span className="detail-history-stat" title="לייקים">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
-                              {h.likes ?? '—'}
-                            </span>
-                            <span className="detail-history-stat" title="תגובות">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                              {h.comments ?? '—'}
-                            </span>
-                            {h.postUrl && (
-                              <a href={h.postUrl} target="_blank" rel="noopener noreferrer" className="detail-history-stat detail-history-link" title="פתח בפייסבוק">
+                            {h.igPublishType !== 'STORY' && (
+                              <>
+                                <span className="detail-history-stat" title="לייקים">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
+                                  {h.likes ?? '—'}
+                                </span>
+                                <span className="detail-history-stat" title="תגובות">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                                  {h.comments ?? '—'}
+                                </span>
+                              </>
+                            )}
+                            {h.postUrl && h.igPublishType !== 'STORY' && (
+                              <a href={h.postUrl} target="_blank" rel="noopener noreferrer" className="detail-history-stat detail-history-link" title={h.platform === 'INSTAGRAM' ? 'פתח באינסטגרם' : 'פתח בפייסבוק'}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                                צפה בפוסט
+                                {h.platform === 'INSTAGRAM' ? 'צפה באינסטגרם' : 'צפה בפוסט'}
                               </a>
                             )}
-                            {h.postUrl && (
+                            {h.status === 'SUCCESS' && h.igPublishType !== 'STORY' && (
                               <button
-                                className={`detail-history-stat detail-history-refresh ${refreshingId === h.id ? 'refreshing' : ''}`}
-                                title="מרענן מידע עבור פוסט זה"
+                                className={`detail-history-stat detail-history-refresh ${refreshingId === (h.originalId || h.id) ? 'refreshing' : ''}`}
+                                title="רענן לייקים ותגובות"
                                 disabled={!!refreshingId}
-                                onClick={() => handleRefreshMetrics(h.id)}
+                                onClick={() => handleRefreshMetrics(h.originalId || h.id)}
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                   <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>

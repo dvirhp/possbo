@@ -264,27 +264,32 @@ model UserGroup {
 // ─── POSTS ──────────────────────────────────────────────
 
 model Post {
-  id               String       @id @default(uuid())
-  userId           String       @map("user_id")
-  title            String?
-  content          String
-  status           PostStatus   @default(DRAFT)
-  isAnonymous      Boolean      @default(false) @map("is_anonymous")
-  location         String?
-  campaignType     CampaignType @default(ONE_TIME) @map("campaign_type")
-  recurringDays    Int[]        @default([]) @map("recurring_days")
-  scheduledDates   DateTime[]   @default([]) @map("scheduled_dates")
-  recurringTime    String?      @map("recurring_time")
-  recurringTimes   String[]     @default([]) @map("recurring_times")
-  recurringStart   DateTime?    @map("recurring_start")
-  recurringEnd     DateTime?    @map("recurring_end")
-  dayTimes         Json?        @map("day_times")
-  isPaused         Boolean      @default(false) @map("is_paused")
-  publishToProfile Boolean      @default(false) @map("publish_to_profile")
-  templateName     String?      @map("template_name")
-  imageUrl         String?      @map("image_url")
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
+  id                   String       @id @default(uuid())
+  userId               String       @map("user_id")
+  title                String?
+  content              String
+  status               PostStatus   @default(DRAFT)
+  isAnonymous          Boolean      @default(false) @map("is_anonymous")
+  location             String?
+  campaignType         CampaignType @default(ONE_TIME) @map("campaign_type")
+  recurringDays        Int[]        @default([]) @map("recurring_days")
+  scheduledDates       DateTime[]   @default([]) @map("scheduled_dates")
+  recurringTime        String?      @map("recurring_time")
+  recurringTimes       String[]     @default([]) @map("recurring_times")
+  recurringStart       DateTime?    @map("recurring_start")
+  recurringEnd         DateTime?    @map("recurring_end")
+  dayTimes             Json?        @map("day_times")
+  isPaused             Boolean      @default(false) @map("is_paused")
+  publishToProfile     Boolean      @default(false) @map("publish_to_profile")
+  instagramEnabled     Boolean      @default(false) @map("instagram_enabled")
+  instagramPublishType String?      @map("instagram_publish_type") // FEED | STORY | REEL
+  storyMediaMode       String?      @map("story_media_mode") // first | all | pick
+  storyPickedIndex     Int?         @map("story_picked_index")
+  storyCaptions        Json?        @map("story_captions") // per-image captions array
+  templateName         String?      @map("template_name")
+  imageUrl             String?      @map("image_url")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
 
   user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   media              PostMedia[]
@@ -306,6 +311,7 @@ model PostMedia {
   storageKey String?   @map("storage_key")
   orderIndex Int       @default(0) @map("order_index")
   altText    String?   @map("alt_text")
+  igType     String?   @map("ig_type") // null=global, FEED/STORY/REEL=type-specific
   createdAt  DateTime  @default(now()) @map("created_at")
 
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -361,21 +367,23 @@ model PostGroupSchedule {
 }
 
 model PublicationJob {
-  id          String    @id @default(uuid())
-  postGroupId String?   @map("post_group_id")
-  postId      String?   @map("post_id")
-  targetType  String    @default("GROUP") @map("target_type") // GROUP or PROFILE
-  scheduledAt DateTime  @map("scheduled_at")
-  startedAt   DateTime? @map("started_at")
-  completedAt DateTime? @map("completed_at")
-  status      JobStatus @default(PENDING)
-  attempts    Int       @default(0)
-  maxAttempts Int       @default(3) @map("max_attempts")
-  lastError   String?   @map("last_error")
-  lockedAt    DateTime? @map("locked_at")
-  lockedBy    String?   @map("locked_by")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id            String    @id @default(uuid())
+  postGroupId   String?   @map("post_group_id")
+  postId        String?   @map("post_id")
+  targetType    String    @default("GROUP") @map("target_type") // GROUP | PROFILE | INSTAGRAM
+  platform      String    @default("FACEBOOK") @map("platform") // FACEBOOK | INSTAGRAM
+  igPublishType String?   @map("ig_publish_type") // FEED | STORY | REEL — which IG type this job handles
+  scheduledAt   DateTime  @map("scheduled_at")
+  startedAt     DateTime? @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+  status        JobStatus @default(PENDING)
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3) @map("max_attempts")
+  lastError     String?   @map("last_error")
+  lockedAt      DateTime? @map("locked_at")
+  lockedBy      String?   @map("locked_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   postGroup    PostGroup?           @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
   post         Post?                @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -395,7 +403,8 @@ model PublicationHistory {
   userId           String            @map("user_id")
   postGroupId      String?           @map("post_group_id")
   publicationJobId String?           @map("publication_job_id")
-  targetType       String            @default("GROUP") @map("target_type") // GROUP or PROFILE
+  targetType       String            @default("GROUP") @map("target_type") // GROUP | PROFILE | INSTAGRAM
+  platform         String            @default("FACEBOOK") @map("platform") // FACEBOOK | INSTAGRAM
   publishedAt      DateTime          @map("published_at")
   externalPostId   String?           @map("external_post_id")
   externalPostUrl  String?           @map("external_post_url")
@@ -455,8 +464,32 @@ model PostTemplate {
   groupIds       String[] @default([]) @map("group_ids")
   imageUrls      String[] @default([]) @map("image_urls")
   usageCount     Int      @default(0) @map("usage_count")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Profile publishing
+  publishToProfile          Boolean @default(false) @map("publish_to_profile")
+  profileScheduleMode       String? @map("profile_schedule_mode")
+  profileScheduleDate       String? @map("profile_schedule_date")
+  profileScheduleTime       String? @map("profile_schedule_time")
+  profileRecurringDays      Int[]   @default([]) @map("profile_recurring_days")
+  profileDayTimes           Json?   @map("profile_day_times")
+  profileRecurringStartDate String? @map("profile_recurring_start_date")
+  profileRecurringEndDate   String? @map("profile_recurring_end_date")
+
+  // Instagram publishing
+  instagramEnabled      Boolean  @default(false) @map("instagram_enabled")
+  instagramPublishTypes String[] @default([]) @map("instagram_publish_types")
+  storyMediaMode        String?  @map("story_media_mode")
+  storyPickedIndex      Int?     @map("story_picked_index")
+  igScheduleMode        String?  @map("ig_schedule_mode")
+  igScheduleDate        String?  @map("ig_schedule_date")
+  igScheduleTime        String?  @map("ig_schedule_time")
+  igRecurringDays       Int[]    @default([]) @map("ig_recurring_days")
+  igDayTimes            Json?    @map("ig_day_times")
+  igRecurringStartDate  String?  @map("ig_recurring_start_date")
+  igRecurringEndDate    String?  @map("ig_recurring_end_date")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

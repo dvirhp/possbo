@@ -1,10 +1,14 @@
 import { PrismaClient } from "@prisma/client";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
+import sharp from "sharp";
 import {
   publishToGroup,
   publishToProfile,
 } from "../utils/facebook-automation.js";
+import { decrypt } from "../utils/encryption.js";
+import { getPublicMediaUrl } from "../utils/media-upload.js";
 import { createLogger } from "../utils/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -94,6 +98,477 @@ async function getUserDailyCount(userId) {
       status: "SUCCESS",
     },
   });
+}
+
+// ─── Instagram Publishing ─────────────────────────────────
+
+// Instagram aspect ratio limits
+const IG_MIN_RATIO = 4 / 5; // 0.8 (portrait)
+const IG_MAX_RATIO = 1.91; // landscape
+const IG_TARGET_SIZE = 1080; // Instagram's standard width
+
+/**
+ * Preprocess an image for Instagram:
+ * - Ensures aspect ratio is between 4:5 and 1.91:1
+ * - Resizes to IG-optimal dimensions (1080px width)
+ * - Returns path to a temporary processed file
+ */
+async function preprocessImageForInstagram(imagePath) {
+  const absolutePath = path.join(uploadsDir, path.basename(imagePath));
+  if (!fs.existsSync(absolutePath)) return imagePath; // fallback to original
+
+  const metadata = await sharp(absolutePath).metadata();
+  const { width, height } = metadata;
+  const ratio = width / height;
+
+  // If aspect ratio is valid and width is reasonable, no processing needed
+  if (ratio >= IG_MIN_RATIO && ratio <= IG_MAX_RATIO && width <= 1440) {
+    return imagePath;
+  }
+
+  log.info("Preprocessing image for Instagram", {
+    original: `${width}x${height}`,
+    ratio: ratio.toFixed(2),
+    needsCrop: ratio < IG_MIN_RATIO || ratio > IG_MAX_RATIO,
+  });
+
+  let targetWidth = Math.min(width, IG_TARGET_SIZE);
+  let targetHeight;
+
+  if (ratio > IG_MAX_RATIO) {
+    // Too wide — crop to 1.91:1 (center crop)
+    targetHeight = Math.round(targetWidth / IG_MAX_RATIO);
+  } else if (ratio < IG_MIN_RATIO) {
+    // Too tall — crop to 4:5 (center crop)
+    targetHeight = Math.round(targetWidth / IG_MIN_RATIO);
+  } else {
+    // Ratio is fine, just resize
+    targetHeight = Math.round(targetWidth / ratio);
+  }
+
+  const processedFileName = `ig_${Date.now()}_${path.basename(imagePath)}`;
+  const processedPath = path.join(uploadsDir, processedFileName);
+
+  await sharp(absolutePath)
+    .resize(targetWidth, targetHeight, { fit: "cover", position: "center" })
+    .jpeg({ quality: 90 })
+    .toFile(processedPath);
+
+  log.info("Image preprocessed for Instagram", {
+    result: `${targetWidth}x${targetHeight}`,
+    file: processedFileName,
+  });
+
+  return `/uploads/${processedFileName}`;
+}
+
+/**
+ * Create a Story image with text overlay.
+ * Instagram Stories don't support captions via the API,
+ * so we burn the text onto the image.
+ * Returns path to the story-ready file.
+ */
+async function createStoryImageWithText(imagePath, text) {
+  if (!text || !text.trim()) return imagePath;
+
+  const absolutePath = path.join(uploadsDir, path.basename(imagePath));
+  if (!fs.existsSync(absolutePath)) return imagePath;
+
+  // Story dimensions: 1080x1920 (9:16)
+  const STORY_W = 1080;
+  const STORY_H = 1920;
+
+  // Truncate text to reasonable length for story
+  const storyText = text.length > 200 ? text.substring(0, 200) + "..." : text;
+
+  // Escape XML special characters for SVG
+  const escapeXml = (s) =>
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+  // Split text into lines (max ~30 chars per line for readability)
+  const words = storyText.split(/\s+/);
+  const lines = [];
+  let currentLine = "";
+  for (const word of words) {
+    if ((currentLine + " " + word).trim().length > 30) {
+      if (currentLine) lines.push(currentLine.trim());
+      currentLine = word;
+    } else {
+      currentLine += " " + word;
+    }
+  }
+  if (currentLine.trim()) lines.push(currentLine.trim());
+
+  const fontSize = 42;
+  const lineHeight = 56;
+  const textBlockHeight = lines.length * lineHeight + 40;
+  const yStart = STORY_H - textBlockHeight - 120; // Near bottom
+
+  // Build SVG text overlay with semi-transparent background
+  const svgLines = lines
+    .map(
+      (line, i) =>
+        `<text x="540" y="${yStart + 40 + i * lineHeight}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="white" text-anchor="middle" direction="rtl">${escapeXml(line)}</text>`,
+    )
+    .join("\n");
+
+  const svgOverlay = `<svg width="${STORY_W}" height="${STORY_H}">
+    <rect x="40" y="${yStart - 20}" width="${STORY_W - 80}" height="${textBlockHeight + 20}" rx="16" fill="rgba(0,0,0,0.55)"/>
+    ${svgLines}
+  </svg>`;
+
+  const processedFileName = `ig_story_${Date.now()}_${path.basename(imagePath, path.extname(imagePath))}.jpg`;
+  const processedPath = path.join(uploadsDir, processedFileName);
+
+  await sharp(absolutePath)
+    .resize(STORY_W, STORY_H, { fit: "cover", position: "center" })
+    .composite([{ input: Buffer.from(svgOverlay), top: 0, left: 0 }])
+    .jpeg({ quality: 90 })
+    .toFile(processedPath);
+
+  log.info("Story image created with text overlay", {
+    file: processedFileName,
+    textLines: lines.length,
+  });
+
+  return `/uploads/${processedFileName}`;
+}
+
+/**
+ * Publish content to Instagram via the Graph API.
+ * Requires a publicly accessible media URL.
+ */
+async function publishToInstagram(post, user, jobIgPublishType) {
+  const account = await prisma.connectedAccount.findFirst({
+    where: { userId: user.id, provider: "INSTAGRAM", status: "ACTIVE" },
+  });
+
+  if (!account) {
+    throw new Error("INSTAGRAM_NOT_CONNECTED");
+  }
+
+  if (account.tokenExpiresAt && account.tokenExpiresAt < new Date()) {
+    await prisma.connectedAccount.update({
+      where: { id: account.id },
+      data: { status: "EXPIRED" },
+    });
+    throw new Error("INSTAGRAM_TOKEN_EXPIRED");
+  }
+
+  const accessToken = decrypt(account.accessTokenEncrypted);
+
+  // Use 'me' instead of numeric ID to avoid JS Number precision issues with large IDs
+  const igPath = "me";
+
+  // Determine publish types — if job specifies a specific type, only do that one
+  const publishTypes = jobIgPublishType
+    ? [jobIgPublishType]
+    : post.instagramPublishType
+      ? post.instagramPublishType.split(",").map((t) => t.trim())
+      : ["FEED"];
+
+  // Strip WhatsApp links from content for Instagram captions
+  const igCaption =
+    (post.content || "").replace(/\n*https?:\/\/wa\.me\/[^\s]*/gi, "").trim() ||
+    null;
+
+  // Get media — need publicly accessible URLs for Instagram API
+  const mediaPaths = (post.media || [])
+    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+    .map((m) => m.url);
+
+  // Per-story captions (array of strings, one per image)
+  const storyCaptions = Array.isArray(post.storyCaptions)
+    ? post.storyCaptions
+    : [];
+
+  const results = [];
+
+  for (const publishType of publishTypes) {
+    if (!mediaPaths[0]) {
+      log.warn("Instagram publish skipped — no media", {
+        postId: post.id,
+        publishType,
+      });
+      continue;
+    }
+
+    if (publishType === "STORY") {
+      // ─── STORIES: Support multiple images ─────────────────
+      const storyMode = post.storyMediaMode || "first";
+      let storyImages;
+
+      if (storyMode === "all") {
+        storyImages = mediaPaths;
+      } else if (storyMode === "pick" && post.storyPickedIndex != null) {
+        storyImages = [mediaPaths[post.storyPickedIndex] || mediaPaths[0]];
+      } else {
+        storyImages = [mediaPaths[0]];
+      }
+
+      for (let si = 0; si < storyImages.length; si++) {
+        let mediaPath = storyImages[si];
+        // Determine caption for this story: per-image caption or fallback to post content
+        const storyCaption = storyCaptions[si] || igCaption || "";
+
+        if (!mediaPath.match(/\.(mp4|mov|webm)$/i) && storyCaption) {
+          mediaPath = await createStoryImageWithText(mediaPath, storyCaption);
+        }
+
+        const mediaUrl = await getPublicMediaUrl(mediaPath);
+        const containerBody = {
+          access_token: accessToken,
+          media_type: "STORIES",
+        };
+        if (mediaUrl.match(/\.(mp4|mov|webm)$/i)) {
+          containerBody.video_url = mediaUrl;
+        } else {
+          containerBody.image_url = mediaUrl;
+        }
+
+        const storyResult = await publishContainer(
+          igPath,
+          containerBody,
+          accessToken,
+          "STORY",
+        );
+        results.push(storyResult);
+        log.info("Instagram story publish success", {
+          userId: user.id,
+          storyIndex: si + 1,
+          totalStories: storyImages.length,
+          mediaId: storyResult.mediaId,
+        });
+
+        // Small delay between multiple stories
+        if (si < storyImages.length - 1) {
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
+    } else if (publishType === "FEED" && mediaPaths.length > 1) {
+      // ─── CAROUSEL: Multiple images for feed ───────────────
+      const childIds = [];
+
+      for (const mp of mediaPaths) {
+        let mediaPath = mp;
+        if (!mediaPath.match(/\.(mp4|mov|webm)$/i)) {
+          mediaPath = await preprocessImageForInstagram(mediaPath);
+        }
+        const mediaUrl = await getPublicMediaUrl(mediaPath);
+
+        const childBody = {
+          access_token: accessToken,
+          is_carousel_item: true,
+        };
+        if (mediaUrl.match(/\.(mp4|mov|webm)$/i)) {
+          childBody.video_url = mediaUrl;
+          childBody.media_type = "VIDEO";
+        } else {
+          childBody.image_url = mediaUrl;
+        }
+
+        const childRes = await fetch(
+          `https://graph.instagram.com/v21.0/${igPath}/media`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(childBody),
+          },
+        );
+        const childData = await childRes.json();
+        if (childData.error) {
+          throw new Error(
+            childData.error.message || "Carousel item creation failed",
+          );
+        }
+
+        // Wait for child to be ready
+        await waitForContainer(childData.id, accessToken, 15);
+        childIds.push(childData.id);
+      }
+
+      // Create carousel container
+      const carouselBody = {
+        access_token: accessToken,
+        media_type: "CAROUSEL",
+        children: childIds.join(","),
+      };
+      if (igCaption) carouselBody.caption = igCaption;
+
+      const carouselRes = await fetch(
+        `https://graph.instagram.com/v21.0/${igPath}/media`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(carouselBody),
+        },
+      );
+      const carouselData = await carouselRes.json();
+      if (carouselData.error) {
+        throw new Error(
+          carouselData.error.message || "Carousel creation failed",
+        );
+      }
+
+      await waitForContainer(carouselData.id, accessToken, 30);
+
+      // Publish carousel
+      const publishRes = await fetch(
+        `https://graph.instagram.com/v21.0/${igPath}/media_publish`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            creation_id: carouselData.id,
+            access_token: accessToken,
+          }),
+        },
+      );
+      const publishData = await publishRes.json();
+      if (publishData.error) {
+        throw new Error(publishData.error.message || "Carousel publish failed");
+      }
+
+      let permalink = null;
+      try {
+        const mediaRes = await fetch(
+          `https://graph.instagram.com/v21.0/${publishData.id}?fields=permalink&access_token=${accessToken}`,
+        );
+        const mediaData = await mediaRes.json();
+        if (mediaData.permalink) permalink = mediaData.permalink;
+      } catch {
+        /* non-critical */
+      }
+
+      results.push({
+        publishType: "FEED",
+        mediaId: publishData.id,
+        postUrl: permalink,
+      });
+      log.info("Instagram carousel publish success", {
+        userId: user.id,
+        mediaId: publishData.id,
+        imageCount: mediaPaths.length,
+        permalink,
+      });
+    } else {
+      // ─── SINGLE FEED or REEL ──────────────────────────────
+      let mediaPath = mediaPaths[0];
+      if (!mediaPath.match(/\.(mp4|mov|webm)$/i)) {
+        mediaPath = await preprocessImageForInstagram(mediaPath);
+      }
+
+      const mediaUrl = await getPublicMediaUrl(mediaPath);
+      const containerBody = { access_token: accessToken };
+
+      if (publishType === "REEL") {
+        containerBody.media_type = "REELS";
+        containerBody.video_url = mediaUrl;
+        if (igCaption) containerBody.caption = igCaption;
+      } else {
+        // Single FEED image
+        containerBody.image_url = mediaUrl;
+        if (igCaption) containerBody.caption = igCaption;
+      }
+
+      const singleResult = await publishContainer(
+        igPath,
+        containerBody,
+        accessToken,
+        publishType,
+      );
+      results.push(singleResult);
+      log.info("Instagram publish success", {
+        userId: user.id,
+        publishType,
+        mediaId: singleResult.mediaId,
+        permalink: singleResult.postUrl,
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Helper: Create container, wait for it, publish, and return result.
+ */
+async function publishContainer(
+  igPath,
+  containerBody,
+  accessToken,
+  publishType,
+) {
+  const containerRes = await fetch(
+    `https://graph.instagram.com/v21.0/${igPath}/media`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(containerBody),
+    },
+  );
+  const containerData = await containerRes.json();
+  if (containerData.error) {
+    throw new Error(
+      containerData.error.message || "Instagram container creation failed",
+    );
+  }
+
+  const maxPolls = publishType === "REEL" ? 60 : 15;
+  await waitForContainer(containerData.id, accessToken, maxPolls);
+
+  // Publish
+  const publishRes = await fetch(
+    `https://graph.instagram.com/v21.0/${igPath}/media_publish`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        creation_id: containerData.id,
+        access_token: accessToken,
+      }),
+    },
+  );
+  const publishData = await publishRes.json();
+  if (publishData.error) {
+    throw new Error(publishData.error.message || "Instagram publish failed");
+  }
+
+  // Fetch permalink
+  let permalink = null;
+  try {
+    const mediaRes = await fetch(
+      `https://graph.instagram.com/v21.0/${publishData.id}?fields=permalink&access_token=${accessToken}`,
+    );
+    const mediaData = await mediaRes.json();
+    if (mediaData.permalink) permalink = mediaData.permalink;
+  } catch {
+    /* non-critical */
+  }
+
+  return { publishType, mediaId: publishData.id, postUrl: permalink };
+}
+
+/**
+ * Helper: Poll container status until FINISHED.
+ */
+async function waitForContainer(containerId, accessToken, maxPolls = 15) {
+  for (let i = 0; i < maxPolls; i++) {
+    const statusRes = await fetch(
+      `https://graph.instagram.com/v21.0/${containerId}?fields=status_code&access_token=${accessToken}`,
+    );
+    const statusData = await statusRes.json();
+    if (statusData.status_code === "FINISHED") return;
+    if (statusData.status_code === "ERROR") {
+      throw new Error("Instagram media processing failed");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  throw new Error("Instagram media processing timed out");
 }
 
 // ─── Main Job Processor ───────────────────────────────────
@@ -249,7 +724,9 @@ export async function processPublicationJobs() {
       const post = postGroup?.post || job.post;
       const group = postGroup?.group;
       const user = postGroup?.user || job.post?.user;
-      const isProfileJob = job.targetType === "PROFILE" || !group;
+      const isInstagramJob = job.targetType === "INSTAGRAM";
+      const isProfileJob =
+        !isInstagramJob && (job.targetType === "PROFILE" || !group);
 
       if (!post || !user) {
         await prisma.publicationJob.update({
@@ -267,37 +744,53 @@ export async function processPublicationJobs() {
       }
 
       try {
-        // Check if user has valid Facebook session
-        if (!user.facebookStorageState) {
-          throw new Error("SESSION_EXPIRED");
-        }
-
-        // Get image paths — convert relative URLs to absolute filesystem paths
-        const mediaPaths = (post.media || [])
-          .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-          .map((m) => path.join(uploadsDir, path.basename(m.url)))
-          .filter((p) => p);
-        const imagePath = mediaPaths[0] || null;
-
         let result;
-        if (isProfileJob) {
-          // Publish to user's personal profile
-          result = await publishToProfile(post.content, imagePath, {
-            userId: user.id,
-            location: post.location,
-          });
-        } else {
-          // Get the group URL
-          const groupUrl =
-            group.url || `https://www.facebook.com/groups/${group.externalId}`;
 
-          // Publish to group
-          result = await publishToGroup(groupUrl, post.content, imagePath, {
-            userId: user.id,
-            isAnonymous: post.isAnonymous,
-            location: post.location,
-            images: mediaPaths,
-          });
+        if (isInstagramJob) {
+          // ─── Instagram Publishing ───────────────────────
+          const igResults = await publishToInstagram(
+            post,
+            user,
+            job.igPublishType,
+          );
+          result = {
+            mediaIds: igResults.map((r) => r.mediaId),
+            postUrl: igResults[0]?.postUrl || null,
+          };
+        } else {
+          // ─── Facebook Publishing ────────────────────────
+          // Check if user has valid Facebook session
+          if (!user.facebookStorageState) {
+            throw new Error("SESSION_EXPIRED");
+          }
+
+          // Get image paths — convert relative URLs to absolute filesystem paths
+          const mediaPaths = (post.media || [])
+            .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+            .map((m) => path.join(uploadsDir, path.basename(m.url)))
+            .filter((p) => p);
+          const imagePath = mediaPaths[0] || null;
+
+          if (isProfileJob) {
+            // Publish to user's personal profile
+            result = await publishToProfile(post.content, imagePath, {
+              userId: user.id,
+              location: post.location,
+            });
+          } else {
+            // Get the group URL
+            const groupUrl =
+              group.url ||
+              `https://www.facebook.com/groups/${group.externalId}`;
+
+            // Publish to group
+            result = await publishToGroup(groupUrl, post.content, imagePath, {
+              userId: user.id,
+              isAnonymous: post.isAnonymous,
+              location: post.location,
+              images: mediaPaths,
+            });
+          }
         }
 
         // Mark as success
@@ -319,7 +812,12 @@ export async function processPublicationJobs() {
             userId: user.id,
             postGroupId: postGroup?.id || null,
             publicationJobId: job.id,
-            targetType: isProfileJob ? "PROFILE" : "GROUP",
+            targetType: isInstagramJob
+              ? "INSTAGRAM"
+              : isProfileJob
+                ? "PROFILE"
+                : "GROUP",
+            platform: isInstagramJob ? "INSTAGRAM" : undefined,
             publishedAt: new Date(),
             status: "SUCCESS",
             externalPostUrl: result?.postUrl || null,
@@ -388,9 +886,24 @@ export async function processPublicationJobs() {
         });
 
         const isSessionError =
-          errorMsg === "SESSION_EXPIRED" ||
-          errorMsg === "FACEBOOK_SESSION_REQUIRED" ||
-          errorMsg === "POST_COMPOSER_NOT_FOUND";
+          !isInstagramJob &&
+          (errorMsg === "SESSION_EXPIRED" ||
+            errorMsg === "FACEBOOK_SESSION_REQUIRED" ||
+            errorMsg === "POST_COMPOSER_NOT_FOUND");
+
+        const isInstagramAuthError =
+          isInstagramJob &&
+          (errorMsg === "INSTAGRAM_NOT_CONNECTED" ||
+            errorMsg === "INSTAGRAM_TOKEN_EXPIRED");
+
+        // Content errors from Instagram that won't be fixed by retrying
+        const isInstagramContentError =
+          isInstagramJob &&
+          (errorMsg.includes("aspect ratio") ||
+            errorMsg.includes("not supported") ||
+            errorMsg.includes("media type") ||
+            errorMsg.includes("media processing failed") ||
+            errorMsg.includes("Media file not found"));
 
         if (isSessionError) {
           // Mark user's session as invalid
@@ -399,12 +912,13 @@ export async function processPublicationJobs() {
             data: { fbSessionValid: false, facebookStorageState: null },
           });
 
-          // Cancel all other pending jobs for this user
+          // Cancel all other pending Facebook jobs for this user
           await prisma.publicationJob.updateMany({
             where: {
               status: "PENDING",
               postGroup: { userId: user.id },
               id: { not: job.id },
+              targetType: { not: "INSTAGRAM" },
             },
             data: {
               status: "CANCELLED",
@@ -416,8 +930,13 @@ export async function processPublicationJobs() {
           });
         }
 
-        if (newAttempts >= job.maxAttempts || isSessionError) {
-          // Max retries reached or session expired — mark as failed
+        if (
+          newAttempts >= job.maxAttempts ||
+          isSessionError ||
+          isInstagramAuthError ||
+          isInstagramContentError
+        ) {
+          // Max retries reached or non-retryable error — mark as failed
           await prisma.publicationJob.update({
             where: { id: job.id },
             data: {
@@ -437,7 +956,12 @@ export async function processPublicationJobs() {
               userId: user.id,
               postGroupId: postGroup?.id || null,
               publicationJobId: job.id,
-              targetType: isProfileJob ? "PROFILE" : "GROUP",
+              targetType: isInstagramJob
+                ? "INSTAGRAM"
+                : isProfileJob
+                  ? "PROFILE"
+                  : "GROUP",
+              platform: isInstagramJob ? "INSTAGRAM" : undefined,
               publishedAt: new Date(),
               status: "FAILED",
               errorMessage: errorMsg,
@@ -447,7 +971,11 @@ export async function processPublicationJobs() {
           // Notify user
           const notificationMsg = isSessionError
             ? "החיבור לפייסבוק פג. אנא התחבר מחדש."
-            : `הפרסום נכשל אחרי ${newAttempts} ניסיונות: ${errorMsg}`;
+            : isInstagramAuthError
+              ? "חיבור האינסטגרם פג תוקף. אנא התחבר מחדש."
+              : isInstagramContentError
+                ? `פרסום לאינסטגרם נכשל — בעיה בתמונה: ${errorMsg}`
+                : `הפרסום נכשל אחרי ${newAttempts} ניסיונות: ${errorMsg}`;
 
           await prisma.notification.create({
             data: {

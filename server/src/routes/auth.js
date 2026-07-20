@@ -279,9 +279,15 @@ router.post("/login", async (req, res) => {
 
     // Check subscription status
     const activeSubscription = await prisma.subscription.findFirst({
-      where: { userId: user.id, status: { in: ['ACTIVE', 'CANCELLED'] } },
+      where: { userId: user.id, status: { in: ["ACTIVE", "CANCELLED"] } },
       include: { plan: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Check Instagram connection
+    const instagramAccount = await prisma.connectedAccount.findFirst({
+      where: { userId: user.id, provider: "INSTAGRAM", status: "ACTIVE" },
+      select: { providerUserName: true },
     });
 
     res.json({
@@ -298,11 +304,15 @@ router.post("/login", async (req, res) => {
         whatsappMessage: user.whatsappMessage || null,
         notificationSettings: user.notificationSettings || null,
         createdAt: user.createdAt,
-        subscription: activeSubscription ? {
-          status: activeSubscription.status,
-          planName: activeSubscription.plan?.name,
-          endsAt: activeSubscription.endsAt,
-        } : null,
+        instagramConnected: !!instagramAccount,
+        instagramUsername: instagramAccount?.providerUserName || null,
+        subscription: activeSubscription
+          ? {
+              status: activeSubscription.status,
+              planName: activeSubscription.plan?.name,
+              endsAt: activeSubscription.endsAt,
+            }
+          : null,
       },
     });
   } catch (error) {
@@ -434,9 +444,15 @@ router.post("/refresh", async (req, res) => {
 
     // Check subscription status
     const activeSubscription = await prisma.subscription.findFirst({
-      where: { userId: user.id, status: { in: ['ACTIVE', 'CANCELLED'] } },
+      where: { userId: user.id, status: { in: ["ACTIVE", "CANCELLED"] } },
       include: { plan: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Check Instagram connection
+    const instagramAccount = await prisma.connectedAccount.findFirst({
+      where: { userId: user.id, provider: "INSTAGRAM", status: "ACTIVE" },
+      select: { providerUserName: true },
     });
 
     setRefreshCookie(res, newRefreshToken);
@@ -456,11 +472,15 @@ router.post("/refresh", async (req, res) => {
         whatsappMessage: user.whatsappMessage || null,
         notificationSettings: user.notificationSettings || null,
         createdAt: user.createdAt,
-        subscription: activeSubscription ? {
-          status: activeSubscription.status,
-          planName: activeSubscription.plan?.name,
-          endsAt: activeSubscription.endsAt,
-        } : null,
+        instagramConnected: !!instagramAccount,
+        instagramUsername: instagramAccount?.providerUserName || null,
+        subscription: activeSubscription
+          ? {
+              status: activeSubscription.status,
+              planName: activeSubscription.plan?.name,
+              endsAt: activeSubscription.endsAt,
+            }
+          : null,
       },
     });
 
@@ -613,9 +633,15 @@ router.get("/me", async (req, res) => {
 
   // Check subscription status
   const activeSubscription = await prisma.subscription.findFirst({
-    where: { userId: req.user.id, status: { in: ['ACTIVE', 'CANCELLED'] } },
+    where: { userId: req.user.id, status: { in: ["ACTIVE", "CANCELLED"] } },
     include: { plan: true },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Check Instagram connection
+  const instagramAccount = await prisma.connectedAccount.findFirst({
+    where: { userId: req.user.id, provider: "INSTAGRAM", status: "ACTIVE" },
+    select: { providerUserName: true, tokenExpiresAt: true },
   });
 
   res.json({
@@ -629,11 +655,15 @@ router.get("/me", async (req, res) => {
     whatsappMessage: req.user.whatsappMessage || null,
     notificationSettings: req.user.notificationSettings || null,
     createdAt: req.user.createdAt,
-    subscription: activeSubscription ? {
-      status: activeSubscription.status,
-      planName: activeSubscription.plan?.name,
-      endsAt: activeSubscription.endsAt,
-    } : null,
+    instagramConnected: !!instagramAccount,
+    instagramUsername: instagramAccount?.providerUserName || null,
+    subscription: activeSubscription
+      ? {
+          status: activeSubscription.status,
+          planName: activeSubscription.plan?.name,
+          endsAt: activeSubscription.endsAt,
+        }
+      : null,
   });
 });
 

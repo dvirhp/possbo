@@ -1,10 +1,18 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import fs from "fs";
+import path from "path";
 
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 4200,
+    https: fs.existsSync(path.resolve(__dirname, "certs/cert.pem"))
+      ? {
+          key: fs.readFileSync(path.resolve(__dirname, "certs/key.pem")),
+          cert: fs.readFileSync(path.resolve(__dirname, "certs/cert.pem")),
+        }
+      : undefined,
     watch: {
       ignored: ["**/coverage/**"],
     },
