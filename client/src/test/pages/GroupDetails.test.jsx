@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const mockNavigate = vi.fn();
@@ -83,26 +83,32 @@ const renderGroupDetails = async (state = mockGroup) => {
   vi.resetModules();
   const GroupDetails = (await import('../../pages/GroupDetails.jsx')).default;
 
-  render(
-    <MemoryRouter initialEntries={[{ pathname: '/group/1', state }]}>
-      <Routes>
-        <Route path="/group/:id" element={<GroupDetails />} />
-      </Routes>
-    </MemoryRouter>,
-  );
+  await act(async () => {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/group/1', state }]}>
+        <Routes>
+          <Route path="/group/:id" element={<GroupDetails />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  });
 };
 
 const renderGroupDetailsWithContainer = async (state = mockGroup) => {
   vi.resetModules();
   const GroupDetails = (await import('../../pages/GroupDetails.jsx')).default;
 
-  return render(
-    <MemoryRouter initialEntries={[{ pathname: '/group/1', state }]}>
-      <Routes>
-        <Route path="/group/:id" element={<GroupDetails />} />
-      </Routes>
-    </MemoryRouter>,
-  );
+  let result;
+  await act(async () => {
+    result = render(
+      <MemoryRouter initialEntries={[{ pathname: '/group/1', state }]}>
+        <Routes>
+          <Route path="/group/:id" element={<GroupDetails />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  });
+  return result;
 };
 
 describe('GroupDetails page', () => {
