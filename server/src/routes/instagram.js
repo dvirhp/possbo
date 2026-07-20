@@ -1,6 +1,7 @@
 import express from "express";
 import prisma from "../config/prisma.js";
 import { encrypt, decrypt } from "../utils/encryption.js";
+import { getPublicMediaUrl } from "../utils/media-upload.js";
 import { createLogger } from "../utils/logger.js";
 
 const router = express.Router();
@@ -54,7 +55,8 @@ router.get("/auth-url", requireAuth, (req, res) => {
     return res.status(500).json({ error: "Instagram API not configured" });
   }
 
-  const scope = "instagram_business_basic,instagram_business_content_publish";
+  const scope =
+    "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights";
   const authUrl =
     `https://www.instagram.com/oauth/authorize` +
     `?client_id=${appId}` +
@@ -66,15 +68,14 @@ router.get("/auth-url", requireAuth, (req, res) => {
   res.json({ success: true, authUrl });
 });
 
-// ─── GET /instagram/callback — Handle OAuth callback ────────────────
-router.get("/callback", async (req, res) => {
+// ─── POST /instagram/connect — Exchange code for token (popup flow) ─
+router.post("/connect", requireAuth, async (req, res) => {
   try {
-    const { code, state: userId } = req.query;
+    const { code } = req.body;
+    const userId = req.user.id;
 
-    if (!code || !userId) {
-      return res.redirect(
-        `${process.env.CLIENT_URL}/dashboard?tab=settings&ig=error&msg=missing_params`,
-      );
+    if (!code) {
+      return res.status(400).json({ error: "Missing authorization code" });
     }
 
     const appId = process.env.INSTAGRAM_APP_ID;
@@ -99,14 +100,30 @@ router.get("/callback", async (req, res) => {
 
     const tokenData = await tokenRes.json();
 
-    if (tokenData.error_message) {
+    if (tokenData.error_message || tokenData.error_type) {
       log.error("Instagram token exchange failed", tokenData);
-      return res.redirect(
-        `${process.env.CLIENT_URL}/dashboard?tab=settings&ig=error&msg=token_failed`,
-      );
+      return res.status(400).json({
+        error:
+          "שגיאה בחיבור אינסטגרם: " +
+          (tokenData.error_message || tokenData.error_type),
+      });
     }
 
-    const { access_token: shortToken, user_id: igUserId } = tokenData;
+    // Instagram API returns data in { data: [{ access_token, user_id, permissions }] }
+    // OR in flat format { access_token, user_id } depending on endpoint version
+    let shortToken, igUserId;
+    if (tokenData.data && Array.isArray(tokenData.data)) {
+      shortToken = tokenData.data[0].access_token;
+      igUserId = tokenData.data[0].user_id;
+    } else {
+      shortToken = tokenData.access_token;
+      igUserId = tokenData.user_id;
+    }
+
+    if (!shortToken || !igUserId) {
+      log.error("Instagram token response missing fields", tokenData);
+      return res.status(400).json({ error: "תגובה לא תקינה מאינסטגרם" });
+    }
 
     // Exchange for long-lived token (60 days)
     const longTokenRes = await fetch(
@@ -120,43 +137,35 @@ router.get("/callback", async (req, res) => {
 
     if (longTokenData.error) {
       log.error("Instagram long-lived token exchange failed", longTokenData);
-      return res.redirect(
-        `${process.env.CLIENT_URL}/dashboard?tab=settings&ig=error&msg=long_token_failed`,
-      );
+      return res.status(400).json({ error: "שגיאה בקבלת טוקן ארוך טווח" });
     }
 
     const longToken = longTokenData.access_token;
-    const expiresIn = longTokenData.expires_in || 5184000; // 60 days default
+    const expiresIn = longTokenData.expires_in || 5184000;
 
-    // Get Instagram username
+    // Get Instagram username and correct graph ID (token exchange user_id may
+    // lose precision for large numbers due to JS Number limitations)
     const profileRes = await fetch(
-      `https://graph.instagram.com/me?fields=username&access_token=${longToken}`,
+      `https://graph.instagram.com/me?fields=id,username&access_token=${longToken}`,
     );
     const profileData = await profileRes.json();
     const username = profileData.username || igUserId;
+    // Use the string ID from /me which is always precise
+    const graphUserId = profileData.id || String(igUserId);
 
     // Save or update connected account
     const encryptedToken = encrypt(longToken);
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
 
-    await prisma.connectedAccount.upsert({
-      where: {
-        provider_providerUserId: {
-          provider: "INSTAGRAM",
-          providerUserId: String(igUserId),
-        },
-      },
-      create: {
+    // Upsert by userId + provider (delete old record if providerUserId changed due to precision fix)
+    await prisma.connectedAccount.deleteMany({
+      where: { userId, provider: "INSTAGRAM" },
+    });
+    await prisma.connectedAccount.create({
+      data: {
         userId,
         provider: "INSTAGRAM",
-        providerUserId: String(igUserId),
-        providerUserName: username,
-        accessTokenEncrypted: encryptedToken,
-        tokenExpiresAt,
-        status: "ACTIVE",
-      },
-      update: {
-        userId,
+        providerUserId: graphUserId,
         providerUserName: username,
         accessTokenEncrypted: encryptedToken,
         tokenExpiresAt,
@@ -164,14 +173,159 @@ router.get("/callback", async (req, res) => {
       },
     });
 
-    log.info("Instagram connected", { userId, igUserId, username });
+    log.info("Instagram connected", {
+      userId,
+      igUserId: graphUserId,
+      username,
+    });
 
-    res.redirect(`${process.env.CLIENT_URL}/dashboard?tab=settings&ig=success`);
+    res.json({
+      success: true,
+      account: { username, connectedAt: new Date() },
+    });
+  } catch (err) {
+    log.error("Instagram connect error", err);
+    res.status(500).json({ error: "שגיאה בחיבור אינסטגרם" });
+  }
+});
+
+// ─── GET /instagram/callback — Handle OAuth callback, exchange code, redirect ─
+router.get("/callback", async (req, res) => {
+  const clientUrl = process.env.CLIENT_URL;
+  const { code, error, error_description, state } = req.query;
+
+  if (error) {
+    return res.redirect(
+      `${clientUrl}/oauth/instagram/callback?error=${encodeURIComponent(error)}&error_description=${encodeURIComponent(error_description || "")}`,
+    );
+  }
+
+  if (!code) {
+    return res.redirect(
+      `${clientUrl}/oauth/instagram/callback?error=missing_code`,
+    );
+  }
+
+  // state contains the userId (set in auth-url generation)
+  const userId = state;
+  if (!userId) {
+    return res.redirect(
+      `${clientUrl}/oauth/instagram/callback?error=missing_state`,
+    );
+  }
+
+  try {
+    const appId = process.env.INSTAGRAM_APP_ID;
+    const appSecret = process.env.INSTAGRAM_APP_SECRET;
+    const redirectUri = process.env.INSTAGRAM_REDIRECT_URI;
+
+    // Exchange code for short-lived token
+    const tokenRes = await fetch(
+      "https://api.instagram.com/oauth/access_token",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: appId,
+          client_secret: appSecret,
+          grant_type: "authorization_code",
+          redirect_uri: redirectUri,
+          code,
+        }),
+      },
+    );
+
+    const tokenData = await tokenRes.json();
+
+    if (tokenData.error_message || tokenData.error_type) {
+      log.error("Instagram token exchange failed in callback", tokenData);
+      return res.redirect(
+        `${clientUrl}/oauth/instagram/callback?error=${encodeURIComponent(tokenData.error_message || "token_exchange_failed")}`,
+      );
+    }
+
+    let shortToken, igUserId;
+    if (tokenData.data && Array.isArray(tokenData.data)) {
+      shortToken = tokenData.data[0].access_token;
+      igUserId = tokenData.data[0].user_id;
+    } else {
+      shortToken = tokenData.access_token;
+      igUserId = tokenData.user_id;
+    }
+
+    if (!shortToken || !igUserId) {
+      log.error(
+        "Instagram token response missing fields in callback",
+        tokenData,
+      );
+      return res.redirect(
+        `${clientUrl}/oauth/instagram/callback?error=invalid_token_response`,
+      );
+    }
+
+    // Exchange for long-lived token (60 days)
+    const longTokenRes = await fetch(
+      `https://graph.instagram.com/access_token` +
+        `?grant_type=ig_exchange_token` +
+        `&client_secret=${appSecret}` +
+        `&access_token=${shortToken}`,
+    );
+    const longTokenData = await longTokenRes.json();
+
+    if (longTokenData.error) {
+      log.error(
+        "Instagram long-lived token exchange failed in callback",
+        longTokenData,
+      );
+      return res.redirect(
+        `${clientUrl}/oauth/instagram/callback?error=long_token_failed`,
+      );
+    }
+
+    const longToken = longTokenData.access_token;
+    const expiresIn = longTokenData.expires_in || 5184000;
+
+    // Get Instagram username and correct graph ID
+    const profileRes = await fetch(
+      `https://graph.instagram.com/me?fields=id,username&access_token=${longToken}`,
+    );
+    const profileData = await profileRes.json();
+    const username = profileData.username || igUserId;
+    const graphUserId = profileData.id || String(igUserId);
+
+    // Save or update connected account
+    const encryptedToken = encrypt(longToken);
+    const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
+
+    // Delete + create instead of upsert (providerUserId may have changed due to precision fix)
+    await prisma.connectedAccount.deleteMany({
+      where: { userId, provider: "INSTAGRAM" },
+    });
+    await prisma.connectedAccount.create({
+      data: {
+        userId,
+        provider: "INSTAGRAM",
+        providerUserId: graphUserId,
+        providerUserName: username,
+        accessTokenEncrypted: encryptedToken,
+        tokenExpiresAt,
+        status: "ACTIVE",
+      },
+    });
+
+    log.info("Instagram connected via callback", {
+      userId,
+      igUserId: graphUserId,
+      username,
+    });
+
+    // Redirect to client with success
+    res.redirect(
+      `${clientUrl}/oauth/instagram/callback?success=true&username=${encodeURIComponent(username)}`,
+    );
   } catch (err) {
     log.error("Instagram callback error", err);
-    res.redirect(
-      `${process.env.CLIENT_URL}/dashboard?tab=settings&ig=error&msg=server_error`,
-    );
+    res.redirect(`${clientUrl}/oauth/instagram/callback?error=server_error`);
   }
 });
 
@@ -193,12 +347,21 @@ router.post("/disconnect", requireAuth, async (req, res) => {
 // ─── POST /instagram/publish — Publish to Instagram ─────────────────
 router.post("/publish", requireAuth, async (req, res) => {
   try {
-    const { postId, publishType, caption, mediaUrl } = req.body;
+    const { postId, publishType, caption, mediaUrl: rawMediaUrl } = req.body;
 
-    if (!publishType || !mediaUrl) {
+    if (!publishType || !rawMediaUrl) {
       return res
         .status(400)
         .json({ error: "Missing required fields: publishType, mediaUrl" });
+    }
+
+    // Resolve to a publicly accessible URL if it's a local path
+    let mediaUrl = rawMediaUrl;
+    if (
+      rawMediaUrl.startsWith("/uploads/") ||
+      !rawMediaUrl.startsWith("http")
+    ) {
+      mediaUrl = await getPublicMediaUrl(rawMediaUrl);
     }
 
     const account = await prisma.connectedAccount.findFirst({
@@ -221,7 +384,9 @@ router.post("/publish", requireAuth, async (req, res) => {
     }
 
     const accessToken = decrypt(account.accessTokenEncrypted);
-    const igUserId = account.providerUserId;
+
+    // Use 'me' instead of numeric ID to avoid precision issues with large IDs
+    const igPath = "me";
 
     // Step 1: Create media container
     const containerBody = { access_token: accessToken };
@@ -244,7 +409,7 @@ router.post("/publish", requireAuth, async (req, res) => {
     }
 
     const containerRes = await fetch(
-      `https://graph.instagram.com/v21.0/${igUserId}/media`,
+      `https://graph.instagram.com/v21.0/${igPath}/media`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -294,7 +459,7 @@ router.post("/publish", requireAuth, async (req, res) => {
 
     // Step 3: Publish
     const publishRes = await fetch(
-      `https://graph.instagram.com/v21.0/${igUserId}/media_publish`,
+      `https://graph.instagram.com/v21.0/${igPath}/media_publish`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -314,6 +479,18 @@ router.post("/publish", requireAuth, async (req, res) => {
         .json({ error: publishData.error.message || "שגיאה בפרסום" });
     }
 
+    // Fetch permalink for the published media
+    let permalink = null;
+    try {
+      const mediaRes = await fetch(
+        `https://graph.instagram.com/v21.0/${publishData.id}?fields=permalink&access_token=${accessToken}`,
+      );
+      const mediaData = await mediaRes.json();
+      if (mediaData.permalink) permalink = mediaData.permalink;
+    } catch {
+      // Non-critical
+    }
+
     // Record in publication history
     if (postId) {
       await prisma.publicationHistory.create({
@@ -324,6 +501,7 @@ router.post("/publish", requireAuth, async (req, res) => {
           platform: "INSTAGRAM",
           publishedAt: new Date(),
           externalPostId: publishData.id,
+          externalPostUrl: permalink,
           status: "SUCCESS",
         },
       });
@@ -333,12 +511,14 @@ router.post("/publish", requireAuth, async (req, res) => {
       userId: req.user.id,
       publishType,
       mediaId: publishData.id,
+      permalink,
     });
 
     res.json({
       success: true,
       mediaId: publishData.id,
       publishType,
+      postUrl: permalink,
     });
   } catch (err) {
     log.error("Instagram publish error", err);

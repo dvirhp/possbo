@@ -662,6 +662,25 @@
 
 .tpl-form { display: flex; flex-direction: column; gap: 20px; }
 
+/* Section cards */
+.tpl-section-card {
+  background: var(--bg-elevated, rgba(30, 33, 40, 0.6));
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tpl-section-header {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf0);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+  margin-bottom: 4px;
+}
+
 .tpl-error {
   padding: 10px 14px;
   background: rgba(248, 113, 113, 0.1);
@@ -1061,7 +1080,44 @@
   cursor: pointer;
 }
 
-/* Platform tabs (Facebook / Instagram) */
+/* ─── Stacked distribution platforms ─── */
+.tpl-dist-platform {
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--bg-card, #1e2128);
+}
+.tpl-dist-platform-ig {
+  margin-top: 0;
+}
+.tpl-dist-platform-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+}
+.tpl-dist-platform-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e8ecf0);
+}
+.tpl-dist-platform-badge {
+  margin-right: auto;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--indigo, #6366f1);
+  font-weight: 500;
+}
+.tpl-dist-platform-ig .tpl-dist-platform-badge {
+  background: rgba(225, 48, 108, 0.1);
+  color: #e1306c;
+}
+
+/* Platform tabs (Facebook / Instagram) — legacy, keep for compat */
 .tpl-platform-tabs {
   display: flex;
   gap: 6px;

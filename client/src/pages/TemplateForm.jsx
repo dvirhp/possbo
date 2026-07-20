@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useNavigationGuard } from '../context/NavigationGuard'
@@ -294,6 +294,20 @@ export default function TemplateForm() {
   const [instagramPublishTypes, setInstagramPublishTypes] = useState(['FEED']) // array of 'FEED' | 'STORY' | 'REEL'
   const [storyMediaMode, setStoryMediaMode] = useState('first') // 'first' | 'all' | 'pick'
   const [storyPickedIndex, setStoryPickedIndex] = useState(0)
+  const igCheckedRef = useRef(false)
+
+  // Live-check Instagram connection when tab is first opened
+  const checkInstagramStatus = useCallback(async () => {
+    if (igCheckedRef.current || user?.instagramConnected) return
+    igCheckedRef.current = true
+    try {
+      const res = await authAPI.getInstagramStatus()
+      if (res?.data?.connected) {
+        setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: res.data.account?.username }))
+        setInstagramEnabled(true)
+      }
+    } catch { /* ignore */ }
+  }, [user?.instagramConnected, setUser])
   const [igScheduleMode, setIgScheduleMode] = useState('now')
   const [igScheduleDate, setIgScheduleDate] = useState('')
   const [igScheduleTime, setIgScheduleTime] = useState('')
@@ -304,8 +318,9 @@ export default function TemplateForm() {
 
   // Schedule sub-tab
   const [scheduleSubTab, setScheduleSubTab] = useState('groups')
-  // Distribution view tab (which panel is shown — both can be enabled)
-  const [distPlatformTab, setDistPlatformTab] = useState('facebook')
+
+  // Check Instagram status on mount
+  useEffect(() => { checkInstagramStatus() }, [checkInstagramStatus])
 
   // Track unsaved changes
   useEffect(() => {
@@ -549,51 +564,60 @@ export default function TemplateForm() {
       <div className="tpl-form-layout">
         <div className="tpl-form">
 
-          {/* Template Name */}
-          <div className="tpl-field">
-            <label className="tpl-label">שם הטמפלייט *</label>
-            <input
-              type="text"
-              className="tpl-input"
-              placeholder="לדוגמה: פרסום יומי לקבוצות נדל״ן"
-              value={name}
-              onChange={e => setName(e.target.value)}
-            />
-          </div>
+          {/* ═══ Section: Template Info ═══ */}
+          <div className="tpl-section-card">
+            <div className="tpl-section-header">📋 פרטי טמפלייט</div>
 
-          {/* Campaign Title */}
-          <div className="tpl-field">
-            <label className="tpl-label">כותרת קמפיין</label>
-            <input
-              type="text"
-              className="tpl-input"
-              placeholder="כותרת פנימית (לא מתפרסמת)"
-              value={campaignTitle}
-              onChange={e => setCampaignTitle(e.target.value)}
-            />
-          </div>
+            {/* Template Name */}
+            <div className="tpl-field">
+              <label className="tpl-label">שם הטמפלייט *</label>
+              <input
+                type="text"
+                className="tpl-input"
+                placeholder="לדוגמה: פרסום יומי לקבוצות נדל״ן"
+                value={name}
+                onChange={e => setName(e.target.value)}
+              />
+            </div>
 
-          {/* Content */}
-          <div className="tpl-field">
-            <label className="tpl-label">תוכן הפוסט *</label>
-            <div className="cp-textarea-wrap">
-            <textarea
-              ref={contentTextareaRef}
-              className="tpl-textarea"
-              placeholder="מה ברצונך לשתף?"
-              rows={6}
-              value={content}
-              onChange={e => setContent(e.target.value)}
-            />
-            <EmojiPicker
-              textareaRef={contentTextareaRef}
-              onSelect={(newText) => setContent(newText)}
-            />
+            {/* Campaign Title */}
+            <div className="tpl-field">
+              <label className="tpl-label">כותרת קמפיין</label>
+              <input
+                type="text"
+                className="tpl-input"
+                placeholder="כותרת פנימית (לא מתפרסמת)"
+                value={campaignTitle}
+                onChange={e => setCampaignTitle(e.target.value)}
+              />
             </div>
           </div>
 
-          {/* Anonymous + Location */}
-          <div className="tpl-toggles">
+          {/* ═══ Section: Content ═══ */}
+          <div className="tpl-section-card">
+            <div className="tpl-section-header">✍️ תוכן</div>
+
+            {/* Content */}
+            <div className="tpl-field">
+              <label className="tpl-label">תוכן הפוסט *</label>
+              <div className="cp-textarea-wrap">
+              <textarea
+                ref={contentTextareaRef}
+                className="tpl-textarea"
+                placeholder="מה ברצונך לשתף?"
+                rows={6}
+                value={content}
+                onChange={e => setContent(e.target.value)}
+              />
+              <EmojiPicker
+                textareaRef={contentTextareaRef}
+                onSelect={(newText) => setContent(newText)}
+              />
+              </div>
+            </div>
+
+            {/* Anonymous + Location */}
+            <div className="tpl-toggles">
             <button
               type="button"
               className={`tpl-toggle-btn ${isAnonymous ? 'active' : ''}`}
@@ -725,34 +749,20 @@ export default function TemplateForm() {
               />
             </div>
           </div>
+          </div>
 
-          {/* ═══ Distribution — Platform Toggles ═══ */}
-          <div className="tpl-field">
-            <label className="tpl-label">תפוצה</label>
-            <div className="tpl-platform-tabs">
-              <button type="button" className={`tpl-platform-tab ${distPlatformTab === 'facebook' ? 'active' : ''}`} onClick={() => setDistPlatformTab('facebook')}>
+          {/* ═══ Section: Distribution ═══ */}
+          <div className="tpl-section-card">
+            <div className="tpl-section-header">📢 תפוצה</div>
+
+            {/* ─── Facebook section ─── */}
+            <div className="tpl-dist-platform">
+              <div className="tpl-dist-platform-header">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                <span>Facebook</span>
-              </button>
-              <button type="button" className={`tpl-platform-tab tpl-platform-tab-ig ${distPlatformTab === 'instagram' ? 'active' : ''}`} onClick={() => { setDistPlatformTab('instagram'); setInstagramEnabled(true) }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#ig-dist-tab)">
-                  <defs>
-                    <linearGradient id="ig-dist-tab" x1="0%" y1="100%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#FFDC80" />
-                      <stop offset="50%" stopColor="#E1306C" />
-                      <stop offset="100%" stopColor="#833AB4" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
-                </svg>
-                <span>Instagram</span>
-                {instagramEnabled && <span className="tpl-platform-badge">✓</span>}
-              </button>
-            </div>
+                <span className="tpl-dist-platform-title">Facebook</span>
+                {(selectedGroupIds.length > 0 || publishToProfile) && <span className="tpl-dist-platform-badge">{selectedGroupIds.length > 0 ? `${selectedGroupIds.length} קבוצות` : ''}{selectedGroupIds.length > 0 && publishToProfile ? ' + ' : ''}{publishToProfile ? 'פרופיל' : ''}</span>}
+              </div>
 
-            {/* ─── Facebook content ─── */}
-            {distPlatformTab === 'facebook' && (
-            <div className="tpl-platform-content">
               {/* Groups */}
               <div className="tpl-platform-section">
                 <div className="tpl-platform-section-title">👥 קבוצות</div>
@@ -830,132 +840,162 @@ export default function TemplateForm() {
                 </label>
               </div>
             </div>
-            )}
 
-            {/* ─── Instagram content ─── */}
-            {distPlatformTab === 'instagram' && (
-              <div className="tpl-platform-content">
-                <div className="tpl-platform-section-title" style={{ marginBottom: 10 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#ig-section-tpl)" style={{ verticalAlign: 'middle', marginLeft: 6 }}>
-                    <defs><linearGradient id="ig-section-tpl" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stopColor="#FFDC80" /><stop offset="50%" stopColor="#E1306C" /><stop offset="100%" stopColor="#833AB4" /></linearGradient></defs>
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
-                  </svg>
-                  סוג פרסום באינסטגרם
-                </div>
-                <div className="tpl-ig-type-select">
-                  {[
-                    { val: 'FEED', label: 'פוסט', icon: '📷' },
-                    { val: 'STORY', label: 'סטורי', icon: '📱' },
-                    { val: 'REEL', label: 'ריל', icon: '🎬' },
-                  ].map(t => (
-                    <button
-                      key={t.val}
-                      type="button"
-                      className={`tpl-ig-type-btn ${instagramPublishTypes.includes(t.val) ? 'active' : ''}`}
-                      onClick={() => {
-                        setInstagramPublishTypes(prev => {
-                          if (prev.includes(t.val)) {
-                            return prev.length > 1 ? prev.filter(v => v !== t.val) : prev
-                          }
-                          return [...prev, t.val]
-                        })
-                      }}
-                    >
-                      {t.icon} {t.label}
-                    </button>
-                  ))}
-                </div>
-                {instagramPublishTypes.length > 1 && (
-                  <div className="cp-ig-hint" style={{ marginTop: 10 }}>
-                    <span>✨</span>
-                    <span>התוכן יפורסם ב-{instagramPublishTypes.length} סוגים במקביל</span>
-                  </div>
-                )}
-
-                {/* Story options */}
-                {instagramPublishTypes.includes('STORY') && (
-                  <div className="cp-ig-media-options" style={{ marginTop: 12 }}>
-                    <div className="cp-ig-hint">
-                      <span>💡</span>
-                      <span>סטורי נעלם אחרי 24 שעות מרגע הפרסום</span>
-                    </div>
-                    {allImagePreviews.length > 1 && (
-                      <>
-                        <div className="cp-ig-media-notice" style={{ marginTop: 8 }}>
-                          <span className="cp-ig-media-notice-icon">ℹ️</span>
-                          <span>סטורי תומך בתמונה/סרטון <strong>אחד בלבד</strong>. יש {allImagePreviews.length} קבצים — בחרי מה לעשות:</span>
-                        </div>
-                        <div className="cp-ig-media-choices">
-                          <label className={`cp-ig-media-choice ${storyMediaMode === 'first' ? 'active' : ''}`}>
-                            <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'first'} onChange={() => setStoryMediaMode('first')} />
-                            <div className="cp-ig-media-choice-content">
-                              <span className="cp-ig-media-choice-title">📸 פרסם רק את הראשונה</span>
-                              <span className="cp-ig-media-choice-desc">סטורי אחד עם התמונה הראשונה</span>
-                            </div>
-                          </label>
-                          <label className={`cp-ig-media-choice ${storyMediaMode === 'all' ? 'active' : ''}`}>
-                            <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'all'} onChange={() => setStoryMediaMode('all')} />
-                            <div className="cp-ig-media-choice-content">
-                              <span className="cp-ig-media-choice-title">📚 פרסם סטורי לכל תמונה</span>
-                              <span className="cp-ig-media-choice-desc">{allImagePreviews.length} סטוריז נפרדים</span>
-                            </div>
-                          </label>
-                          <label className={`cp-ig-media-choice ${storyMediaMode === 'pick' ? 'active' : ''}`}>
-                            <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'pick'} onChange={() => setStoryMediaMode('pick')} />
-                            <div className="cp-ig-media-choice-content">
-                              <span className="cp-ig-media-choice-title">🎯 בחר תמונה ספציפית</span>
-                              <span className="cp-ig-media-choice-desc">בחרי איזו תמונה תופיע בסטורי</span>
-                            </div>
-                          </label>
-                        </div>
-                        {storyMediaMode === 'pick' && (
-                          <div className="cp-ig-image-picker">
-                            {allImagePreviews.map((img, i) => (
-                              <button key={i} type="button" className={`cp-ig-image-pick-item ${storyPickedIndex === i ? 'active' : ''}`} onClick={() => setStoryPickedIndex(i)}>
-                                <img src={img} alt={`תמונה ${i + 1}`} />
-                                {storyPickedIndex === i && <span className="cp-ig-image-pick-check">✓</span>}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Reel options */}
-                {instagramPublishTypes.includes('REEL') && (
-                  <div className="cp-ig-media-options" style={{ marginTop: 12 }}>
-                    {(() => {
-                      const hasVideo = newImages.some(f => f?.type?.startsWith('video/'))
-                      const hasOnlyImages = allImagePreviews.length > 0 && !hasVideo
-                      if (hasVideo) {
-                        return <div className="cp-ig-hint cp-ig-hint-success"><span>✅</span><span>סרטון זוהה — הוא ישמש כריל שלך.</span></div>
-                      }
-                      if (hasOnlyImages) {
-                        return (
-                          <div className="cp-ig-media-notice cp-ig-media-notice-warn">
-                            <span className="cp-ig-media-notice-icon">⚠️</span>
-                            <span>ריל דורש <strong>סרטון</strong>. הועלו רק תמונות — החליפי לסרטון או בחרי סוג פרסום אחר.</span>
-                          </div>
-                        )
-                      }
-                      return <div className="cp-ig-hint"><span>💡</span><span>ריל דורש סרטון. הוסיפי סרטון בקטע המדיה.</span></div>
-                    })()}
-                  </div>
-                )}
-
-                {/* Feed hint */}
-                {instagramPublishTypes.includes('FEED') && allImagePreviews.length === 0 && (
-                  <div className="cp-ig-hint" style={{ marginTop: 12 }}>
-                    <span>💡</span>
-                    <span>פוסט בפיד דורש לפחות תמונה אחת. הוסיפי תמונה בקטע המדיה.</span>
-                  </div>
-                )}
+            {/* ─── Instagram section ─── */}
+            <div className="tpl-dist-platform tpl-dist-platform-ig">
+              <div className="tpl-dist-platform-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#ig-dist-tpl)">
+                  <defs>
+                    <linearGradient id="ig-dist-tpl" x1="0%" y1="100%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#FFDC80" />
+                      <stop offset="50%" stopColor="#E1306C" />
+                      <stop offset="100%" stopColor="#833AB4" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                </svg>
+                <span className="tpl-dist-platform-title">Instagram</span>
+                {instagramEnabled && <span className="tpl-dist-platform-badge">{instagramPublishTypes.map(t => t === 'FEED' ? 'פוסט' : t === 'STORY' ? 'סטורי' : 'ריל').join(', ')}</span>}
               </div>
-            )}
+
+              {!user?.instagramConnected ? (
+                <div className="cp-ig-connect-notice" style={{ textAlign: 'center', padding: '24px 16px' }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>📸</div>
+                  <h3 style={{ margin: '0 0 8px' }}>חבר את חשבון האינסטגרם שלך</h3>
+                  <p style={{ color: 'var(--text-secondary)', margin: '0 0 16px' }}>כדי לפרסם באינסטגרם, יש לחבר חשבון Instagram מסוג <strong>Business</strong> או <strong>Creator</strong>.</p>
+                  <button
+                    type="button"
+                    className="cp-ig-connect-btn"
+                    onClick={() => navigate('/dashboard?tab=settings')}
+                    style={{ margin: '0 auto' }}
+                  >
+                    חבר חשבון Instagram
+                  </button>
+                </div>
+              ) : (
+              <>
+              <div className="tpl-platform-section-title" style={{ marginBottom: 10 }}>
+                סוג פרסום
+              </div>
+              <div className="cp-ig-type-grid">
+                {[
+                  { val: 'FEED', label: 'פוסט', icon: '🖼️', desc: 'פוסט בפיד האינסטגרם' },
+                  { val: 'STORY', label: 'סטורי', icon: '⏱️', desc: 'סטורי שנעלם אחרי 24 שעות' },
+                  { val: 'REEL', label: 'ריל', icon: '🎬', desc: 'סרטון קצר בפורמט Reels' },
+                ].map(t => (
+                  <button
+                    key={t.val}
+                    type="button"
+                    className={`cp-ig-type-card ${instagramPublishTypes.includes(t.val) ? 'active' : ''}`}
+                    onClick={() => {
+                      setInstagramPublishTypes(prev => {
+                        const next = prev.includes(t.val)
+                          ? prev.filter(v => v !== t.val)
+                          : [...prev, t.val]
+                        setInstagramEnabled(next.length > 0)
+                        return next
+                      })
+                    }}
+                  >
+                    <span className="cp-ig-type-icon">{t.icon}</span>
+                    <span className="cp-ig-type-name">{t.label}</span>
+                    <span className="cp-ig-type-desc">{t.desc}</span>
+                  </button>
+                ))}
+              </div>
+              {instagramPublishTypes.length > 1 && (
+                <div className="cp-ig-hint" style={{ marginTop: 10 }}>
+                  <span>✨</span>
+                  <span>התוכן יפורסם ב-{instagramPublishTypes.length} סוגים במקביל</span>
+                </div>
+              )}
+
+              {/* Story options */}
+              {instagramPublishTypes.includes('STORY') && (
+                <div className="cp-ig-media-options" style={{ marginTop: 12 }}>
+                  <div className="cp-ig-hint">
+                    <span>💡</span>
+                    <span>סטורי נעלם אחרי 24 שעות מרגע הפרסום</span>
+                  </div>
+                  {allImagePreviews.length > 1 && (
+                    <>
+                      <div className="cp-ig-media-notice" style={{ marginTop: 8 }}>
+                        <span className="cp-ig-media-notice-icon">ℹ️</span>
+                        <span>סטורי תומך בתמונה/סרטון <strong>אחד בלבד</strong>. יש {allImagePreviews.length} קבצים — בחרי מה לעשות:</span>
+                      </div>
+                      <div className="cp-ig-media-choices">
+                        <label className={`cp-ig-media-choice ${storyMediaMode === 'first' ? 'active' : ''}`}>
+                          <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'first'} onChange={() => setStoryMediaMode('first')} />
+                          <div className="cp-ig-media-choice-content">
+                            <span className="cp-ig-media-choice-title">📸 פרסם רק את הראשונה</span>
+                            <span className="cp-ig-media-choice-desc">סטורי אחד עם התמונה הראשונה</span>
+                          </div>
+                        </label>
+                        <label className={`cp-ig-media-choice ${storyMediaMode === 'all' ? 'active' : ''}`}>
+                          <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'all'} onChange={() => setStoryMediaMode('all')} />
+                          <div className="cp-ig-media-choice-content">
+                            <span className="cp-ig-media-choice-title">📚 פרסם סטורי לכל תמונה</span>
+                            <span className="cp-ig-media-choice-desc">{allImagePreviews.length} סטוריז נפרדים</span>
+                          </div>
+                        </label>
+                        <label className={`cp-ig-media-choice ${storyMediaMode === 'pick' ? 'active' : ''}`}>
+                          <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'pick'} onChange={() => setStoryMediaMode('pick')} />
+                          <div className="cp-ig-media-choice-content">
+                            <span className="cp-ig-media-choice-title">🎯 בחר תמונה ספציפית</span>
+                            <span className="cp-ig-media-choice-desc">בחרי איזו תמונה תופיע בסטורי</span>
+                          </div>
+                        </label>
+                      </div>
+                      {storyMediaMode === 'pick' && (
+                        <div className="cp-ig-image-picker">
+                          {allImagePreviews.map((img, i) => (
+                            <button key={i} type="button" className={`cp-ig-image-pick-item ${storyPickedIndex === i ? 'active' : ''}`} onClick={() => setStoryPickedIndex(i)}>
+                              <img src={img} alt={`תמונה ${i + 1}`} />
+                              {storyPickedIndex === i && <span className="cp-ig-image-pick-check">✓</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Reel options */}
+              {instagramPublishTypes.includes('REEL') && (
+                <div className="cp-ig-media-options" style={{ marginTop: 12 }}>
+                  {(() => {
+                    const hasVideo = newImages.some(f => f?.type?.startsWith('video/'))
+                    const hasOnlyImages = allImagePreviews.length > 0 && !hasVideo
+                    if (hasVideo) {
+                      return <div className="cp-ig-hint cp-ig-hint-success"><span>✅</span><span>סרטון זוהה — הוא ישמש כריל שלך.</span></div>
+                    }
+                    if (hasOnlyImages) {
+                      return (
+                        <div className="cp-ig-media-notice cp-ig-media-notice-warn">
+                          <span className="cp-ig-media-notice-icon">⚠️</span>
+                          <span>ריל דורש <strong>סרטון</strong>. הועלו רק תמונות — החליפי לסרטון או בחרי סוג פרסום אחר.</span>
+                        </div>
+                      )
+                    }
+                    return <div className="cp-ig-hint"><span>💡</span><span>ריל דורש סרטון. הוסיפי סרטון בקטע המדיה.</span></div>
+                  })()}
+                </div>
+              )}
+
+              {/* Feed hint */}
+              {instagramPublishTypes.includes('FEED') && allImagePreviews.length === 0 && (
+                <div className="cp-ig-hint" style={{ marginTop: 12 }}>
+                  <span>💡</span>
+                  <span>פוסט בפיד דורש לפחות תמונה אחת. הוסיפי תמונה בקטע המדיה.</span>
+                </div>
+              )}
+              </>
+              )}
+            </div>
           </div>
 
+          {/* ═══ Section: Scheduling ═══ */}
           {/* Schedule Mode */}
           {(() => {
             const targets = []
@@ -968,8 +1008,9 @@ export default function TemplateForm() {
             if (targets.length === 0) return null
 
             return (
+            <div className="tpl-section-card">
+              <div className="tpl-section-header">⏰ תזמון</div>
             <div className="tpl-field">
-              <label className="tpl-label">מצב תזמון</label>
 
               <div className="cp-schedule-hint-bubble">
                 בחרו את התזמון לכל פלטפורמה בנפרד: מיידי, חד-פעמי או חוזר.
@@ -1295,6 +1336,7 @@ export default function TemplateForm() {
                   )}
                 </div>
               )}
+            </div>
             </div>
             )
           })()}

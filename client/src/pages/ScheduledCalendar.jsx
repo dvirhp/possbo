@@ -57,9 +57,10 @@ export default function ScheduledCalendar() {
         type: 'scheduled',
         title: job.postGroup?.post?.title || job.postGroup?.post?.content?.slice(0, 40) || 'קמפיין מתוזמן',
         time: d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
-        group: job.postGroup?.group?.name || '',
+        group: job.targetType === 'INSTAGRAM' ? 'אינסטגרם' : (job.postGroup?.group?.name || ''),
         status: job.status === 'FAILED' ? 'failed' : 'pending',
         content: job.postGroup?.post?.content || '',
+        platform: job.platform || (job.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'),
       })
     })
 
@@ -73,9 +74,10 @@ export default function ScheduledCalendar() {
           type: 'published',
           title: p.post?.title || p.title || p.content?.slice(0, 40) || 'פוסט',
           time: d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
-          group: p.group?.name || '',
+          group: p.targetType === 'INSTAGRAM' ? 'אינסטגרם' : p.targetType === 'PROFILE' ? 'פרופיל אישי' : (p.group?.name || p.groupName || ''),
           status: p.status === 'FAILED' ? 'failed' : 'published',
           content: p.post?.content || p.content || '',
+          platform: p.platform || (p.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'),
         })
       })
     }
@@ -92,6 +94,8 @@ export default function ScheduledCalendar() {
         const key = d.toISOString().split('T')[0]
         recurringCampaigns.forEach(c => {
           if (c.recurringDays?.includes(dow)) {
+            const hasFb = (c.groupCount > 0 || c.publishToProfile)
+            const hasIg = c.instagramEnabled
             addEvent(key, {
               id: `rec-${c.id}-${key}`,
               type: 'recurring',
@@ -100,6 +104,7 @@ export default function ScheduledCalendar() {
               group: c.groupNames?.join(', ') || '',
               status: 'pending',
               content: c.content || '',
+              platform: (hasFb && hasIg) ? 'BOTH' : hasIg ? 'INSTAGRAM' : 'FACEBOOK',
             })
           }
         })
@@ -284,7 +289,11 @@ export default function ScheduledCalendar() {
                           <span className="sc-event-group">{ev.group || 'קבוצה'}</span>
                           <span className="sc-event-text">{ev.content?.slice(0, 80) || ev.title}</span>
                         </div>
-                        <span className={`sc-event-badge sc-badge-${ev.status}`}>{statusLabel(ev.status)}</span>
+                        <div className="sc-event-tags">
+                          {(ev.platform === 'FACEBOOK' || ev.platform === 'BOTH') && <span className="sc-platform-tag sc-tag-fb">FB</span>}
+                          {(ev.platform === 'INSTAGRAM' || ev.platform === 'BOTH') && <span className="sc-platform-tag sc-tag-ig">IG</span>}
+                          <span className={`sc-event-badge sc-badge-${ev.status}`}>{statusLabel(ev.status)}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -364,7 +373,10 @@ export default function ScheduledCalendar() {
                                   <span className={`sc-dot dot-${ev.status}`} />
                                   <div className="sc-tooltip-info">
                                     <span className="sc-tooltip-title">{ev.title}</span>
-                                    <span className="sc-tooltip-meta">{ev.time}{ev.group ? ` • ${ev.group}` : ''}</span>
+                                    <span className="sc-tooltip-meta">
+                                      {ev.time}{ev.group ? ` • ${ev.group}` : ''}
+                                      {ev.platform === 'INSTAGRAM' ? ' • IG' : ev.platform === 'BOTH' ? ' • FB+IG' : ''}
+                                    </span>
                                   </div>
                                 </div>
                               ))}
@@ -448,7 +460,11 @@ export default function ScheduledCalendar() {
                               <span className="sc-list-event-title">{ev.title}</span>
                               {ev.group && <span className="sc-list-event-group">{ev.group}</span>}
                             </div>
-                            <span className={`sc-list-badge sc-badge-${ev.status}`}>{statusLabel(ev.status)}</span>
+                            <div className="sc-list-event-tags">
+                              {(ev.platform === 'FACEBOOK' || ev.platform === 'BOTH') && <span className="sc-platform-tag sc-tag-fb">FB</span>}
+                              {(ev.platform === 'INSTAGRAM' || ev.platform === 'BOTH') && <span className="sc-platform-tag sc-tag-ig">IG</span>}
+                              <span className={`sc-list-badge sc-badge-${ev.status}`}>{statusLabel(ev.status)}</span>
+                            </div>
                           </div>
                         ))}
                       </div>

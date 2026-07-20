@@ -66,7 +66,7 @@ export default function MyGroups() {
     <div className="my-groups-page">
       <div className="page-header">
         <BackButton />
-        <h2>👥 הקבוצות שלי</h2>
+        <h2>👥 קבוצות פייסבוק</h2>
       </div>
 
       {/* Profile Publishing Section */}

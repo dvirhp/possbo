@@ -22,7 +22,7 @@ const MAIN_ITEMS = [
 
 const DRAWER_ITEMS = [
   { path: '/dashboard?tab=overview', icon: LayoutDashboard, label: 'דשבורד' },
-  { path: '/dashboard?tab=groups', icon: Users, label: 'קבוצות' },
+  { path: '/dashboard?tab=groups', icon: Users, label: 'קבוצות FB' },
   { path: '/dashboard?tab=campaigns', icon: SquarePen, label: 'קמפיינים' },
   { path: '/scheduled', icon: CalendarDays, label: 'יומן' },
   { path: '/dashboard?tab=stats', icon: BarChart3, label: 'סטטיסטיקות' },

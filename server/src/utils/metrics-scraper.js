@@ -778,9 +778,24 @@ export async function savePublicationMetrics(publicationId, likes, comments) {
 export async function refreshSinglePublicationMetrics(userId, publicationId) {
   const pub = await prisma.publicationHistory.findFirst({
     where: { id: publicationId, userId },
-    select: { id: true, externalPostUrl: true },
+    select: { id: true, externalPostUrl: true, externalPostId: true, platform: true },
   });
-  if (!pub?.externalPostUrl) {
+  if (!pub) {
+    log.warn(`Publication ${publicationId} not found`);
+    return null;
+  }
+
+  // Instagram — use Graph API
+  if (pub.platform === 'INSTAGRAM' && pub.externalPostId) {
+    log.info(`Refreshing IG metrics for publication ${publicationId}`, { externalPostId: pub.externalPostId });
+    const results = await refreshInstagramMetrics(userId, [pub]);
+    const result = results[0] || { likes: 0, comments: 0 };
+    await savePublicationMetrics(publicationId, result.likes, result.comments);
+    return { likes: result.likes, comments: result.comments };
+  }
+
+  // Facebook — use Playwright scraping
+  if (!pub.externalPostUrl) {
     log.warn(`Publication ${publicationId} has no external URL`);
     return null;
   }
@@ -801,6 +816,54 @@ export async function refreshSinglePublicationMetrics(userId, publicationId) {
   await savePublicationMetrics(publicationId, result.likes, result.comments);
 
   return { likes: result.likes, comments: result.comments };
+}
+
+/**
+ * Fetch Instagram metrics via Graph API for publications that have externalPostId.
+ * Uses the user's connected IG account token.
+ */
+export async function refreshInstagramMetrics(userId, publications) {
+  // Get user's IG token
+  const account = await prisma.connectedAccount.findFirst({
+    where: { userId, provider: "INSTAGRAM", status: "ACTIVE" },
+  });
+
+  if (!account) {
+    log.warn(`No active IG account for user ${userId}, skipping IG metrics`);
+    return [];
+  }
+
+  if (account.tokenExpiresAt && account.tokenExpiresAt < new Date()) {
+    log.warn(`IG token expired for user ${userId}`);
+    return [];
+  }
+
+  const accessToken = decrypt(account.accessTokenEncrypted);
+  const results = [];
+
+  for (const pub of publications) {
+    if (!pub.externalPostId) continue;
+    try {
+      const url = `https://graph.instagram.com/v21.0/${pub.externalPostId}?fields=like_count,comments_count&access_token=${accessToken}`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        log.debug(`IG API error for ${pub.externalPostId}: ${resp.status}`);
+        continue;
+      }
+      const data = await resp.json();
+      results.push({
+        publicationId: pub.id,
+        likes: data.like_count || 0,
+        comments: data.comments_count || 0,
+      });
+    } catch (err) {
+      log.debug(`Failed to fetch IG metrics for ${pub.externalPostId}: ${err.message}`);
+    }
+    // Small delay to avoid rate limits
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  return results;
 }
 
 export { parseEngagementCount, parseLikesFromText, parseCommentsFromText };

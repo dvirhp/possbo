@@ -1,6 +1,6 @@
 import api from "./http";
 
-function buildFormData(data, images) {
+function buildFormData(data, images, igTypeMedia) {
   const fd = new FormData();
   Object.entries(data).forEach(([key, val]) => {
     if (val === null || val === undefined) return;
@@ -10,6 +10,13 @@ function buildFormData(data, images) {
   });
   if (images?.length) {
     for (const img of images) fd.append("images", img);
+  }
+  if (igTypeMedia) {
+    for (const [type, files] of Object.entries(igTypeMedia)) {
+      if (files?.length) {
+        for (const f of files) fd.append(`igMedia_${type}`, f);
+      }
+    }
   }
   return fd;
 }
@@ -31,18 +38,22 @@ export const groupsService = {
   getCampaigns: () => api.get("/scheduler/campaigns"),
   getRecentCampaigns: () => api.get("/scheduler/campaigns/recent"),
   getCampaign: (postId) => api.get(`/scheduler/campaigns/${postId}`),
-  createCampaign: (data, images) => {
-    if (images?.length) {
-      const fd = buildFormData(data, images);
+  createCampaign: (data, images, igTypeMedia) => {
+    const hasIgMedia =
+      igTypeMedia && Object.values(igTypeMedia).some((arr) => arr?.length > 0);
+    if (images?.length || hasIgMedia) {
+      const fd = buildFormData(data, images, hasIgMedia ? igTypeMedia : null);
       return api.post("/scheduler/campaigns", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
     }
     return api.post("/scheduler/campaigns", data);
   },
-  updateCampaign: (postId, data, images) => {
-    if (images?.length) {
-      const fd = buildFormData(data, images);
+  updateCampaign: (postId, data, images, igTypeMedia) => {
+    const hasIgMedia =
+      igTypeMedia && Object.values(igTypeMedia).some((arr) => arr?.length > 0);
+    if (images?.length || hasIgMedia) {
+      const fd = buildFormData(data, images, hasIgMedia ? igTypeMedia : null);
       return api.put(`/scheduler/campaigns/${postId}`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });

@@ -284,6 +284,12 @@ router.post("/login", async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
+    // Check Instagram connection
+    const instagramAccount = await prisma.connectedAccount.findFirst({
+      where: { userId: user.id, provider: "INSTAGRAM", status: "ACTIVE" },
+      select: { providerUserName: true },
+    });
+
     res.json({
       success: true,
       accessToken,
@@ -298,6 +304,8 @@ router.post("/login", async (req, res) => {
         whatsappMessage: user.whatsappMessage || null,
         notificationSettings: user.notificationSettings || null,
         createdAt: user.createdAt,
+        instagramConnected: !!instagramAccount,
+        instagramUsername: instagramAccount?.providerUserName || null,
         subscription: activeSubscription
           ? {
               status: activeSubscription.status,
@@ -441,6 +449,12 @@ router.post("/refresh", async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
+    // Check Instagram connection
+    const instagramAccount = await prisma.connectedAccount.findFirst({
+      where: { userId: user.id, provider: "INSTAGRAM", status: "ACTIVE" },
+      select: { providerUserName: true },
+    });
+
     setRefreshCookie(res, newRefreshToken);
 
     // Send response immediately — user doesn't need to wait for DB save
@@ -458,6 +472,8 @@ router.post("/refresh", async (req, res) => {
         whatsappMessage: user.whatsappMessage || null,
         notificationSettings: user.notificationSettings || null,
         createdAt: user.createdAt,
+        instagramConnected: !!instagramAccount,
+        instagramUsername: instagramAccount?.providerUserName || null,
         subscription: activeSubscription
           ? {
               status: activeSubscription.status,

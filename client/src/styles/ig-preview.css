@@ -392,6 +392,27 @@
   margin: 0;
 }
 
+.igp-upload-prompt {
+  cursor: pointer;
+  padding: 20px;
+  transition: opacity 0.2s;
+}
+.igp-upload-prompt:hover {
+  opacity: 0.8;
+}
+.igp-upload-prompt svg {
+  color: var(--text-muted, #6b7684);
+}
+.igp-upload-btn {
+  font-size: 11px;
+  font-weight: 600;
+  color: #E1306C;
+  padding: 4px 12px;
+  border: 1px solid rgba(225, 48, 108, 0.3);
+  border-radius: 14px;
+  margin-top: 4px;
+}
+
 /* ─── Story Text Overlay ─── */
 .igp-story-text-overlay {
   position: absolute;
@@ -610,8 +631,29 @@
 
 .cp-preview-toggle-btn.active {
   background: var(--bg-base, #1c1f26);
-  color: var(--text-primary, #e8ecf0);
   box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.cp-toggle-fb.active {
+  color: #1877F2;
+}
+.cp-toggle-fb.active svg {
+  fill: #1877F2;
+}
+.cp-toggle-fb svg {
+  fill: var(--text-muted, #6b7684);
+  transition: fill 0.2s;
+}
+
+.cp-toggle-ig.active {
+  color: #E1306C;
+}
+.cp-toggle-ig.active svg {
+  fill: url(#ig-gradient) !important;
+}
+.cp-toggle-ig svg {
+  fill: var(--text-muted, #6b7684);
+  transition: fill 0.2s;
 }
 
 .cp-preview-toggle-btn svg {
@@ -621,7 +663,7 @@
 /* ─── Sub-toggle (IG type selector) ─── */
 .cp-preview-sub-toggle {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   margin-bottom: 8px;
 }
 
@@ -630,10 +672,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 5px 6px;
-  border: 1px solid var(--border, rgba(255,255,255,0.08));
-  border-radius: 6px;
+  padding: 6px 8px;
+  border: 1.5px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 20px;
   background: transparent;
   color: var(--text-muted, #6b7684);
   font-size: 11px;
@@ -645,14 +686,14 @@
 }
 
 .cp-preview-sub-btn:hover {
-  border-color: var(--border-hover, #3a3d45);
+  border-color: rgba(225, 48, 108, 0.3);
   color: var(--text-secondary, #a3adb8);
 }
 
 .cp-preview-sub-btn.active {
-  border-color: transparent;
-  background: linear-gradient(135deg, rgba(131,58,180,0.15), rgba(225,48,108,0.15));
-  color: #e1306c;
+  border-color: #E1306C;
+  background: rgba(225, 48, 108, 0.1);
+  color: #E1306C;
 }
 
 @media (max-width: 480px) {

@@ -637,14 +637,14 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 20px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .filter-bar-search {
   position: relative;
-  flex: 1;
-  min-width: min(200px, 100%);
-  max-width: 380px;
+  flex: 0 0 auto;
+  width: clamp(180px, 25%, 380px);
+  min-width: 0;
 }
 
 .filter-bar-search svg {
@@ -704,10 +704,16 @@
 .filter-bar-controls {
   display: flex;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.filter-bar-controls::-webkit-scrollbar { display: none; }
 
 .dash-date-wrap {
   position: relative;
+  flex-shrink: 0;
 }
 
 .dash-date-btn {
@@ -751,6 +757,8 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b7684' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: 10px center;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .filter-select:focus {
@@ -1273,6 +1281,7 @@
 /* ═══════════ GROUP FILTER DROPDOWN ═══════════ */
 .group-filter-wrap {
   position: relative;
+  flex-shrink: 0;
 }
 
 .group-filter-btn {
@@ -1637,6 +1646,33 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Platform badges */
+.campaign-card-platforms {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.platform-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.platform-facebook {
+  background: rgba(24, 119, 242, 0.12);
+  color: #1877f2;
+}
+
+.platform-instagram {
+  background: linear-gradient(135deg, rgba(253, 29, 29, 0.1), rgba(131, 58, 180, 0.1));
+  color: #c13584;
 }
 
 /* Card footer */
@@ -2826,6 +2862,49 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.top-posts-platform-filter {
+  display: flex;
+  gap: 6px;
+  padding: 0 0 12px;
+}
+.top-posts-platform-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border-color, #2a2f45);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-muted, #94A3B8);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.15s ease;
+  white-space: nowrap;
+}
+.top-posts-platform-btn:hover {
+  border-color: var(--accent-primary, #6366f1);
+  color: var(--text-secondary);
+}
+.top-posts-platform-btn.active {
+  background: var(--accent-primary, #6366f1);
+  border-color: var(--accent-primary, #6366f1);
+  color: #fff;
+}
+.top-post-platform-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-inline-end: 4px;
+}
+.top-post-platform-badge.fb {
+  background: rgba(24, 119, 242, 0.15);
+  color: #4599f7;
+}
+.top-post-platform-badge.ig {
+  background: rgba(225, 48, 108, 0.15);
+  color: #e1306c;
+}
 .top-post-metrics {
   display: flex;
   gap: 10px;
@@ -3704,6 +3783,7 @@
 
   .cl-col-date { display: none; }
   .cl-col-groups { display: none; }
+  .cl-col-platform { display: none; }
 
   .cl-col-post { flex: 2; }
   .cl-col-status { flex: 0.8; }
@@ -3726,7 +3806,7 @@
   }
 
   .filter-bar {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     max-width: 100%;
     overflow: hidden;
   }
@@ -3737,6 +3817,10 @@
 
   .filter-sheet-trigger {
     display: flex;
+    flex-shrink: 0;
+  }
+
+  .view-toggle-btn {
     flex-shrink: 0;
   }
 
@@ -3928,6 +4012,7 @@
 
   .filter-bar {
     flex-direction: row;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 8px;
     width: 100%;
@@ -3936,7 +4021,7 @@
   .filter-bar-search {
     flex: 1;
     max-width: 100%;
-    min-width: unset;
+    min-width: 0;
   }
 
   .filter-bar-search input {
@@ -3954,6 +4039,10 @@
     flex-shrink: 0;
   }
 
+  .view-toggle-btn {
+    flex-shrink: 0;
+  }
+
   /* Campaigns table — compact mobile layout */
   .cl-header {
     display: flex !important;
@@ -3968,7 +4057,8 @@
     align-items: center !important;
   }
   .cl-col-date,
-  .cl-col-groups { display: none !important; }
+  .cl-col-groups,
+  .cl-col-platform { display: none !important; }
   .cl-col-post { flex: 0 0 50% !important; min-width: 0 !important; gap: 8px !important; overflow: hidden; }
   .cl-header .cl-col-post { padding-inline-start: 0 !important; }
   .cl-col-status { flex: 0 0 20% !important; justify-content: center !important; }
@@ -4023,6 +4113,15 @@
 
   .campaign-card-groups {
     display: none;
+  }
+
+  .campaign-card-platforms {
+    margin-bottom: 4px;
+  }
+
+  .campaign-card-platforms .platform-badge {
+    font-size: 10px;
+    padding: 1px 6px;
   }
 
   .campaign-card-meta {
@@ -4454,6 +4553,7 @@
     overflow: hidden;
     max-width: 100%;
     box-sizing: border-box;
+    flex-wrap: nowrap;
   }
 
   .cl-header .cl-col-post {
@@ -5006,7 +5106,7 @@
   color: var(--text-muted);
   cursor: pointer;
   transition: var(--transition);
-  margin-inline-start: auto;
+  flex-shrink: 0;
 }
 
 .view-toggle-btn:hover {
@@ -5100,6 +5200,8 @@
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .cl-sortable {
@@ -5142,11 +5244,18 @@
 
 .cl-col { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 .cl-col-post { flex: 2.5; min-width: 0; gap: 12px; }
-.cl-header .cl-col-post { padding-inline-start: 72px; }
+.cl-header .cl-col-post { padding-inline-start: 0; }
+.cl-header .cl-col-post::before {
+  content: '';
+  display: block;
+  width: 60px;
+  flex-shrink: 0;
+}
 .cl-col-groups { flex: 0.7; justify-content: center; min-width: 0; overflow: hidden; }
-.cl-col-status { flex: 1; justify-content: center; min-width: 0; }
-.cl-col-exposure { flex: 1; justify-content: center; min-width: 0; }
-.cl-col-date { flex: 1; justify-content: center; color: var(--text-dim); font-size: 14px; min-width: 0; }
+.cl-col-platform { flex: 1; justify-content: center; min-width: 0; }
+.cl-col-status { flex: 0.8; justify-content: center; min-width: 0; }
+.cl-col-exposure { flex: 0.8; justify-content: center; min-width: 0; }
+.cl-col-date { flex: 1.2; justify-content: center; color: var(--text-dim); font-size: 14px; min-width: 0; }
 
 .cl-date-val {
   display: flex;
@@ -5258,6 +5367,13 @@
   padding: 5px 14px;
   border-radius: var(--radius-full);
   white-space: nowrap;
+}
+
+.cl-platform-tags {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
 }
 
 .cl-group-avatars {
@@ -5439,6 +5555,54 @@
   color: var(--text-muted);
   opacity: 0.4;
   grid-column: 1 / -1;
+}
+
+/* ═══ Per-type IG media in campaign detail ═══ */
+.detail-ig-type-media {
+  padding: 12px 16px;
+  background: rgba(99, 102, 241, 0.04);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 10px;
+  margin: 12px 16px 0;
+}
+
+.detail-ig-type-media-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  margin: 0 0 10px;
+}
+
+.detail-ig-type-media-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.detail-ig-type-media-section:last-child {
+  margin-bottom: 0;
+}
+
+.detail-ig-type-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #a3adb8);
+  white-space: nowrap;
+}
+
+.detail-ig-type-media-thumbs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.detail-ig-type-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 2px solid rgba(99, 102, 241, 0.3);
 }
 
 /* ═══ Lightbox ═══ */
@@ -5639,6 +5803,19 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
+}
+.detail-platforms-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.detail-platform-chip {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
 }
 .detail-label {
   font-weight: 600;

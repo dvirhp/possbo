@@ -64,6 +64,7 @@ export const authAPI = {
   // Instagram
   getInstagramStatus: () => http.get("/instagram/status"),
   getInstagramAuthUrl: () => http.get("/instagram/auth-url"),
+  connectInstagram: (code) => http.post("/instagram/connect", { code }),
   disconnectInstagram: () => http.post("/instagram/disconnect"),
   publishToInstagram: (data) => http.post("/instagram/publish", data),
   updateNotificationSettings: (settings) =>

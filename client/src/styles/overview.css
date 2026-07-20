@@ -226,6 +226,50 @@
   text-overflow: ellipsis;
 }
 
+/* Platform breakdown */
+.overview-platform-breakdown {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.overview-platform-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  flex: 1;
+  min-width: 0;
+}
+
+.opb-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.opb-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.opb-value {
+  font-size: 18px;
+  font-weight: 700;
+  margin-inline-start: auto;
+}
+
+.opb-facebook .opb-value {
+  color: #1877f2;
+}
+
+.opb-instagram .opb-value {
+  color: #c13584;
+}
+
 /* 3-Panel Layout */
 .ov2-layout {
   display: grid;
@@ -245,6 +289,7 @@
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  container-type: inline-size;
 }
 .ov2-upcoming-header {
   display: flex;
@@ -621,6 +666,48 @@
   color: var(--text-primary);
   box-shadow: 0 1px 4px rgba(0,0,0,0.15);
 }
+.ov2-top-posts-platform-filter {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px 8px;
+}
+.ov2-platform-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color, #2a2f45);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-muted, #94A3B8);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.15s ease;
+  white-space: nowrap;
+}
+.ov2-platform-btn:hover {
+  border-color: var(--accent-primary, #6366f1);
+  color: var(--text-secondary);
+}
+.ov2-platform-btn.active {
+  background: var(--accent-primary, #6366f1);
+  border-color: var(--accent-primary, #6366f1);
+  color: #fff;
+}
+.ov2-platform-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ov2-platform-badge.fb {
+  background: rgba(24, 119, 242, 0.15);
+  color: #4599f7;
+}
+.ov2-platform-badge.ig {
+  background: rgba(225, 48, 108, 0.15);
+  color: #e1306c;
+}
 .ov2-top-posts-list {
   display: flex;
   flex-direction: column;
@@ -719,6 +806,11 @@
 }
 @media (max-width: 768px) {
   .ov2-wrapper { padding: 12px; gap: 14px; padding-bottom: 0; overflow-x: hidden; }
+  .overview-platform-breakdown { gap: 8px; }
+  .overview-platform-item { padding: 8px 12px; border-radius: 10px; }
+  .opb-label { font-size: 12px; }
+  .opb-value { font-size: 16px; }
+  .opb-icon { font-size: 16px; }
   .overview-kpis {
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;

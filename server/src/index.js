@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import dotenv from "dotenv";
 import path from "path";
+import https from "https";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import prisma from "./config/prisma.js";
 import { verifyAccessToken } from "./utils/jwt.js";
@@ -123,6 +125,31 @@ const server = app.listen(PORT, () => {
   log.info("Server started", { port: PORT, url: `http://localhost:${PORT}` });
   startScheduler();
 });
+
+// Start HTTPS server for Instagram OAuth callback
+try {
+  const __dirname2 = path.dirname(fileURLToPath(import.meta.url));
+  const certPath = path.join(__dirname2, "..", "certs", "cert.pem");
+  const keyPath = path.join(__dirname2, "..", "certs", "key.pem");
+  if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+    const httpsServer = https.createServer(
+      {
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath),
+      },
+      app,
+    );
+    const HTTPS_PORT = 8443;
+    httpsServer.listen(HTTPS_PORT, () => {
+      log.info("HTTPS server started", {
+        port: HTTPS_PORT,
+        url: `https://localhost:${HTTPS_PORT}`,
+      });
+    });
+  }
+} catch (err) {
+  log.warn("HTTPS server not started (no certs)", err.message);
+}
 
 // Allow long-running requests (FB bootstrap takes up to 5 min)
 server.keepAliveTimeout = 360_000; // 6 minutes

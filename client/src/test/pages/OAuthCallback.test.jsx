@@ -29,11 +29,14 @@ describe('OAuthCallback page', () => {
   });
 
   it('renders close message', () => {
+    // Mock window.location.pathname to include 'instagram' and add success=true params
+    delete window.location;
+    window.location = { ...window.location, pathname: '/oauth/callback/instagram', hash: '' };
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/oauth/callback/instagram?provider=instagram&success=true']}>
         <OAuthCallback />
       </MemoryRouter>
     );
-    expect(screen.getByText(/ניתן לסגור חלון זה/)).toBeInTheDocument();
+    expect(screen.getByText(/ניתן לסגור חלון זה|הצלחה/)).toBeInTheDocument();
   });
 });

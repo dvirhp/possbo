@@ -76,8 +76,13 @@ function GlobalPublishBanner() {
 
     // Publish events
     const handlePublishStart = (e) => {
-      const { count, postId } = e.detail
-      addBanner('publish', { type: 'progress', msg: `⏳ מפרסם ב-${count} קבוצות...` })
+      const { count, postId, targets } = e.detail
+      const targetParts = []
+      if (targets?.groups) targetParts.push(`${targets.groups} קבוצות`)
+      if (targets?.profile) targetParts.push('פרופיל')
+      if (targets?.instagram) targetParts.push('Instagram')
+      const targetLabel = targetParts.length > 0 ? targetParts.join(' + ') : `${count} יעדים`
+      addBanner('publish', { type: 'progress', msg: `⏳ מפרסם ב-${targetLabel}...` })
 
       // Poll for completion
       if (postId) {
@@ -88,21 +93,28 @@ function GlobalPublishBanner() {
             const campaign = res.data?.campaign
             if (!campaign) return
             const history = campaign.publicationHistory || []
-            const totalJobs = (campaign.groups?.length || 0) + (campaign.publishToProfile ? 1 : 0)
+            const totalJobs = (campaign.groups?.length || 0) + (campaign.publishToProfile ? 1 : 0) + (campaign.instagramEnabled ? 1 : 0)
             const completed = history.length
             if (completed >= totalJobs && totalJobs > 0) {
               clearInterval(pollRef.current)
               pollRef.current = null
               const failed = history.filter(h => h.status === 'FAILED').length
               const succeeded = history.filter(h => h.status === 'SUCCESS').length
+              // Build platform-aware success message
+              const successParts = []
+              const fbSuccess = history.filter(h => h.status === 'SUCCESS' && h.platform !== 'INSTAGRAM').length
+              const igSuccess = history.filter(h => h.status === 'SUCCESS' && h.platform === 'INSTAGRAM').length
+              if (fbSuccess > 0) successParts.push(`${fbSuccess} בפייסבוק`)
+              if (igSuccess > 0) successParts.push(`${igSuccess} באינסטגרם`)
+              const successLabel = successParts.length > 0 ? successParts.join(' + ') : `${succeeded} יעדים`
               if (failed === 0) {
-                addBanner('publish', { type: 'success', msg: `✅ פורסם בהצלחה ב-${succeeded} קבוצות!` })
+                addBanner('publish', { type: 'success', msg: `✅ פורסם בהצלחה ב-${successLabel}!` })
                 confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
               } else {
                 addBanner('publish', { type: 'error', msg: `⚠️ ${succeeded}/${totalJobs} פורסמו. ${failed} נכשלו.` })
               }
               setTimeout(() => removeBanner('publish'), 8000)
-              window.dispatchEvent(new CustomEvent('postit-publish-done', { detail: { allSuccess: failed === 0, total: totalJobs, failed } }))
+              window.dispatchEvent(new CustomEvent('postit-publish-done', { detail: { allSuccess: failed === 0, total: totalJobs, failed, targets: { groups: campaign.groups?.length || 0, profile: campaign.publishToProfile, instagram: campaign.instagramEnabled } } }))
             } else if (completed > 0) {
               addBanner('publish', { type: 'progress', msg: `⏳ מפרסם... ${completed}/${totalJobs} הושלמו` })
             }
@@ -114,9 +126,12 @@ function GlobalPublishBanner() {
     }
     const handlePublishDone = (e) => {
       if (pollRef.current) return // Already handled by polling
-      const { allSuccess, total, failed } = e.detail
+      const { allSuccess, total, failed, targets } = e.detail
+      const label = targets
+        ? [targets.groups && `${targets.groups} קבוצות`, targets.profile && 'פרופיל', targets.instagram && 'Instagram'].filter(Boolean).join(' + ')
+        : `${total} יעדים`
       if (allSuccess) {
-        addBanner('publish', { type: 'success', msg: `✅ פורסם בהצלחה ב-${total} קבוצות!` })
+        addBanner('publish', { type: 'success', msg: `✅ פורסם בהצלחה ב-${label}!` })
         confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
       } else {
         addBanner('publish', { type: 'error', msg: `⚠️ ${total - failed}/${total} פורסמו. ${failed} נכשלו.` })
@@ -223,6 +238,7 @@ function App() {
           <Route path="/oauth/github/callback" element={<OAuthCallback />} />
           <Route path="/oauth/linkedin/callback" element={<OAuthCallback />} />
           <Route path="/oauth/apple/callback" element={<OAuthCallback />} />
+          <Route path="/oauth/instagram/callback" element={<OAuthCallback />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
         </Routes>

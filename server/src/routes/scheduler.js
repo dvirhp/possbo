@@ -14,6 +14,7 @@ import {
   refreshSinglePublicationMetrics,
   scrapeUserPublicationMetrics,
   savePublicationMetrics,
+  refreshInstagramMetrics,
 } from "../utils/metrics-scraper.js";
 import { triggerImmediateProcess } from "../jobs/index.js";
 
@@ -171,6 +172,7 @@ router.get(
       fbGroups,
       templates,
       topPostsWithMetrics,
+      publishedPerPost,
     ] = await Promise.all([
       // Jobs
       prisma.publicationJob.findMany({
@@ -186,6 +188,7 @@ router.get(
           maxAttempts: true,
           lastError: true,
           targetType: true,
+          platform: true,
           postGroup: {
             select: {
               id: true,
@@ -209,6 +212,7 @@ router.get(
           status: true,
           errorMessage: true,
           targetType: true,
+          platform: true,
         },
         orderBy: { publishedAt: "desc" },
         take: 20,
@@ -237,11 +241,14 @@ router.get(
           recurringStart: true,
           recurringEnd: true,
           dayTimes: true,
+          publishToProfile: true,
+          instagramEnabled: true,
+          instagramPublishType: true,
           createdAt: true,
           updatedAt: true,
           media: {
             orderBy: { orderIndex: "asc" },
-            select: { url: true },
+            select: { url: true, igType: true, mediaType: true },
           },
           postGroups: {
             select: {
@@ -281,11 +288,25 @@ router.get(
         where: { userId },
         orderBy: { updatedAt: "desc" },
       }),
-      // Top posts with metrics (likes/comments)
+      // Top posts with metrics (likes/comments) — include all successful publications
       prisma.publicationHistory.findMany({
-        where: { userId, status: "SUCCESS", metrics: { some: {} } },
+        where: {
+          userId,
+          status: "SUCCESS",
+          OR: [
+            { externalPostUrl: { not: null } },
+            { externalPostId: { not: null } },
+          ],
+        },
         include: {
-          post: { select: { id: true, title: true, content: true } },
+          post: {
+            select: {
+              id: true,
+              title: true,
+              content: true,
+              instagramPublishType: true,
+            },
+          },
           group: { select: { id: true, name: true } },
           metrics: {
             orderBy: { collectedAt: "desc" },
@@ -294,9 +315,21 @@ router.get(
           },
         },
         orderBy: { publishedAt: "desc" },
-        take: 20,
+        take: 50,
+      }),
+      // Per-post published counts
+      prisma.publicationHistory.groupBy({
+        by: ["postId"],
+        where: { userId, status: "SUCCESS" },
+        _count: { id: true },
       }),
     ]);
+
+    // Build per-post published count map
+    const publishedCountMap = new Map();
+    publishedPerPost.forEach((entry) => {
+      publishedCountMap.set(entry.postId, entry._count.id);
+    });
 
     // Stats — scheduledCount from jobs array, groupsCount from fbGroups
     const stats = {
@@ -329,6 +362,12 @@ router.get(
       return {
         ...h,
         postUrl: h.externalPostUrl || null,
+        groupName:
+          h.targetType === "INSTAGRAM"
+            ? "אינסטגרם"
+            : h.targetType === "PROFILE"
+              ? "פרופיל אישי"
+              : group?.name || "",
         groupMemberCount: group?.memberCount || 0,
         post: post
           ? {
@@ -366,10 +405,26 @@ router.get(
         content: post.content,
         templateName: post.templateName || null,
         imageUrl: post.imageUrl || post.media?.[0]?.url || null,
-        imageCount: post.media?.length || (post.imageUrl ? 1 : 0),
+        imageCount:
+          post.media?.filter((m) => !m.igType).length ||
+          (post.imageUrl ? 1 : 0),
         images:
-          post.media?.map((m) => m.url) ||
+          post.media?.filter((m) => !m.igType).map((m) => m.url) ||
           (post.imageUrl ? [post.imageUrl] : []),
+        igTypeMedia: {
+          FEED:
+            post.media
+              ?.filter((m) => m.igType === "FEED")
+              .map((m) => ({ url: m.url, mediaType: m.mediaType })) || [],
+          STORY:
+            post.media
+              ?.filter((m) => m.igType === "STORY")
+              .map((m) => ({ url: m.url, mediaType: m.mediaType })) || [],
+          REEL:
+            post.media
+              ?.filter((m) => m.igType === "REEL")
+              .map((m) => ({ url: m.url, mediaType: m.mediaType })) || [],
+        },
         campaignType: post.campaignType,
         status: displayStatus,
         isPaused: post.isPaused,
@@ -389,7 +444,10 @@ router.get(
           (sum, pg) => sum + (pg.group?.memberCount || 0),
           0,
         ),
-        publishedCount: 0,
+        publishToProfile: post.publishToProfile || false,
+        instagramEnabled: post.instagramEnabled || false,
+        instagramPublishType: post.instagramPublishType || null,
+        publishedCount: publishedCountMap.get(post.id) || 0,
         createdAt: post.createdAt,
         updatedAt: post.updatedAt,
         scheduledAt:
@@ -483,15 +541,30 @@ router.get(
     const formattedTopPosts = topPostsWithMetrics
       .map((pub) => {
         const m = pub.metrics[0];
-        if (!m) return null;
+        // Determine IG type (FEED/STORY/REEL) from post's instagramPublishType or externalPostUrl
+        let igType = null;
+        if (pub.platform === "INSTAGRAM" || pub.targetType === "INSTAGRAM") {
+          const publishType = pub.post?.instagramPublishType || "";
+          if (
+            publishType.includes("REEL") ||
+            pub.externalPostUrl?.includes("/reel/")
+          )
+            igType = "REEL";
+          else if (publishType.includes("STORY")) igType = "STORY";
+          else igType = "FEED";
+        }
         return {
           id: pub.id,
           postId: pub.post?.id,
           title: pub.post?.title || pub.post?.content?.slice(0, 60) || "",
           groupName: pub.group?.name || "",
           publishedAt: pub.publishedAt,
-          likes: m.likesCount,
-          comments: m.commentsCount,
+          likes: m?.likesCount || 0,
+          comments: m?.commentsCount || 0,
+          platform: pub.platform || "FACEBOOK",
+          targetType: pub.targetType || "GROUP",
+          igType,
+          postUrl: pub.externalPostUrl || null,
         };
       })
       .filter(Boolean);
@@ -537,6 +610,7 @@ router.get(
         maxAttempts: true,
         lastError: true,
         targetType: true,
+        platform: true,
         postGroup: {
           select: {
             id: true,
@@ -570,6 +644,7 @@ router.get(
         status: true,
         errorMessage: true,
         targetType: true,
+        platform: true,
         post: {
           select: {
             id: true,
@@ -725,7 +800,12 @@ router.get(
 router.post(
   "/campaigns",
   requireAuth,
-  upload.array("images", 10),
+  upload.fields([
+    { name: "images", maxCount: 10 },
+    { name: "igMedia_FEED", maxCount: 5 },
+    { name: "igMedia_STORY", maxCount: 5 },
+    { name: "igMedia_REEL", maxCount: 5 },
+  ]),
   asyncHandler(async (req, res) => {
     const userId = req.user.id;
     let {
@@ -747,6 +827,11 @@ router.post(
       publishToProfile,
       instagramEnabled,
       instagramPublishType,
+      instagramPublishTypes,
+      igPerTypeSchedules,
+      storyMediaMode,
+      storyPickedIndex,
+      storyCaptions,
       templateName,
     } = req.body;
 
@@ -757,12 +842,27 @@ router.post(
     if (typeof recurringTimes === "string")
       recurringTimes = JSON.parse(recurringTimes);
     if (typeof dayTimes === "string") dayTimes = JSON.parse(dayTimes);
+    if (typeof instagramPublishTypes === "string")
+      instagramPublishTypes = JSON.parse(instagramPublishTypes);
+    if (typeof igPerTypeSchedules === "string")
+      igPerTypeSchedules = JSON.parse(igPerTypeSchedules);
     if (anonymous === "true") anonymous = true;
     if (anonymous === "false") anonymous = false;
     if (publishToProfile === "true") publishToProfile = true;
     if (publishToProfile === "false") publishToProfile = false;
     if (instagramEnabled === "true") instagramEnabled = true;
     if (instagramEnabled === "false") instagramEnabled = false;
+    if (typeof storyPickedIndex === "string")
+      storyPickedIndex = parseInt(storyPickedIndex, 10) || 0;
+    if (typeof storyCaptions === "string")
+      storyCaptions = JSON.parse(storyCaptions);
+
+    // Normalize: prefer instagramPublishTypes (array from client) over singular
+    if (!instagramPublishType && instagramPublishTypes) {
+      instagramPublishType = Array.isArray(instagramPublishTypes)
+        ? instagramPublishTypes.join(",")
+        : instagramPublishTypes;
+    }
 
     if (!text) {
       return res.status(400).json({ error: "text is required" });
@@ -883,6 +983,10 @@ router.post(
         instagramPublishType: instagramEnabled
           ? instagramPublishType || null
           : null,
+        storyMediaMode: instagramEnabled ? storyMediaMode || null : null,
+        storyPickedIndex: instagramEnabled ? (storyPickedIndex ?? null) : null,
+        storyCaptions:
+          instagramEnabled && storyCaptions ? storyCaptions : undefined,
         templateName: templateName || null,
         campaignType: campaignType || "ONE_TIME",
         recurringDays: recurringDays || [],
@@ -895,23 +999,45 @@ router.post(
         recurringEnd: recurringEndDate
           ? new Date(`${recurringEndDate}T23:59:59`)
           : null,
-        imageUrl: req.files?.length
-          ? `/uploads/${req.files[0].filename}`
+        imageUrl: req.files?.images?.length
+          ? `/uploads/${req.files.images[0].filename}`
           : null,
       },
     });
 
-    // Save uploaded images as PostMedia
-    if (req.files?.length) {
-      for (let i = 0; i < req.files.length; i++) {
+    // Save uploaded images as PostMedia (global)
+    if (req.files?.images?.length) {
+      for (let i = 0; i < req.files.images.length; i++) {
         await prisma.postMedia.create({
           data: {
             postId: post.id,
-            mediaType: "IMAGE",
-            url: `/uploads/${req.files[i].filename}`,
+            mediaType: req.files.images[i].mimetype?.startsWith("video/")
+              ? "VIDEO"
+              : "IMAGE",
+            url: `/uploads/${req.files.images[i].filename}`,
             orderIndex: i,
           },
         });
+      }
+    }
+
+    // Save per-IG-type media
+    for (const igType of ["FEED", "STORY", "REEL"]) {
+      const typeFiles = req.files?.[`igMedia_${igType}`];
+      if (typeFiles?.length) {
+        for (let i = 0; i < typeFiles.length; i++) {
+          await prisma.postMedia.create({
+            data: {
+              postId: post.id,
+              mediaType: typeFiles[i].mimetype?.startsWith("video/")
+                ? "VIDEO"
+                : "IMAGE",
+              url: `/uploads/${typeFiles[i].filename}`,
+              orderIndex: i,
+              igType,
+            },
+          });
+        }
       }
     }
 
@@ -1081,21 +1207,71 @@ router.post(
       }
     }
 
-    // Create an Instagram publication job if instagramEnabled is true
+    // Create Instagram publication jobs if instagramEnabled is true
     if (instagramEnabled) {
-      const igScheduledAt =
-        scheduleMode === "now"
-          ? new Date()
-          : scheduledAt || recurringScheduledAt;
-      if (igScheduledAt) {
-        await prisma.publicationJob.create({
-          data: {
-            postId: post.id,
-            scheduledAt: igScheduledAt,
-            targetType: "INSTAGRAM",
-            platform: "INSTAGRAM",
-          },
-        });
+      // Verify user has an active Instagram connection
+      const igAccount = await prisma.connectedAccount.findFirst({
+        where: { userId: req.user.id, provider: "INSTAGRAM", status: "ACTIVE" },
+      });
+      if (igAccount) {
+        const igTypes = Array.isArray(instagramPublishTypes)
+          ? instagramPublishTypes
+          : instagramPublishType
+            ? instagramPublishType.split(",")
+            : ["FEED"];
+
+        for (const igType of igTypes) {
+          let igScheduledAt = null;
+          const typeSchedule = igPerTypeSchedules?.[igType];
+
+          if (typeSchedule && typeSchedule.mode) {
+            // Per-type schedule provided
+            if (typeSchedule.mode === "now") {
+              igScheduledAt = new Date();
+            } else if (
+              typeSchedule.mode === "scheduled" &&
+              typeSchedule.date &&
+              typeSchedule.time
+            ) {
+              igScheduledAt = new Date(
+                `${typeSchedule.date}T${typeSchedule.time}:00`,
+              );
+            } else if (typeSchedule.mode === "recurring") {
+              const effectiveTime = Object.values(typeSchedule.dayTimes || {})
+                .flat()
+                .filter((t) => t?.trim())[0];
+              if (effectiveTime && typeSchedule.startDate) {
+                igScheduledAt = new Date(
+                  `${typeSchedule.startDate}T${effectiveTime}:00`,
+                );
+              } else if (effectiveTime) {
+                igScheduledAt = new Date();
+                const [h, m] = effectiveTime.split(":").map(Number);
+                igScheduledAt.setHours(h, m, 0, 0);
+                if (igScheduledAt <= new Date())
+                  igScheduledAt.setDate(igScheduledAt.getDate() + 1);
+              }
+            }
+          } else {
+            // Fallback: use global schedule
+            igScheduledAt =
+              scheduleMode === "now"
+                ? new Date()
+                : scheduledAt || recurringScheduledAt;
+          }
+
+          if (igScheduledAt) {
+            await prisma.publicationJob.create({
+              data: {
+                postId: post.id,
+                scheduledAt: igScheduledAt,
+                targetType: "INSTAGRAM",
+                platform: "INSTAGRAM",
+                igPublishType: igType,
+              },
+            });
+          }
+        }
       }
     }
 
@@ -1131,7 +1307,7 @@ router.get(
     const postInclude = {
       media: {
         orderBy: { orderIndex: "asc" },
-        select: { url: true, orderIndex: true },
+        select: { url: true, orderIndex: true, igType: true, mediaType: true },
       },
       postGroups: {
         include: {
@@ -1239,7 +1415,11 @@ router.get(
         updatedAt: true,
         media: {
           orderBy: { orderIndex: "asc" },
-          select: { url: true },
+          select: { url: true, igType: true, mediaType: true },
+        },
+        publicationHistory: {
+          where: { status: "SUCCESS" },
+          select: { id: true },
         },
         postGroups: {
           select: {
@@ -1297,10 +1477,26 @@ router.get(
         content: post.content,
         templateName: post.templateName || null,
         imageUrl: post.imageUrl || post.media?.[0]?.url || null,
-        imageCount: post.media?.length || (post.imageUrl ? 1 : 0),
+        imageCount:
+          post.media?.filter((m) => !m.igType).length ||
+          (post.imageUrl ? 1 : 0),
         images:
-          post.media?.map((m) => m.url) ||
+          post.media?.filter((m) => !m.igType).map((m) => m.url) ||
           (post.imageUrl ? [post.imageUrl] : []),
+        igTypeMedia: {
+          FEED:
+            post.media
+              ?.filter((m) => m.igType === "FEED")
+              .map((m) => ({ url: m.url, mediaType: m.mediaType })) || [],
+          STORY:
+            post.media
+              ?.filter((m) => m.igType === "STORY")
+              .map((m) => ({ url: m.url, mediaType: m.mediaType })) || [],
+          REEL:
+            post.media
+              ?.filter((m) => m.igType === "REEL")
+              .map((m) => ({ url: m.url, mediaType: m.mediaType })) || [],
+        },
         campaignType: post.campaignType,
         status: displayStatus,
         isPaused: post.isPaused,
@@ -1320,9 +1516,7 @@ router.get(
           (sum, pg) => sum + (pg.group?.memberCount || 0),
           0,
         ),
-        publishedCount: post.postGroups.filter(
-          (pg) => pg.publicationHistory?.[0]?.status === "SUCCESS",
-        ).length,
+        publishedCount: post.publicationHistory?.length || 0,
         createdAt: post.createdAt,
         updatedAt: post.updatedAt,
         scheduledAt:
@@ -1374,6 +1568,8 @@ router.get(
                 publishedAt: true,
                 externalPostUrl: true,
                 groupId: true,
+                targetType: true,
+                platform: true,
                 metrics: {
                   orderBy: { collectedAt: "desc" },
                   take: 1,
@@ -1388,20 +1584,105 @@ router.get(
 
     if (!post) return res.status(404).json({ error: "Post not found" });
 
+    // Fetch Instagram/Profile publication history (not tied to postGroups)
+    const directHistory = await prisma.publicationHistory.findMany({
+      where: { postId, userId, postGroupId: null },
+      orderBy: { publishedAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        publishedAt: true,
+        externalPostUrl: true,
+        groupId: true,
+        targetType: true,
+        platform: true,
+        metrics: {
+          orderBy: { collectedAt: "desc" },
+          take: 1,
+          select: { likesCount: true, commentsCount: true },
+        },
+      },
+    });
+
     // Build publication history grouped by group
-    const publicationHistory = post.postGroups.flatMap((pg) =>
-      pg.publicationHistory.map((h) => ({
-        id: h.id,
-        groupId: pg.group?.id,
-        groupName: pg.group?.name || "",
-        groupImage: pg.group?.pictureUrl || null,
-        status: h.status,
-        publishedAt: h.publishedAt,
-        postUrl: h.externalPostUrl || null,
-        likes: h.metrics?.[0]?.likesCount || 0,
-        comments: h.metrics?.[0]?.commentsCount || 0,
-      })),
-    );
+    const publicationHistory = [
+      ...post.postGroups.flatMap((pg) =>
+        pg.publicationHistory.map((h) => ({
+          id: h.id,
+          groupId: pg.group?.id,
+          groupName: pg.group?.name || "",
+          groupImage: pg.group?.pictureUrl || null,
+          status: h.status,
+          publishedAt: h.publishedAt,
+          postUrl: h.externalPostUrl || null,
+          targetType: h.targetType || "GROUP",
+          platform: h.platform || "FACEBOOK",
+          likes: h.metrics?.[0]?.likesCount || 0,
+          comments: h.metrics?.[0]?.commentsCount || 0,
+        })),
+      ),
+      ...directHistory.flatMap((h) => {
+        if (
+          h.platform === "INSTAGRAM" &&
+          post.instagramPublishType?.includes(",")
+        ) {
+          // Multiple IG types - create separate history entries per type
+          const types = post.instagramPublishType.split(",");
+          const typeLabels = {
+            FEED: "אינסטגרם פוסט",
+            STORY: "אינסטגרם סטורי",
+            REEL: "אינסטגרם ריל",
+          };
+          return types.map((type, idx) => ({
+            id: `${h.id}_${type}`,
+            originalId: h.id,
+            groupId: null,
+            groupName: typeLabels[type] || "אינסטגרם",
+            groupImage: null,
+            status: h.status,
+            publishedAt: h.publishedAt,
+            postUrl: type === "STORY" ? null : h.externalPostUrl || null,
+            targetType: "INSTAGRAM",
+            platform: "INSTAGRAM",
+            igPublishType: type,
+            likes: type === "STORY" ? null : h.metrics?.[0]?.likesCount || 0,
+            comments:
+              type === "STORY" ? null : h.metrics?.[0]?.commentsCount || 0,
+          }));
+        }
+        const igType =
+          h.platform === "INSTAGRAM"
+            ? post.instagramPublishType || "FEED"
+            : null;
+        const typeLabels = {
+          FEED: "אינסטגרם פוסט",
+          STORY: "אינסטגרם סטורי",
+          REEL: "אינסטגרם ריל",
+        };
+        return [
+          {
+            id: h.id,
+            groupId: null,
+            groupName:
+              h.targetType === "INSTAGRAM"
+                ? typeLabels[igType] || "אינסטגרם"
+                : h.targetType === "PROFILE"
+                  ? "פרופיל אישי"
+                  : "",
+            groupImage: null,
+            status: h.status,
+            publishedAt: h.publishedAt,
+            postUrl: igType === "STORY" ? null : h.externalPostUrl || null,
+            targetType: h.targetType || "INSTAGRAM",
+            platform: h.platform || "INSTAGRAM",
+            igPublishType: igType,
+            likes: igType === "STORY" ? null : h.metrics?.[0]?.likesCount || 0,
+            comments:
+              igType === "STORY" ? null : h.metrics?.[0]?.commentsCount || 0,
+          },
+        ];
+      }),
+    ];
 
     const campaign = {
       id: post.id,
@@ -1415,6 +1696,9 @@ router.get(
         memberCount: pg.group?.memberCount || 0,
         image: pg.group?.pictureUrl || null,
       })),
+      publishToProfile: post.publishToProfile || false,
+      instagramEnabled: post.instagramEnabled || false,
+      instagramPublishType: post.instagramPublishType || null,
       publicationHistory,
     };
 
@@ -1463,7 +1747,12 @@ router.patch(
 router.put(
   "/campaigns/:postId",
   requireAuth,
-  upload.array("images", 10),
+  upload.fields([
+    { name: "images", maxCount: 10 },
+    { name: "igMedia_FEED", maxCount: 5 },
+    { name: "igMedia_STORY", maxCount: 5 },
+    { name: "igMedia_REEL", maxCount: 5 },
+  ]),
   asyncHandler(async (req, res) => {
     const { postId } = req.params;
     const userId = req.user.id;
@@ -1507,21 +1796,45 @@ router.put(
     await prisma.post.update({ where: { id: postId }, data: updateData });
 
     // If new images uploaded, replace existing media
-    if (req.files?.length) {
-      await prisma.postMedia.deleteMany({ where: { postId } });
+    const globalFiles = req.files?.images;
+    if (globalFiles?.length) {
+      await prisma.postMedia.deleteMany({ where: { postId, igType: null } });
       await prisma.post.update({
         where: { id: postId },
-        data: { imageUrl: `/uploads/${req.files[0].filename}` },
+        data: { imageUrl: `/uploads/${globalFiles[0].filename}` },
       });
-      for (let i = 0; i < req.files.length; i++) {
+      for (let i = 0; i < globalFiles.length; i++) {
         await prisma.postMedia.create({
           data: {
             postId,
-            mediaType: "IMAGE",
-            url: `/uploads/${req.files[i].filename}`,
+            mediaType: globalFiles[i].mimetype?.startsWith("video/")
+              ? "VIDEO"
+              : "IMAGE",
+            url: `/uploads/${globalFiles[i].filename}`,
             orderIndex: i,
           },
         });
+      }
+    }
+
+    // Handle per-IG-type media
+    for (const igType of ["FEED", "STORY", "REEL"]) {
+      const typeFiles = req.files?.[`igMedia_${igType}`];
+      if (typeFiles?.length) {
+        await prisma.postMedia.deleteMany({ where: { postId, igType } });
+        for (let i = 0; i < typeFiles.length; i++) {
+          await prisma.postMedia.create({
+            data: {
+              postId,
+              mediaType: typeFiles[i].mimetype?.startsWith("video/")
+                ? "VIDEO"
+                : "IMAGE",
+              url: `/uploads/${typeFiles[i].filename}`,
+              orderIndex: i,
+              igType,
+            },
+          });
+        }
       }
     }
 
@@ -1735,6 +2048,13 @@ router.get(
             schedules: { where: { isActive: true }, take: 1 },
           },
         },
+        publicationHistory: {
+          orderBy: { publishedAt: "desc" },
+          include: {
+            group: { select: { id: true, name: true, pictureUrl: true } },
+            metrics: { orderBy: { collectedAt: "desc" }, take: 1 },
+          },
+        },
       },
     });
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -1753,10 +2073,93 @@ router.get(
         isPaused: post.isPaused,
         imageUrl: post.imageUrl,
         media: post.media,
+        images: post.media?.filter((m) => !m.igType).map((m) => m.url) || [],
+        igTypeMedia: {
+          FEED:
+            post.media
+              ?.filter((m) => m.igType === "FEED")
+              .map((m) => ({ url: m.url, mediaType: m.mediaType })) || [],
+          STORY:
+            post.media
+              ?.filter((m) => m.igType === "STORY")
+              .map((m) => ({ url: m.url, mediaType: m.mediaType })) || [],
+          REEL:
+            post.media
+              ?.filter((m) => m.igType === "REEL")
+              .map((m) => ({ url: m.url, mediaType: m.mediaType })) || [],
+        },
         groups: post.postGroups.map((pg) => ({
           id: pg.group.id,
           name: pg.group.name,
         })),
+        publishedCount:
+          post.publicationHistory?.filter((h) => h.status === "SUCCESS")
+            .length || 0,
+        publicationHistory: post.publicationHistory.flatMap((h) => {
+          // Instagram with multiple types — split into separate entries
+          if (
+            h.platform === "INSTAGRAM" &&
+            post.instagramPublishType?.includes(",")
+          ) {
+            const types = post.instagramPublishType.split(",");
+            const typeLabels = {
+              FEED: "אינסטגרם פוסט",
+              STORY: "אינסטגרם סטורי",
+              REEL: "אינסטגרם ריל",
+            };
+            return types.map((type) => ({
+              id: `${h.id}_${type}`,
+              originalId: h.id,
+              status: h.status,
+              publishedAt: h.publishedAt,
+              groupName: typeLabels[type] || "אינסטגרם",
+              groupImage: null,
+              platform: "INSTAGRAM",
+              targetType: "INSTAGRAM",
+              igPublishType: type,
+              postUrl: type === "STORY" ? null : h.externalPostUrl || null,
+              externalPostId: h.externalPostId || null,
+              errorMessage: h.errorMessage || null,
+              likes: type === "STORY" ? null : h.metrics?.[0]?.likesCount || 0,
+              comments:
+                type === "STORY" ? null : h.metrics?.[0]?.commentsCount || 0,
+            }));
+          }
+          // Single IG type or Facebook
+          const igType =
+            h.platform === "INSTAGRAM"
+              ? post.instagramPublishType || "FEED"
+              : null;
+          const typeLabels = {
+            FEED: "אינסטגרם פוסט",
+            STORY: "אינסטגרם סטורי",
+            REEL: "אינסטגרם ריל",
+          };
+          return [
+            {
+              id: h.id,
+              status: h.status,
+              publishedAt: h.publishedAt,
+              groupName:
+                h.platform === "INSTAGRAM"
+                  ? typeLabels[igType] || "אינסטגרם"
+                  : h.targetType === "PROFILE"
+                    ? "פרופיל אישי"
+                    : h.group?.name || null,
+              groupImage: h.group?.pictureUrl || null,
+              platform: h.platform || "FACEBOOK",
+              targetType: h.targetType || "GROUP",
+              igPublishType: igType,
+              postUrl: igType === "STORY" ? null : h.externalPostUrl || null,
+              externalPostId: h.externalPostId || null,
+              errorMessage: h.errorMessage || null,
+              likes:
+                igType === "STORY" ? null : h.metrics?.[0]?.likesCount || 0,
+              comments:
+                igType === "STORY" ? null : h.metrics?.[0]?.commentsCount || 0,
+            },
+          ];
+        }),
       },
     });
   }),
@@ -2163,20 +2566,27 @@ router.post(
     const { publicationId } = req.params;
     const userId = req.user.id;
 
-    // Verify publication belongs to user and has a URL
+    // Verify publication belongs to user and has a URL or post ID
     const pub = await prisma.publicationHistory.findFirst({
       where: { id: publicationId, userId },
-      select: { id: true, externalPostUrl: true },
+      select: {
+        id: true,
+        externalPostUrl: true,
+        externalPostId: true,
+        platform: true,
+      },
     });
 
     if (!pub) {
       return res.status(404).json({ error: "Publication not found" });
     }
 
-    if (!pub.externalPostUrl) {
+    if (!pub.externalPostUrl && !pub.externalPostId) {
       return res
         .status(400)
-        .json({ error: "Publication has no external URL to scrape" });
+        .json({
+          error: "Publication has no external URL or ID to fetch metrics",
+        });
     }
 
     const metrics = await refreshSinglePublicationMetrics(
@@ -2201,24 +2611,41 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const { sort = "likes", limit = "10", from, to } = req.query;
+    const { sort = "likes", limit = "10", from, to, platform } = req.query;
 
     // Build date filter for publishedAt
     const dateFilter = {};
     if (from) dateFilter.gte = new Date(from);
     if (to) dateFilter.lte = new Date(to + "T23:59:59");
 
+    // Build platform filter
+    const platformFilter = {};
+    if (platform === "INSTAGRAM") {
+      platformFilter.platform = "INSTAGRAM";
+    } else if (platform === "FACEBOOK") {
+      platformFilter.platform = "FACEBOOK";
+    }
+
     // Get the latest metric per publication, then rank
     const publications = await prisma.publicationHistory.findMany({
       where: {
         userId,
         status: "SUCCESS",
-        metrics: { some: {} },
+        OR: [
+          { externalPostUrl: { not: null } },
+          { externalPostId: { not: null } },
+        ],
         ...(from || to ? { publishedAt: dateFilter } : {}),
+        ...platformFilter,
       },
       include: {
         post: {
-          select: { id: true, title: true, content: true },
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            instagramPublishType: true,
+          },
         },
         group: {
           select: { id: true, name: true },
@@ -2239,7 +2666,17 @@ router.get(
     const withMetrics = publications
       .map((pub) => {
         const m = pub.metrics[0];
-        if (!m) return null;
+        let igType = null;
+        if (pub.platform === "INSTAGRAM" || pub.targetType === "INSTAGRAM") {
+          const publishType = pub.post?.instagramPublishType || "";
+          if (
+            publishType.includes("REEL") ||
+            pub.externalPostUrl?.includes("/reel/")
+          )
+            igType = "REEL";
+          else if (publishType.includes("STORY")) igType = "STORY";
+          else igType = "FEED";
+        }
         return {
           id: pub.id,
           postId: pub.post?.id,
@@ -2248,12 +2685,15 @@ router.get(
           groupName: pub.group?.name || "",
           publishedAt: pub.publishedAt,
           externalPostUrl: pub.externalPostUrl,
-          likes: m.likesCount,
-          comments: m.commentsCount,
-          collectedAt: m.collectedAt,
+          likes: m?.likesCount || 0,
+          comments: m?.commentsCount || 0,
+          collectedAt: m?.collectedAt || null,
+          platform: pub.platform || "FACEBOOK",
+          targetType: pub.targetType || "GROUP",
+          igType,
+          postUrl: pub.externalPostUrl || null,
         };
       })
-      .filter(Boolean)
       .sort((a, b) => {
         const field = sort === "comments" ? "comments" : "likes";
         return b[field] - a[field];
@@ -2278,24 +2718,53 @@ router.post(
       where: {
         userId,
         status: "SUCCESS",
-        externalPostUrl: { not: null },
         publishedAt: { gte: thirtyDaysAgo },
+        OR: [
+          { externalPostUrl: { not: null } },
+          { externalPostId: { not: null } },
+        ],
       },
-      select: { id: true, externalPostUrl: true },
+      select: {
+        id: true,
+        externalPostUrl: true,
+        externalPostId: true,
+        platform: true,
+      },
     });
 
     if (publications.length === 0) {
       return res.json({ success: true, refreshed: 0 });
     }
 
-    const results = await scrapeUserPublicationMetrics(userId, publications);
+    // Split into FB (scrape) and IG (Graph API)
+    const fbPubs = publications.filter(
+      (p) => p.platform !== "INSTAGRAM" && p.externalPostUrl,
+    );
+    const igPubs = publications.filter(
+      (p) => p.platform === "INSTAGRAM" && p.externalPostId,
+    );
 
-    // Save all results
-    for (const r of results) {
-      await savePublicationMetrics(r.publicationId, r.likes, r.comments);
+    let totalRefreshed = 0;
+
+    // Refresh Facebook metrics via Playwright scraping
+    if (fbPubs.length > 0) {
+      const fbResults = await scrapeUserPublicationMetrics(userId, fbPubs);
+      for (const r of fbResults) {
+        await savePublicationMetrics(r.publicationId, r.likes, r.comments);
+      }
+      totalRefreshed += fbResults.length;
     }
 
-    res.json({ success: true, refreshed: results.length });
+    // Refresh Instagram metrics via Graph API
+    if (igPubs.length > 0) {
+      const igResults = await refreshInstagramMetrics(userId, igPubs);
+      for (const r of igResults) {
+        await savePublicationMetrics(r.publicationId, r.likes, r.comments);
+      }
+      totalRefreshed += igResults.length;
+    }
+
+    res.json({ success: true, refreshed: totalRefreshed });
   }),
 );
 

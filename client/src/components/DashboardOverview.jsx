@@ -596,10 +596,17 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
 
   // Top performing posts - sorted by likes or comments
   const [topPostsSort, setTopPostsSort] = useState('likes')
+  const [topPostsPlatform, setTopPostsPlatform] = useState('all')
   const topPosts = useMemo(() => {
     const postsData = stats?.topPosts || []
     if (!postsData.length) return []
     return [...postsData]
+      .filter(p => {
+        if (topPostsPlatform === 'all') return true
+        if (topPostsPlatform === 'facebook') return (p.platform || 'FACEBOOK') === 'FACEBOOK'
+        if (topPostsPlatform === 'instagram') return p.platform === 'INSTAGRAM'
+        return true
+      })
       .sort((a, b) => {
         if (topPostsSort === 'comments') return (b.comments || 0) - (a.comments || 0)
         return (b.likes || 0) - (a.likes || 0)
@@ -613,8 +620,12 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
         date: p.publishedAt,
         likes: p.likes || 0,
         comments: p.comments || 0,
+        platform: p.platform || 'FACEBOOK',
+        targetType: p.targetType || 'GROUP',
+        igType: p.igType || null,
+        postUrl: p.postUrl || null,
       }))
-  }, [stats?.topPosts, topPostsSort])
+  }, [stats?.topPosts, topPostsSort, topPostsPlatform])
 
   // Period label for display
   const periodLabel = useMemo(() => {
@@ -719,15 +730,26 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
                 <button className={`ov2-toggle-btn ${topPostsSort === 'comments' ? 'active' : ''}`} onClick={() => setTopPostsSort('comments')}>💬 תגובות</button>
               </div>
             </div>
+            <div className="ov2-top-posts-platform-filter">
+              <button className={`ov2-platform-btn ${topPostsPlatform === 'all' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('all')}>הכל</button>
+              <button className={`ov2-platform-btn ${topPostsPlatform === 'facebook' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('facebook')}>Facebook</button>
+              <button className={`ov2-platform-btn ${topPostsPlatform === 'instagram' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('instagram')}>Instagram</button>
+            </div>
             <div className="ov2-top-posts-list">
               {topPosts.map((post) => (
                 <div key={post.id} className="ov2-top-post-row" onClick={() => navigate(`/post/${post.postId || post.id}`)}>
                   <div className="ov2-top-post-thumb">
-                    <span>📝</span>
+                    <span>{post.platform === 'INSTAGRAM' ? '📸' : '📝'}</span>
                   </div>
                   <div className="ov2-top-post-info">
                     <span className="ov2-top-post-title">{post.title}</span>
-                    <span className="ov2-top-post-date">{post.groupName}{post.date ? ` • ${new Date(post.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}` : ''}</span>
+                    <span className="ov2-top-post-date">
+                      <span className={`ov2-platform-badge ${post.platform === 'INSTAGRAM' ? 'ig' : 'fb'}`}>
+                        {post.platform === 'INSTAGRAM' ? (post.igType === 'REEL' ? 'ריל' : post.igType === 'STORY' ? 'סטורי' : 'פוסט IG') : 'Facebook'}
+                      </span>
+                      {post.groupName ? ` • ${post.groupName}` : ''}
+                      {post.date ? ` • ${new Date(post.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}` : ''}
+                    </span>
                   </div>
                   <div className="ov2-top-post-engagement">
                     <span className="ov2-engagement-value">{formatNumber(topPostsSort === 'likes' ? post.likes : post.comments)}</span>

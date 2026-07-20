@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useNavigationGuard } from '../context/NavigationGuard'
@@ -249,7 +249,7 @@ function SingleDatePicker({ value, onChange, minDate }) {
 export default function CreatePost() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, authChecked, groups: cachedGroups, forceRefresh, templates: cachedTemplates, recentCampaigns: cachedRecent, dataReady } = useAppData()
+  const { user, setUser, authChecked, groups: cachedGroups, forceRefresh, templates: cachedTemplates, recentCampaigns: cachedRecent, dataReady } = useAppData()
   const { setDirty, isDirty } = useNavigationGuard()
 
   const preSelectedGroup = location.state?.group || null
@@ -264,8 +264,22 @@ export default function CreatePost() {
   // Instagram
   const [instagramEnabled, setInstagramEnabled] = useState(fromTemplate?.instagramEnabled || false)
   const [instagramPublishTypes, setInstagramPublishTypes] = useState(fromTemplate?.instagramPublishTypes || (fromTemplate?.instagramPublishType ? [fromTemplate.instagramPublishType] : ['FEED'])) // array of 'FEED' | 'STORY' | 'REEL'
+  const [igTypeMedia, setIgTypeMedia] = useState({ FEED: [], STORY: [], REEL: [] }) // per-type specific media
+  const [igTypeMediaPreviews, setIgTypeMediaPreviews] = useState({ FEED: [], STORY: [], REEL: [] })
   const [previewMode, setPreviewMode] = useState('facebook') // 'facebook' | 'ig-feed' | 'ig-story' | 'ig-reel'
   const instagramConnected = user?.instagramConnected || false
+
+  // Live-check Instagram connection when tab is first opened (in case cached user is stale)
+  const checkInstagramStatus = useCallback(async () => {
+    if (instagramConnected) return
+    try {
+      const res = await authAPI.getInstagramStatus()
+      if (res?.data?.connected) {
+        setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: res.data.account?.username }))
+        setInstagramEnabled(true)
+      }
+    } catch { /* ignore */ }
+  }, [instagramConnected, setUser])
 
   // Distribution view tab
   const [distributionTab, setDistributionTab] = useState('facebook')
@@ -273,6 +287,7 @@ export default function CreatePost() {
   // Story/Reels media options
   const [storyMediaMode, setStoryMediaMode] = useState('first') // 'first' | 'all' | 'pick'
   const [storyPickedIndex, setStoryPickedIndex] = useState(0) // which image to use when mode='pick'
+  const [storyCaptions, setStoryCaptions] = useState([]) // per-image captions for stories
 
   // Template selector
   const [templates, setTemplates] = useState(cachedTemplates || [])
@@ -336,6 +351,12 @@ export default function CreatePost() {
   const [profileRecurringEndDate, setProfileRecurringEndDate] = useState(fromTemplate?.profileRecurringEndDate || '')
 
   const [igScheduleCustom, setIgScheduleCustom] = useState(false) // false = now (default)
+  const [igScheduleSubTab, setIgScheduleSubTab] = useState('FEED') // active IG type tab
+  const [igTypeSchedules, setIgTypeSchedules] = useState(() => {
+    const def = { mode: 'now', date: '', time: '', recurringDays: [], dayTimes: {}, startDate: '', endDate: '' }
+    if (fromTemplate?.igTypeSchedules) return fromTemplate.igTypeSchedules
+    return { FEED: { ...def }, STORY: { ...def }, REEL: { ...def } }
+  })
   const [igScheduleMode, setIgScheduleMode] = useState(fromTemplate?.igScheduleMode || 'now') // 'now' | 'scheduled' | 'recurring'
   const [igScheduleDate, setIgScheduleDate] = useState(fromTemplate?.igScheduleDate || '')
   const [igScheduleTime, setIgScheduleTime] = useState(fromTemplate?.igScheduleTime || '')
@@ -458,6 +479,20 @@ export default function CreatePost() {
     setPostImagePreviews(newImages.map(f => URL.createObjectURL(f)))
   }
 
+  const handleIgTypeMediaSelect = (igType) => (e) => {
+    const files = Array.from(e.target.files)
+    if (files.length === 0) return
+    const updated = [...igTypeMedia[igType], ...files].slice(0, 5)
+    setIgTypeMedia(prev => ({ ...prev, [igType]: updated }))
+    setIgTypeMediaPreviews(prev => ({ ...prev, [igType]: updated.map(f => URL.createObjectURL(f)) }))
+  }
+
+  const removeIgTypeMedia = (igType, index) => {
+    const updated = igTypeMedia[igType].filter((_, i) => i !== index)
+    setIgTypeMedia(prev => ({ ...prev, [igType]: updated }))
+    setIgTypeMediaPreviews(prev => ({ ...prev, [igType]: updated.map(f => URL.createObjectURL(f)) }))
+  }
+
   const removeImage = (index) => {
     const newImages = postImages.filter((_, i) => i !== index)
     setPostImages(newImages)
@@ -479,7 +514,9 @@ export default function CreatePost() {
     setError(null)
     setResults(null)
 
-    const waLink = whatsappNumber.trim()
+    const hasIgTypeMedia = Object.values(igTypeMedia).some(arr => arr.length > 0)
+
+    const waLink = showWhatsapp && whatsappNumber.trim()
       ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}${whatsappMessage ? '?text=' + encodeURIComponent(whatsappMessage) : ''}`
       : ''
 
@@ -497,10 +534,11 @@ export default function CreatePost() {
           anonymous: isAnonymous,
           location: postLocation,
           publishToProfile,
-          instagramEnabled,
-          instagramPublishTypes: instagramEnabled ? instagramPublishTypes : null,
-          storyMediaMode: instagramEnabled && instagramPublishTypes.includes('STORY') ? storyMediaMode : null,
-          storyPickedIndex: instagramEnabled && instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' ? storyPickedIndex : null,
+          instagramEnabled: instagramEnabled && instagramConnected,
+          instagramPublishTypes: instagramEnabled && instagramConnected ? instagramPublishTypes : null,
+          storyMediaMode: instagramEnabled && instagramConnected && instagramPublishTypes.includes('STORY') ? storyMediaMode : null,
+          storyPickedIndex: instagramEnabled && instagramConnected && instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' ? storyPickedIndex : null,
+          storyCaptions: instagramEnabled && instagramConnected && instagramPublishTypes.includes('STORY') && storyMediaMode === 'all' ? storyCaptions : null,
           scheduleMode,
           scheduleDate,
           scheduleTime,
@@ -526,7 +564,8 @@ export default function CreatePost() {
           igDayTimes: igScheduleMode === 'recurring' ? igDayTimes : null,
           igRecurringStartDate: igScheduleMode === 'recurring' ? igRecurringStartDate : null,
           igRecurringEndDate: igScheduleMode === 'recurring' ? igRecurringEndDate : null,
-        }, postImages)
+          igPerTypeSchedules: instagramEnabled && instagramConnected ? igTypeSchedules : null,
+        }, postImages, hasIgTypeMedia ? igTypeMedia : null)
         if (res.data.success) {
           setDirty(false)
           forceRefresh()
@@ -572,6 +611,7 @@ export default function CreatePost() {
         instagramPublishTypes: instagramEnabled ? instagramPublishTypes : null,
         storyMediaMode: instagramEnabled && instagramPublishTypes.includes('STORY') ? storyMediaMode : null,
         storyPickedIndex: instagramEnabled && instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' ? storyPickedIndex : null,
+        storyCaptions: instagramEnabled && instagramPublishTypes.includes('STORY') && storyMediaMode === 'all' ? storyCaptions : null,
         scheduleMode: 'now',
         campaignType: 'ONE_TIME',
         templateName: fromTemplate?.name || selectedTemplateName || null,
@@ -589,14 +629,15 @@ export default function CreatePost() {
         igDayTimes: igScheduleMode === 'recurring' ? igDayTimes : null,
         igRecurringStartDate: igScheduleMode === 'recurring' ? igRecurringStartDate : null,
         igRecurringEndDate: igScheduleMode === 'recurring' ? igRecurringEndDate : null,
-      }, postImages)
+        igPerTypeSchedules: instagramEnabled ? igTypeSchedules : null,
+      }, postImages, hasIgTypeMedia ? igTypeMedia : null)
 
       if (res.data.success) {
         setDirty(false)
         if (fromTemplate?.id) {
           templatesService.markUsed(fromTemplate.id).catch(() => {})
         }
-        window.dispatchEvent(new CustomEvent('postit-publish-start', { detail: { count: groupCount, postId: res.data.postId } }))
+        window.dispatchEvent(new CustomEvent('postit-publish-start', { detail: { count: groupCount, postId: res.data.postId, targets: { groups: selectedGroups.length, profile: publishToProfile, instagram: instagramEnabled } } }))
         navigate(-1)
       } else {
         setError(res.data.error || 'שגיאה ביצירת הפרסום')
@@ -624,7 +665,7 @@ export default function CreatePost() {
         setSavingDraft(true)
         setError(null)
         try {
-          const waLink = whatsappNumber.trim()
+          const waLink = showWhatsapp && whatsappNumber.trim()
             ? `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}${whatsappMessage ? '?text=' + encodeURIComponent(whatsappMessage) : ''}`
             : ''
           const campaignText = waLink ? `${postText}\n\n${waLink}` : postText
@@ -786,7 +827,11 @@ export default function CreatePost() {
     if (Object.keys(stepErrors).length === 0) return
     const newErrors = { ...stepErrors }
     if (newErrors[0] && postText.trim()) { delete newErrors[0] }
-    if (newErrors[1] && (selectedGroups.length > 0 || instagramEnabled)) { delete newErrors[1] }
+    if (newErrors[1]) {
+      const hasTarget = selectedGroups.length > 0 || publishToProfile || instagramEnabled
+      const igNeedsMedia = instagramEnabled && postImages.length === 0
+      if (hasTarget && !igNeedsMedia) { delete newErrors[1] }
+    }
     if (newErrors[2]) {
       if (scheduleMode === 'now') { delete newErrors[2] }
       else if (scheduleMode === 'scheduled' && scheduleDate && scheduleTime) { delete newErrors[2] }
@@ -796,7 +841,7 @@ export default function CreatePost() {
       setStepErrors(newErrors)
       if (Object.keys(newErrors).length === 0) setError(null)
     }
-  }, [postText, selectedGroups, scheduleMode, scheduleDate, scheduleTime, recurringDays, dayTimes, recurringStartDate, recurringEndDate])
+  }, [postText, selectedGroups, publishToProfile, instagramEnabled, postImages, scheduleMode, scheduleDate, scheduleTime, recurringDays, dayTimes, recurringStartDate, recurringEndDate])
 
   const steps = [
     { id: 'content', label: 'תוכן', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> },
@@ -812,6 +857,7 @@ export default function CreatePost() {
     }
     if (step >= 1) {
       if (selectedGroups.length === 0 && !publishToProfile && !instagramEnabled) errors[1] = 'יש לבחור לפחות קבוצה אחת, פרסום בפרופיל, או פרסום באינסטגרם'
+      else if (instagramEnabled && postImages.length === 0) errors[1] = 'יש להוסיף תמונה או סרטון לפרסום באינסטגרם'
     }
     if (step >= 2) {
       if (scheduleMode === 'scheduled') {
@@ -885,7 +931,7 @@ export default function CreatePost() {
         {currentStep > 0 ? (
           <button className="cp-back" onClick={goBack}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
           </button>
         ) : (
@@ -959,11 +1005,22 @@ export default function CreatePost() {
         <div className="cp-wizard-layout">
           {/* Desktop Preview - Left side */}
           <div className="cp-preview-sidebar">
+            <svg width="0" height="0" style={{position:'absolute'}}>
+              <defs>
+                <linearGradient id="ig-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#FFDC80" />
+                  <stop offset="25%" stopColor="#F77737" />
+                  <stop offset="50%" stopColor="#E1306C" />
+                  <stop offset="75%" stopColor="#C13584" />
+                  <stop offset="100%" stopColor="#833AB4" />
+                </linearGradient>
+              </defs>
+            </svg>
             <span className="cp-preview-label">תצוגה מקדימה</span>
             <div className="cp-preview-toggle">
               <button
                 type="button"
-                className={`cp-preview-toggle-btn ${previewMode === 'facebook' ? 'active' : ''}`}
+                className={`cp-preview-toggle-btn cp-toggle-fb ${previewMode === 'facebook' ? 'active' : ''}`}
                 onClick={() => setPreviewMode('facebook')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
@@ -971,7 +1028,7 @@ export default function CreatePost() {
               </button>
               <button
                 type="button"
-                className={`cp-preview-toggle-btn ${previewMode.startsWith('ig-') ? 'active' : ''}`}
+                className={`cp-preview-toggle-btn cp-toggle-ig ${previewMode.startsWith('ig-') ? 'active' : ''}`}
                 onClick={() => setPreviewMode(prev => prev.startsWith('ig-') ? prev : 'ig-feed')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
@@ -980,9 +1037,9 @@ export default function CreatePost() {
             </div>
             {previewMode.startsWith('ig-') && (
               <div className="cp-preview-sub-toggle">
-                <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-feed' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-feed')}>🖼️ פוסט</button>
-                <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-story' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-story')}>⏱️ סטורי</button>
-                <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-reel' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-reel')}>🎬 רילס</button>
+                <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-feed' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-feed')}>פוסט</button>
+                <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-story' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-story')}>סטורי</button>
+                <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-reel' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-reel')}>רילס</button>
               </div>
             )}
             {previewMode === 'facebook' ? (
@@ -991,7 +1048,7 @@ export default function CreatePost() {
                 images={postImagePreviews}
                 groupName={selectedGroups[0]?.name}
                 userName={user?.name}
-                whatsappNumber={whatsappNumber}
+                whatsappNumber={showWhatsapp ? whatsappNumber : ''}
                 isAnonymous={isAnonymous}
               />
             ) : (
@@ -1000,6 +1057,11 @@ export default function CreatePost() {
                 images={postImagePreviews}
                 userName={user?.name}
                 mode={previewMode === 'ig-story' ? 'STORY' : previewMode === 'ig-reel' ? 'REEL' : 'FEED'}
+                onAddImage={(files) => {
+                  const newImages = [...postImages, ...files].slice(0, 10)
+                  setPostImages(newImages)
+                  setPostImagePreviews(newImages.map(f => URL.createObjectURL(f)))
+                }}
               />
             )}
           </div>
@@ -1302,11 +1364,10 @@ export default function CreatePost() {
                   <button
                     type="button"
                     className={`cp-platform-tab ${distributionTab === 'instagram' ? 'active' : ''}`}
-                    onClick={() => { setDistributionTab('instagram'); setInstagramEnabled(true) }}
+                    onClick={() => { setDistributionTab('instagram'); checkInstagramStatus(); if (instagramConnected) setInstagramEnabled(true) }}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
                     <span>Instagram</span>
-                    {instagramEnabled && <span className="cp-platform-badge">✓</span>}
                   </button>
                 </div>
 
@@ -1444,7 +1505,38 @@ export default function CreatePost() {
                         <button
                           type="button"
                           className="cp-ig-connect-btn"
-                          onClick={() => navigate('/dashboard?tab=settings')}
+                          onClick={async () => {
+                            try {
+                              const res = await authAPI.getInstagramAuthUrl()
+                              if (res.data.authUrl) {
+                                const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+                                const handleMessage = (event) => {
+                                  if (!event.data || event.data.type !== 'instagram-oauth-callback') return
+                                  window.removeEventListener('message', handleMessage)
+                                  if (event.data.success) {
+                                    setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
+                                    setInstagramEnabled(true)
+                                  }
+                                }
+                                window.addEventListener('message', handleMessage)
+                                const timer = setInterval(async () => {
+                                  if (popup?.closed) {
+                                    clearInterval(timer)
+                                    window.removeEventListener('message', handleMessage)
+                                    try {
+                                      const statusRes = await authAPI.getInstagramStatus()
+                                      if (statusRes?.data?.connected) {
+                                        setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: statusRes.data.account?.username }))
+                                        setInstagramEnabled(true)
+                                      }
+                                    } catch { /* ignore */ }
+                                  }
+                                }, 500)
+                              }
+                            } catch {
+                              window.alert('שגיאה ביצירת קישור חיבור')
+                            }
+                          }}
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
                           חבר חשבון Instagram
@@ -1457,7 +1549,7 @@ export default function CreatePost() {
                           <button
                             type="button"
                             className={`cp-ig-type-card ${instagramPublishTypes.includes('FEED') ? 'active' : ''}`}
-                            onClick={() => setInstagramPublishTypes(prev => prev.includes('FEED') ? (prev.length > 1 ? prev.filter(v => v !== 'FEED') : prev) : [...prev, 'FEED'])}
+                            onClick={() => setInstagramPublishTypes(prev => prev.includes('FEED') ? prev.filter(v => v !== 'FEED') : [...prev, 'FEED'])}
                           >
                             <span className="cp-ig-type-icon">🖼️</span>
                             <span className="cp-ig-type-name">פוסט</span>
@@ -1466,7 +1558,7 @@ export default function CreatePost() {
                           <button
                             type="button"
                             className={`cp-ig-type-card ${instagramPublishTypes.includes('STORY') ? 'active' : ''}`}
-                            onClick={() => setInstagramPublishTypes(prev => prev.includes('STORY') ? (prev.length > 1 ? prev.filter(v => v !== 'STORY') : prev) : [...prev, 'STORY'])}
+                            onClick={() => setInstagramPublishTypes(prev => prev.includes('STORY') ? prev.filter(v => v !== 'STORY') : [...prev, 'STORY'])}
                           >
                             <span className="cp-ig-type-icon">⏱️</span>
                             <span className="cp-ig-type-name">סטורי</span>
@@ -1475,7 +1567,7 @@ export default function CreatePost() {
                           <button
                             type="button"
                             className={`cp-ig-type-card ${instagramPublishTypes.includes('REEL') ? 'active' : ''}`}
-                            onClick={() => setInstagramPublishTypes(prev => prev.includes('REEL') ? (prev.length > 1 ? prev.filter(v => v !== 'REEL') : prev) : [...prev, 'REEL'])}
+                            onClick={() => setInstagramPublishTypes(prev => prev.includes('REEL') ? prev.filter(v => v !== 'REEL') : [...prev, 'REEL'])}
                           >
                             <span className="cp-ig-type-icon">🎬</span>
                             <span className="cp-ig-type-name">ריל</span>
@@ -1490,10 +1582,36 @@ export default function CreatePost() {
                           </div>
                         )}
 
-                        {instagramPublishTypes.includes('STORY') && !postImagePreviews.length && (
-                          <div className="cp-ig-hint">
+                        {instagramPublishTypes.includes('STORY') && !postImagePreviews.length && !igTypeMediaPreviews.STORY.length && (
+                          <div className="cp-ig-hint cp-ig-upload-prompt">
                             <span>💡</span>
-                            <span>סטורי דורש תמונה או סרטון. הוסיפי מדיה בשלב התוכן.</span>
+                            <span>סטורי דורש תמונה או סרטון.</span>
+                            <label className="cp-ig-upload-btn">
+                              📷 העלאת תמונה או סרטון לסטורי
+                              <input type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('STORY')} />
+                            </label>
+                            <span className="cp-ig-upload-note">📌 מדיה זו תשמש רק לסטורי</span>
+                          </div>
+                        )}
+
+                        {instagramPublishTypes.includes('STORY') && igTypeMediaPreviews.STORY.length > 0 && (
+                          <div className="cp-ig-type-media-preview">
+                            <div className="cp-ig-type-media-header">
+                              <span>📸 מדיה ספציפית לסטורי:</span>
+                            </div>
+                            <div className="cp-ig-type-media-grid">
+                              {igTypeMediaPreviews.STORY.map((src, i) => (
+                                <div key={i} className="cp-ig-type-media-item">
+                                  {igTypeMedia.STORY[i]?.type?.startsWith('video/') ? (
+                                    <video src={src} className="cp-ig-type-media-thumb" />
+                                  ) : (
+                                    <img src={src} alt={`סטורי ${i + 1}`} className="cp-ig-type-media-thumb" />
+                                  )}
+                                  <button type="button" className="cp-ig-type-media-remove" onClick={() => removeIgTypeMedia('STORY', i)}>✕</button>
+                                </div>
+                              ))}
+                            </div>
+                            <span className="cp-ig-upload-note">📌 מדיה זו תשמש רק לסטורי</span>
                           </div>
                         )}
 
@@ -1544,6 +1662,32 @@ export default function CreatePost() {
                                 ))}
                               </div>
                             )}
+
+                            {/* Per-story captions */}
+                            {storyMediaMode === 'all' && (
+                              <div className="cp-ig-story-captions">
+                                <div className="cp-ig-media-notice" style={{ marginTop: '0.5rem' }}>
+                                  <span className="cp-ig-media-notice-icon">✏️</span>
+                                  <span>טקסט לכל סטורי (אופציונלי — יופיע על התמונה):</span>
+                                </div>
+                                {postImagePreviews.map((img, i) => (
+                                  <div key={i} className="cp-ig-story-caption-row">
+                                    <img src={img} alt={`סטורי ${i + 1}`} className="cp-ig-story-caption-thumb" />
+                                    <input
+                                      type="text"
+                                      className="cp-ig-story-caption-input"
+                                      placeholder={`טקסט לסטורי ${i + 1} (ברירת מחדל: טקסט הפוסט)`}
+                                      value={storyCaptions[i] || ''}
+                                      onChange={(e) => {
+                                        const updated = [...storyCaptions]
+                                        updated[i] = e.target.value
+                                        setStoryCaptions(updated)
+                                      }}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -1551,8 +1695,8 @@ export default function CreatePost() {
                         {instagramPublishTypes.includes('REEL') && (
                           <div className="cp-ig-media-options">
                             {(() => {
-                              const hasVideo = postImages.some(f => f?.type?.startsWith('video/'))
-                              const hasImages = postImagePreviews.length > 0 && !hasVideo
+                              const hasVideo = postImages.some(f => f?.type?.startsWith('video/')) || igTypeMedia.REEL.some(f => f?.type?.startsWith('video/'))
+                              const hasImages = postImagePreviews.length > 0 && !postImages.some(f => f?.type?.startsWith('video/'))
                               if (hasVideo) {
                                 return (
                                   <div className="cp-ig-hint cp-ig-hint-success">
@@ -1561,28 +1705,84 @@ export default function CreatePost() {
                                   </div>
                                 )
                               }
-                              if (hasImages) {
+                              if (hasImages && !igTypeMediaPreviews.REEL.length) {
                                 return (
                                   <div className="cp-ig-media-notice cp-ig-media-notice-warn">
                                     <span className="cp-ig-media-notice-icon">⚠️</span>
-                                    <span>ריל דורש <strong>סרטון</strong>. העלית רק תמונות — חזרי לשלב התוכן והחליפי ל-סרטון, או בחרי סוג פרסום אחר (פוסט/סטורי).</span>
+                                    <span>ריל דורש <strong>סרטון</strong>. העלית רק תמונות.</span>
+                                    <label className="cp-ig-upload-btn">
+                                      🎬 העלאת סרטון לריל
+                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('REEL')} />
+                                    </label>
+                                    <span className="cp-ig-upload-note">📌 סרטון זה ישמש רק לריל</span>
                                   </div>
                                 )
                               }
-                              return (
-                                <div className="cp-ig-hint">
-                                  <span>💡</span>
-                                  <span>ריל דורש סרטון. הוסיפי סרטון בשלב התוכן.</span>
-                                </div>
-                              )
+                              if (!igTypeMediaPreviews.REEL.length) {
+                                return (
+                                  <div className="cp-ig-hint cp-ig-upload-prompt">
+                                    <span>💡</span>
+                                    <span>ריל דורש סרטון.</span>
+                                    <label className="cp-ig-upload-btn">
+                                      🎬 העלאת סרטון לריל
+                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('REEL')} />
+                                    </label>
+                                    <span className="cp-ig-upload-note">📌 סרטון זה ישמש רק לריל</span>
+                                  </div>
+                                )
+                              }
+                              return null
                             })()}
+
+                            {igTypeMediaPreviews.REEL.length > 0 && (
+                              <div className="cp-ig-type-media-preview">
+                                <div className="cp-ig-type-media-header">
+                                  <span>🎬 סרטון ספציפי לריל:</span>
+                                </div>
+                                <div className="cp-ig-type-media-grid">
+                                  {igTypeMediaPreviews.REEL.map((src, i) => (
+                                    <div key={i} className="cp-ig-type-media-item">
+                                      <video src={src} className="cp-ig-type-media-thumb" />
+                                      <button type="button" className="cp-ig-type-media-remove" onClick={() => removeIgTypeMedia('REEL', i)}>✕</button>
+                                    </div>
+                                  ))}
+                                </div>
+                                <span className="cp-ig-upload-note">📌 סרטון זה ישמש רק לריל</span>
+                              </div>
+                            )}
                           </div>
                         )}
 
-                        {instagramPublishTypes.includes('FEED') && !postImagePreviews.length && (
-                          <div className="cp-ig-hint">
+                        {instagramPublishTypes.includes('FEED') && !postImagePreviews.length && !igTypeMediaPreviews.FEED.length && (
+                          <div className="cp-ig-hint cp-ig-upload-prompt">
                             <span>💡</span>
-                            <span>פוסט בפיד דורש לפחות תמונה אחת. הוסיפי תמונה בשלב התוכן.</span>
+                            <span>פוסט בפיד דורש לפחות תמונה אחת.</span>
+                            <label className="cp-ig-upload-btn">
+                              📷 העלאת תמונה לפיד
+                              <input type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('FEED')} />
+                            </label>
+                            <span className="cp-ig-upload-note">📌 מדיה זו תשמש רק לפיד</span>
+                          </div>
+                        )}
+
+                        {instagramPublishTypes.includes('FEED') && igTypeMediaPreviews.FEED.length > 0 && (
+                          <div className="cp-ig-type-media-preview">
+                            <div className="cp-ig-type-media-header">
+                              <span>🖼️ מדיה ספציפית לפיד:</span>
+                            </div>
+                            <div className="cp-ig-type-media-grid">
+                              {igTypeMediaPreviews.FEED.map((src, i) => (
+                                <div key={i} className="cp-ig-type-media-item">
+                                  {igTypeMedia.FEED[i]?.type?.startsWith('video/') ? (
+                                    <video src={src} className="cp-ig-type-media-thumb" />
+                                  ) : (
+                                    <img src={src} alt={`פיד ${i + 1}`} className="cp-ig-type-media-thumb" />
+                                  )}
+                                  <button type="button" className="cp-ig-type-media-remove" onClick={() => removeIgTypeMedia('FEED', i)}>✕</button>
+                                </div>
+                              ))}
+                            </div>
+                            <span className="cp-ig-upload-note">📌 מדיה זו תשמש רק לפיד</span>
                           </div>
                         )}
                       </div>
@@ -1956,58 +2156,79 @@ export default function CreatePost() {
                   {/* ═══ Instagram panel ═══ */}
                   {activePlatform === 'instagram' && (
                     <>
-                      {/* Level 2: IG type badges */}
-                      {instagramPublishTypes.length > 0 && (
+                      {/* Level 2: IG type sub-tabs */}
+                      {instagramPublishTypes.length > 1 && (
                         <div className="cp-schedule-sub-tabs cp-schedule-sub-tabs-inner">
                           {instagramPublishTypes.includes('FEED') && (
-                            <span className="cp-schedule-sub-tab cp-schedule-sub-tab-ig active">📷 פוסט</span>
+                            <button type="button"
+                              className={`cp-schedule-sub-tab cp-schedule-sub-tab-ig ${igScheduleSubTab === 'FEED' ? 'active' : ''}`}
+                              onClick={() => setIgScheduleSubTab('FEED')}>
+                              📷 פוסט
+                              {igTypeSchedules.FEED?.mode !== 'now' && <span className="cp-schedule-sub-tab-badge">📅</span>}
+                            </button>
                           )}
                           {instagramPublishTypes.includes('STORY') && (
-                            <span className="cp-schedule-sub-tab cp-schedule-sub-tab-ig active">📱 סטורי</span>
+                            <button type="button"
+                              className={`cp-schedule-sub-tab cp-schedule-sub-tab-ig ${igScheduleSubTab === 'STORY' ? 'active' : ''}`}
+                              onClick={() => setIgScheduleSubTab('STORY')}>
+                              📱 סטורי
+                              {igTypeSchedules.STORY?.mode !== 'now' && <span className="cp-schedule-sub-tab-badge">📅</span>}
+                            </button>
                           )}
                           {instagramPublishTypes.includes('REEL') && (
-                            <span className="cp-schedule-sub-tab cp-schedule-sub-tab-ig active">🎬 ריל</span>
+                            <button type="button"
+                              className={`cp-schedule-sub-tab cp-schedule-sub-tab-ig ${igScheduleSubTab === 'REEL' ? 'active' : ''}`}
+                              onClick={() => setIgScheduleSubTab('REEL')}>
+                              🎬 ריל
+                              {igTypeSchedules.REEL?.mode !== 'now' && <span className="cp-schedule-sub-tab-badge">📅</span>}
+                            </button>
                           )}
                         </div>
                       )}
 
-                      {instagramPublishTypes.includes('STORY') && (
+                      {igScheduleSubTab === 'STORY' && (
                         <div className="cp-ig-hint" style={{ marginBottom: 12 }}>
                           <span>💡</span>
                           <span>סטורי נעלם אחרי 24 שעות מרגע הפרסום</span>
                         </div>
                       )}
 
+                    {(() => {
+                      const activeIgType = instagramPublishTypes.includes(igScheduleSubTab) ? igScheduleSubTab : instagramPublishTypes[0]
+                      const ts = igTypeSchedules[activeIgType] || { mode: 'now', date: '', time: '', recurringDays: [], dayTimes: {}, startDate: '', endDate: '' }
+                      const updateTs = (field, value) => setIgTypeSchedules(prev => ({ ...prev, [activeIgType]: { ...prev[activeIgType], [field]: value } }))
+                      const updateTsMulti = (updates) => setIgTypeSchedules(prev => ({ ...prev, [activeIgType]: { ...prev[activeIgType], ...updates } }))
+                      return (
                     <div className="cp-schedule">
                       <div className="schedule-tabs">
-                        <button type="button" className={`schedule-tab ${igScheduleMode === 'now' ? 'active' : ''}`} onClick={() => setIgScheduleMode('now')}>
+                        <button type="button" className={`schedule-tab ${ts.mode === 'now' ? 'active' : ''}`} onClick={() => updateTs('mode', 'now')}>
                           <span className="schedule-tab-icon">⚡</span>
                           <span>עכשיו</span>
                         </button>
-                        <button type="button" className={`schedule-tab ${igScheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setIgScheduleMode('scheduled'); setIgRecurringDays([]); setIgDayTimes({}) }}>
+                        <button type="button" className={`schedule-tab ${ts.mode === 'scheduled' ? 'active' : ''}`} onClick={() => updateTsMulti({ mode: 'scheduled', recurringDays: [], dayTimes: {} })}>
                           <span className="schedule-tab-icon">📅</span>
                           <span>חד-פעמי</span>
                         </button>
-                        <button type="button" className={`schedule-tab ${igScheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setIgScheduleMode('recurring'); setIgScheduleDate(''); setIgScheduleTime('') }}>
+                        <button type="button" className={`schedule-tab ${ts.mode === 'recurring' ? 'active' : ''}`} onClick={() => updateTsMulti({ mode: 'recurring', date: '', time: '' })}>
                           <span className="schedule-tab-icon">🔄</span>
                           <span>חוזר</span>
                         </button>
                       </div>
 
-                      {igScheduleMode === 'now' && (
+                      {ts.mode === 'now' && (
                         <div className="schedule-info">
                           <p className="schedule-info-text">יפורסם באינסטגרם מיד עם יצירת הקמפיין</p>
                         </div>
                       )}
 
-                      {igScheduleMode === 'scheduled' && (
+                      {ts.mode === 'scheduled' && (
                         <div className="schedule-fields">
                           <div className="schedule-row-centered">
                             <div className="schedule-field">
                               <label>תאריך</label>
                               <SingleDatePicker
-                                value={igScheduleDate}
-                                onChange={setIgScheduleDate}
+                                value={ts.date}
+                                onChange={(v) => updateTs('date', v)}
                                 minDate={toDateStr(new Date())}
                               />
                             </div>
@@ -2015,60 +2236,68 @@ export default function CreatePost() {
                               <label>שעה</label>
                               <input
                                 type="time"
-                                value={igScheduleTime}
-                                onChange={(e) => setIgScheduleTime(e.target.value)}
-                                disabled={!igScheduleDate}
-                                className={!igScheduleDate ? 'disabled-input' : ''}
+                                value={ts.time}
+                                onChange={(e) => updateTs('time', e.target.value)}
+                                disabled={!ts.date}
+                                className={!ts.date ? 'disabled-input' : ''}
                               />
                             </div>
                           </div>
-                          {igScheduleDate && igScheduleTime && (
+                          {ts.date && ts.time && (
                             <div className="schedule-summary">
-                              📅 {new Date(`${igScheduleDate}T${igScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה {igScheduleTime}
+                              📅 {new Date(`${ts.date}T${ts.time}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה {ts.time}
                             </div>
                           )}
                         </div>
                       )}
 
-                      {igScheduleMode === 'recurring' && (
+                      {ts.mode === 'recurring' && (
                         <div className="schedule-fields">
                           <div className="schedule-section">
                             <label className="schedule-section-label">תקופה</label>
                             <RecurringDateRange
-                              startDate={igRecurringStartDate}
-                              endDate={igRecurringEndDate}
-                              onStartChange={setIgRecurringStartDate}
-                              onEndChange={setIgRecurringEndDate}
+                              startDate={ts.startDate}
+                              endDate={ts.endDate}
+                              onStartChange={(v) => updateTs('startDate', v)}
+                              onEndChange={(v) => updateTs('endDate', v)}
                               minDate={toDateStr(new Date())}
-                              initialMonth={igRecurringStartDate ? new Date(igRecurringStartDate) : new Date()}
+                              initialMonth={ts.startDate ? new Date(ts.startDate) : new Date()}
                             />
                           </div>
                           <div className="schedule-section">
                             <label className="schedule-section-label">באילו ימים?</label>
                             <div className="days-grid">
                               {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
-                                <button key={i} type="button" className={`day-btn ${igRecurringDays.includes(i)?'active':''}`}
+                                <button key={i} type="button" className={`day-btn ${ts.recurringDays.includes(i)?'active':''}`}
                                   onClick={() => {
-                                    setIgRecurringDays(prev => {
-                                      if(prev.includes(i)){setIgDayTimes(dt=>{const c={...dt};delete c[i];return c});return prev.filter(d=>d!==i)}
-                                      else{setIgDayTimes(dt=>({...dt,[i]:['']}));return[...prev,i]}
+                                    setIgTypeSchedules(prev => {
+                                      const cur = prev[activeIgType]
+                                      const newDays = cur.recurringDays.includes(i) ? cur.recurringDays.filter(d => d !== i) : [...cur.recurringDays, i]
+                                      const newDayTimes = { ...cur.dayTimes }
+                                      if (cur.recurringDays.includes(i)) delete newDayTimes[i]
+                                      else newDayTimes[i] = ['']
+                                      return { ...prev, [activeIgType]: { ...cur, recurringDays: newDays, dayTimes: newDayTimes } }
                                     })
                                   }}>{day}</button>
                               ))}
-                              <button type="button" className={`day-btn day-btn-all ${igRecurringDays.length===7?'active':''}`}
+                              <button type="button" className={`day-btn day-btn-all ${ts.recurringDays.length===7?'active':''}`}
                                 onClick={() => {
-                                  if(igRecurringDays.length===7){setIgRecurringDays([]);setIgDayTimes({})}
-                                  else{setIgRecurringDays([0,1,2,3,4,5,6]);setIgDayTimes(dt=>{const c={...dt};for(let i=0;i<7;i++){if(!c[i])c[i]=['']}return c})}
+                                  setIgTypeSchedules(prev => {
+                                    const cur = prev[activeIgType]
+                                    if (cur.recurringDays.length === 7) return { ...prev, [activeIgType]: { ...cur, recurringDays: [], dayTimes: {} } }
+                                    const newDayTimes = { ...cur.dayTimes }; for(let j=0;j<7;j++){if(!newDayTimes[j])newDayTimes[j]=['']}
+                                    return { ...prev, [activeIgType]: { ...cur, recurringDays: [0,1,2,3,4,5,6], dayTimes: newDayTimes } }
+                                  })
                                 }}>כל יום</button>
                             </div>
                           </div>
-                          {igRecurringDays.length > 0 && (
+                          {ts.recurringDays.length > 0 && (
                             <div className="schedule-section day-times-section">
                               <label className="schedule-section-label">שעות לכל יום</label>
                               <div className="day-times-list">
-                                {igRecurringDays.sort((a,b)=>a-b).map(dayIdx => {
+                                {[...ts.recurringDays].sort((a,b)=>a-b).map(dayIdx => {
                                   const dayName = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][dayIdx]
-                                  const times = igDayTimes[dayIdx] || ['']
+                                  const times = ts.dayTimes[dayIdx] || ['']
                                   return (
                                     <div key={dayIdx} className="day-times-card">
                                       <div className="day-times-header">
@@ -2078,11 +2307,30 @@ export default function CreatePost() {
                                       <div className="day-times-slots">
                                         {times.map((time,ti) => (
                                           <div key={ti} className="time-slot">
-                                            <input type="time" value={time} onChange={(e) => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
-                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                            <input type="time" value={time} onChange={(e) => {
+                                              setIgTypeSchedules(prev => {
+                                                const cur = prev[activeIgType]
+                                                const newDayTimes = { ...cur.dayTimes, [dayIdx]: [...(cur.dayTimes[dayIdx] || [''])] }
+                                                newDayTimes[dayIdx][ti] = e.target.value
+                                                return { ...prev, [activeIgType]: { ...cur, dayTimes: newDayTimes } }
+                                              })
+                                            }} />
+                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => {
+                                              setIgTypeSchedules(prev => {
+                                                const cur = prev[activeIgType]
+                                                const newDayTimes = { ...cur.dayTimes, [dayIdx]: cur.dayTimes[dayIdx].filter((_,idx)=>idx!==ti) }
+                                                return { ...prev, [activeIgType]: { ...cur, dayTimes: newDayTimes } }
+                                              })
+                                            }}>✕</button>}
                                           </div>
                                         ))}
-                                        {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
+                                        {times.length<5 && <button type="button" className="time-add-btn" onClick={() => {
+                                          setIgTypeSchedules(prev => {
+                                            const cur = prev[activeIgType]
+                                            const newDayTimes = { ...cur.dayTimes, [dayIdx]: [...(cur.dayTimes[dayIdx] || ['']), ''] }
+                                            return { ...prev, [activeIgType]: { ...cur, dayTimes: newDayTimes } }
+                                          })
+                                        }}>+ שעה</button>}
                                       </div>
                                     </div>
                                   )
@@ -2093,6 +2341,8 @@ export default function CreatePost() {
                         </div>
                       )}
                       </div>
+                      )
+                    })()}
                     </>
                   )}
 
@@ -2283,7 +2533,7 @@ export default function CreatePost() {
                   images={postImagePreviews}
                   groupName={selectedGroups[0]?.name}
                   userName={user?.name}
-                  whatsappNumber={whatsappNumber}
+                  whatsappNumber={showWhatsapp ? whatsappNumber : ''}
                   isAnonymous={isAnonymous}
                 />
               ) : (

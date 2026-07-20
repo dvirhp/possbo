@@ -105,7 +105,7 @@ import OtpInput from '../components/OtpInput'
 
 const TABS = [
   { id: 'campaigns', icon: '📅', label: 'קמפיינים' },
-  { id: 'groups', icon: '👥', label: 'קבוצות' },
+  { id: 'groups', icon: '👥', label: 'קבוצות פייסבוק' },
   { id: 'posts', icon: '📝', label: 'פרסומים' },
   { id: 'stats', icon: '📊', label: 'סטטיסטיקה' },
   { id: 'account', icon: '👤', label: 'ניהול חשבון' },
@@ -113,7 +113,7 @@ const TABS = [
 
 const NAV_ITEMS = [
   { id: 'campaigns', icon: 'calendar', label: 'קמפיינים' },
-  { id: 'groups', icon: 'users', label: 'קבוצות' },
+  { id: 'groups', icon: 'users', label: 'קבוצות פייסבוק' },
   { id: 'posts', icon: 'send', label: 'פרסומים' },
   { id: 'stats', icon: 'chart', label: 'סטטיסטיקה' },
   { id: 'account', icon: 'account', label: 'ניהול חשבון' },
@@ -172,6 +172,7 @@ export default function Dashboard() {
   // Filters
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [platformFilter, setPlatformFilter] = useState('all') // 'all' | 'facebook' | 'instagram' | 'both'
   const [groupFilter, setGroupFilter] = useState('all')
   const [groupFilterOpen, setGroupFilterOpen] = useState(false)
   const [groupFilterSearch, setGroupFilterSearch] = useState('')
@@ -343,6 +344,7 @@ export default function Dashboard() {
   useEffect(() => {
     setSearch('')
     setStatusFilter('all')
+    setPlatformFilter('all')
     setGroupFilter('all')
     setGroupFilterOpen(false)
     setGroupFilterSearch('')
@@ -354,10 +356,11 @@ export default function Dashboard() {
     window.scrollTo(0, 0)
   }, [activeTab])
 
-  const hasActiveFilters = statusFilter !== 'all' || groupFilter !== 'all' || templateFilter !== 'all' || sortBy !== 'date'
+  const hasActiveFilters = statusFilter !== 'all' || platformFilter !== 'all' || groupFilter !== 'all' || templateFilter !== 'all' || sortBy !== 'date'
 
   const resetFilters = () => {
     setStatusFilter('all')
+    setPlatformFilter('all')
     setGroupFilter('all')
     setTemplateFilter('all')
     setSortBy(activeTab === 'groups' ? 'name' : 'date')
@@ -404,6 +407,16 @@ export default function Dashboard() {
       list = list.filter(c => c.status === statusFilter)
     }
 
+    if (platformFilter !== 'all') {
+      if (platformFilter === 'facebook') {
+        list = list.filter(c => (c.groupCount > 0 || c.publishToProfile) && !c.instagramEnabled)
+      } else if (platformFilter === 'instagram') {
+        list = list.filter(c => c.instagramEnabled && c.groupCount === 0 && !c.publishToProfile)
+      } else if (platformFilter === 'both') {
+        list = list.filter(c => c.instagramEnabled && (c.groupCount > 0 || c.publishToProfile))
+      }
+    }
+
     if (groupFilter !== 'all') {
       list = list.filter(c => c.groupNames?.includes(groupFilter))
     }
@@ -420,7 +433,7 @@ export default function Dashboard() {
       list = [...list].sort((a, b) => (a.title || a.content || '').localeCompare(b.title || b.content || ''))
     }
     return list
-  }, [campaigns, search, statusFilter, groupFilter, templateFilter, sortBy, dashDateRange])
+  }, [campaigns, search, statusFilter, platformFilter, groupFilter, templateFilter, sortBy, dashDateRange])
 
   const filteredGroups = useMemo(() => {
     let list = groups
@@ -817,6 +830,15 @@ export default function Dashboard() {
                       </select>
                     )}
 
+                    {activeTab === 'campaigns' && (
+                      <select value={platformFilter} onChange={e => setPlatformFilter(e.target.value)} className="filter-select">
+                        <option value="all">כל הפלטפורמות</option>
+                        <option value="facebook">פייסבוק בלבד</option>
+                        <option value="instagram">אינסטגרם בלבד</option>
+                        <option value="both">פייסבוק + אינסטגרם</option>
+                      </select>
+                    )}
+
 
 
                     {activeTab === 'campaigns' && campaignGroupNames.length > 1 && (
@@ -1040,6 +1062,29 @@ export default function Dashboard() {
                               onClick={() => setStatusFilter(opt.value)}
                             >
                               {opt.label} ({opt.count})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Platform filter */}
+                    {activeTab === 'campaigns' && (
+                      <div className="filter-sheet-section">
+                        <label className="filter-sheet-label">פלטפורמה</label>
+                        <div className="filter-sheet-chips">
+                          {[
+                            { value: 'all', label: 'הכל' },
+                            { value: 'facebook', label: 'פייסבוק' },
+                            { value: 'instagram', label: 'אינסטגרם' },
+                            { value: 'both', label: 'שתיהן' },
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              className={`filter-chip ${platformFilter === opt.value ? 'active' : ''}`}
+                              onClick={() => setPlatformFilter(opt.value)}
+                            >
+                              {opt.label}
                             </button>
                           ))}
                         </div>
@@ -1471,14 +1516,11 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
           <span className="cl-col cl-col-post cl-sortable" onClick={() => handleCampaignSort('name')}>
             פוסט {sortKey === 'name' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
           </span>
-          <span className="cl-col cl-col-groups cl-sortable" onClick={() => handleCampaignSort('groups')}>
-            קבוצות {sortKey === 'groups' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+          <span className="cl-col cl-col-platform">
+            פלטפורמות
           </span>
           <span className="cl-col cl-col-status cl-sortable" onClick={() => handleCampaignSort('status')}>
             סטטוס {sortKey === 'status' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
-          </span>
-          <span className="cl-col cl-col-exposure cl-sortable" onClick={() => handleCampaignSort('exposure')}>
-            חשיפה {sortKey === 'exposure' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
           </span>
           <span className="cl-col cl-col-date cl-sortable" onClick={() => handleCampaignSort('date')}>
             תאריך {sortKey === 'date' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
@@ -1511,29 +1553,17 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
                   {campaign.content && <span className="cl-post-subtitle">{campaign.content.length > 50 ? campaign.content.slice(0, 50) + '...' : campaign.content}</span>}
                 </div>
               </div>
-              {/* Groups */}
-              <div className="cl-col cl-col-groups">
-                <div className="cl-group-avatars">
-                  {(campaign.groups || []).slice(0, 2).map((g, i) => (
-                    <div key={i} className="cl-group-avatar" title={g.name}>
-                      {g.image ? <img src={g.image} alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex') }} /> : null}
-                      <span style={g.image ? { display: 'none' } : {}}>{g.name?.[0] || '?'}</span>
-                    </div>
-                  ))}
-                  {(campaign.groupCount || 0) > 2 && <span className="cl-group-more">+{campaign.groupCount - 2}</span>}
+              {/* Platform */}
+              <div className="cl-col cl-col-platform">
+                <div className="cl-platform-tags">
+                  {(campaign.groupCount > 0 || campaign.publishToProfile) && <span className="platform-badge platform-facebook">FB</span>}
+                  {campaign.instagramEnabled && <span className="platform-badge platform-instagram">IG</span>}
                 </div>
               </div>
               {/* Status */}
               <div className="cl-col cl-col-status">
                 <span className={`cl-status-badge ${STATUS_CLASSES[campaign.status] || 'badge-active'}`}>
                   {STATUS_LABELS[campaign.status] || campaign.status}
-                </span>
-              </div>
-              {/* Exposure */}
-              <div className="cl-col cl-col-exposure">
-                <span className="cl-exposure-val">
-                  {formatExposure(campaign.totalExposure)}
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </span>
               </div>
               {/* Date */}
@@ -1688,8 +1718,20 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
                 {(campaign.groupCount || 0) > 3 && <span className="campaign-card-avatar-more">+{campaign.groupCount - 3}</span>}
               </div>
               <span className="campaign-card-group-label">
-                {campaign.groupCount === 1 ? campaign.groupNames?.[0] || 'קבוצה אחת' : `${campaign.groupCount} קבוצות`}
+                {campaign.groupCount === 1 ? campaign.groupNames?.[0] || 'קבוצה אחת' : campaign.groupCount > 0 ? `${campaign.groupCount} קבוצות` : ''}
               </span>
+            </div>
+
+            {/* Platform badges */}
+            <div className="campaign-card-platforms">
+              {(campaign.groupCount > 0 || campaign.publishToProfile) && (
+                <span className="platform-badge platform-facebook">פייסבוק{campaign.publishToProfile ? ' + פרופיל' : ''}</span>
+              )}
+              {campaign.instagramEnabled && (
+                <span className="platform-badge platform-instagram">
+                  אינסטגרם{campaign.instagramPublishType === 'STORY' ? ' · סטורי' : campaign.instagramPublishType === 'REEL' ? ' · ריל' : ' · פיד'}
+                </span>
+              )}
             </div>
 
             {/* Footer: exposure | date */}
@@ -2319,6 +2361,7 @@ function StatsPanel({ stats }) {
 
   // Top posts state
   const [topPostsSort, setTopPostsSort] = useState('likes')
+  const [topPostsPlatform, setTopPostsPlatform] = useState('all')
   const [refreshingAll, setRefreshingAll] = useState(false)
 
   // Cache helpers
@@ -2601,7 +2644,7 @@ function StatsPanel({ stats }) {
                 if (refreshingAll) return
                 setRefreshingAll(true)
                 window.dispatchEvent(new CustomEvent('postit-op-start', {
-                  detail: { id: 'refresh-all-metrics', msg: '🔄 מרענן נתוני מעורבות מפייסבוק... ניתן להמשיך לגלוש באתר' }
+                  detail: { id: 'refresh-all-metrics', msg: '🔄 מרענן נתוני מעורבות מפייסבוק ואינסטגרם... ניתן להמשיך לגלוש באתר' }
                 }))
                 groupsService.refreshAllMetrics()
                   .then(async (refreshRes) => {
@@ -2647,15 +2690,31 @@ function StatsPanel({ stats }) {
             </div>
           </div>
         </div>
+        <div className="top-posts-platform-filter">
+          <button className={`top-posts-platform-btn ${topPostsPlatform === 'all' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('all')}>הכל</button>
+          <button className={`top-posts-platform-btn ${topPostsPlatform === 'facebook' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('facebook')}>Facebook</button>
+          <button className={`top-posts-platform-btn ${topPostsPlatform === 'instagram' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('instagram')}>Instagram</button>
+        </div>
         {topPostsLoading ? (
           <div className="top-posts-loading">טוען...</div>
         ) : topPosts.length === 0 ? (
           <div className="top-posts-empty">
             <p>אין עדיין נתוני מעורבות. לחץ על כפתור הרענון (🔄) ליד כל פרסום כדי למשוך לייקים ותגובות.</p>
           </div>
-        ) : (
+        ) : (() => {
+          const filtered = topPosts.filter(p => {
+            if (topPostsPlatform === 'all') return true
+            if (topPostsPlatform === 'facebook') return (p.platform || 'FACEBOOK') === 'FACEBOOK'
+            if (topPostsPlatform === 'instagram') return p.platform === 'INSTAGRAM'
+            return true
+          })
+          return filtered.length === 0 ? (
+            <div className="top-posts-empty">
+              <p>אין פוסטים עבור הפלטפורמה שנבחרה</p>
+            </div>
+          ) : (
           <div className="top-posts-list">
-            {topPosts.slice(0, topPostsVisible).map((p, i) => (
+            {filtered.slice(0, topPostsVisible).map((p, i) => (
               <Fragment key={p.id}>
                 <div
                   className={`top-post-row ${i === 0 ? 'top-post-gold' : i === 1 ? 'top-post-silver' : i === 2 ? 'top-post-bronze' : ''} ${expandedPostId === p.id ? 'top-post-expanded' : ''}`}
@@ -2665,7 +2724,12 @@ function StatsPanel({ stats }) {
                   <span className="top-post-rank">{i + 1}</span>
                   <div className="top-post-info">
                     <span className="top-post-title">{p.title || 'ללא כותרת'}</span>
-                    <span className="top-post-group">{p.groupName}</span>
+                    <span className="top-post-group">
+                      <span className={`top-post-platform-badge ${p.platform === 'INSTAGRAM' ? 'ig' : 'fb'}`}>
+                        {p.platform === 'INSTAGRAM' ? (p.igType === 'REEL' ? 'ריל' : p.igType === 'STORY' ? 'סטורי' : 'פוסט IG') : 'Facebook'}
+                      </span>
+                      {p.groupName ? ` • ${p.groupName}` : ''}
+                    </span>
                   </div>
                   <div className="top-post-metrics">
                     <span className="top-post-metric" title="לייקים">
@@ -2701,20 +2765,21 @@ function StatsPanel({ stats }) {
                     {p.externalPostUrl && (
                       <a href={p.externalPostUrl} target="_blank" rel="noopener noreferrer" className="top-post-fb-link">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                        צפה בפוסט בפייסבוק
+                        {p.platform === 'INSTAGRAM' ? 'צפה בפוסט באינסטגרם' : 'צפה בפוסט בפייסבוק'}
                       </a>
                     )}
                   </div>
                 )}
               </Fragment>
             ))}
-            {topPosts.length > topPostsVisible && (
+            {filtered.length > topPostsVisible && (
               <button className="top-posts-show-more" onClick={() => setTopPostsVisible(prev => prev + 10)}>
-                הצג עוד ({topPosts.length - topPostsVisible} נוספים)
+                הצג עוד ({filtered.length - topPostsVisible} נוספים)
               </button>
             )}
           </div>
-        )}
+          )
+        })()}
       </div>
 
       {/* Best Posting Times */}
@@ -3224,9 +3289,37 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                       try {
                         const res = await authAPI.getInstagramAuthUrl()
                         if (res.data.authUrl) {
-                          window.location.href = res.data.authUrl
+                          const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+                          console.log('[IG-Connect] Popup opened:', !!popup)
+                          const handleMessage = (event) => {
+                            console.log('[IG-Connect] postMessage received:', event.data)
+                            if (!event.data || event.data.type !== 'instagram-oauth-callback') return
+                            window.removeEventListener('message', handleMessage)
+                            if (event.data.success) {
+                              console.log('[IG-Connect] SUCCESS via postMessage, username:', event.data.username)
+                              setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
+                            }
+                          }
+                          window.addEventListener('message', handleMessage)
+                          // Poll until popup closes, then check server status
+                          const timer = setInterval(async () => {
+                            if (popup?.closed) {
+                              clearInterval(timer)
+                              window.removeEventListener('message', handleMessage)
+                              console.log('[IG-Connect] Popup closed, checking status...')
+                              try {
+                                const statusRes = await authAPI.getInstagramStatus()
+                                console.log('[IG-Connect] Status response:', statusRes?.data)
+                                if (statusRes?.data?.connected) {
+                                  setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: statusRes.data.account?.username }))
+                                  console.log('[IG-Connect] User state updated!')
+                                }
+                              } catch (err) { console.error('[IG-Connect] Status check FAILED:', err.message, err.response?.status, err.response?.data) }
+                            }
+                          }, 500)
                         }
-                      } catch {
+                      } catch (err) {
+                        console.error('[IG-Connect] Auth URL FAILED:', err)
                         window.alert('שגיאה ביצירת קישור חיבור')
                       }
                     }}>
@@ -3755,7 +3848,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
     try {
       const res = await groupsService.refreshPublicationMetrics(pubId)
       if (res.data.success) {
-        setPubHistory(prev => prev?.map(h => h.id === pubId ? { ...h, likes: res.data.metrics.likes, comments: res.data.metrics.comments } : h))
+        setPubHistory(prev => prev?.map(h => (h.id === pubId || h.originalId === pubId) ? { ...h, likes: res.data.metrics.likes, comments: res.data.metrics.comments } : h))
         window.dispatchEvent(new CustomEvent('postit-op-done', { detail: { id: `refresh-${pubId}`, success: true, msg: `✅ מידע עודכן: ${res.data.metrics.likes} לייקים, ${res.data.metrics.comments} תגובות` } }))
       }
     } catch {
@@ -3895,6 +3988,47 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                 <button className="lightbox-nav lightbox-next" onClick={e => { e.stopPropagation(); setLightboxIdx(i => (i + 1) % images.length) }}>›</button>
                 <span className="lightbox-count">{lightboxIdx + 1} / {images.length}</span>
               </>
+            )}
+          </div>
+        )}
+
+        {/* Per-type IG media */}
+        {!editing && campaign.igTypeMedia && (campaign.igTypeMedia.FEED?.length > 0 || campaign.igTypeMedia.STORY?.length > 0 || campaign.igTypeMedia.REEL?.length > 0) && (
+          <div className="detail-ig-type-media">
+            <h4 className="detail-ig-type-media-title">📌 מדיה ספציפית לפי סוג:</h4>
+            {campaign.igTypeMedia.FEED?.length > 0 && (
+              <div className="detail-ig-type-media-section">
+                <span className="detail-ig-type-label">🖼️ פיד:</span>
+                <div className="detail-ig-type-media-thumbs">
+                  {campaign.igTypeMedia.FEED.map((m, i) => (
+                    m.mediaType === 'VIDEO'
+                      ? <video key={i} src={imgSrc(m.url)} className="detail-ig-type-thumb" />
+                      : <img key={i} src={imgSrc(m.url)} alt="" className="detail-ig-type-thumb" />
+                  ))}
+                </div>
+              </div>
+            )}
+            {campaign.igTypeMedia.STORY?.length > 0 && (
+              <div className="detail-ig-type-media-section">
+                <span className="detail-ig-type-label">📸 סטורי:</span>
+                <div className="detail-ig-type-media-thumbs">
+                  {campaign.igTypeMedia.STORY.map((m, i) => (
+                    m.mediaType === 'VIDEO'
+                      ? <video key={i} src={imgSrc(m.url)} className="detail-ig-type-thumb" />
+                      : <img key={i} src={imgSrc(m.url)} alt="" className="detail-ig-type-thumb" />
+                  ))}
+                </div>
+              </div>
+            )}
+            {campaign.igTypeMedia.REEL?.length > 0 && (
+              <div className="detail-ig-type-media-section">
+                <span className="detail-ig-type-label">🎬 ריל:</span>
+                <div className="detail-ig-type-media-thumbs">
+                  {campaign.igTypeMedia.REEL.map((m, i) => (
+                    <video key={i} src={imgSrc(m.url)} className="detail-ig-type-thumb" />
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -4039,9 +4173,22 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                 </div>
               )}
               <div className="detail-meta-item">
-                <span className="detail-label">קבוצות</span>
-                <span>👥 {campaign.groupCount || campaign.groupNames?.length || 0} {campaign.groupNames?.join(', ') || ''}</span>
+                <span className="detail-label">פלטפורמות</span>
+                <span className="detail-platforms-list">
+                  {(campaign.groupCount > 0) && <span className="detail-platform-chip">קבוצות פייסבוק</span>}
+                  {campaign.publishToProfile && <span className="detail-platform-chip">פרופיל אישי</span>}
+                  {campaign.instagramEnabled && campaign.instagramPublishType?.includes('FEED') && <span className="detail-platform-chip">אינסטגרם פוסט</span>}
+                  {campaign.instagramEnabled && campaign.instagramPublishType?.includes('STORY') && <span className="detail-platform-chip">אינסטגרם סטורי</span>}
+                  {campaign.instagramEnabled && campaign.instagramPublishType?.includes('REEL') && <span className="detail-platform-chip">אינסטגרם רילס</span>}
+                  {campaign.instagramEnabled && !campaign.instagramPublishType && <span className="detail-platform-chip">אינסטגרם</span>}
+                </span>
               </div>
+              {(campaign.groupCount > 0 || campaign.groupNames?.length > 0) && (
+                <div className="detail-meta-item">
+                  <span className="detail-label">קבוצות פייסבוק</span>
+                  <span>👥 {campaign.groupCount || campaign.groupNames?.length || 0} {campaign.groupNames?.join(', ') || ''}</span>
+                </div>
+              )}
               {campaign.isAnonymous && (
                 <div className="detail-meta-item">
                   <span className="detail-label">אנונימי</span>
@@ -4061,7 +4208,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
               {campaign.postUrl && (
                 <div className="detail-meta-item">
                   <span className="detail-label">קישור לפוסט</span>
-                  <a href={campaign.postUrl} target="_blank" rel="noopener noreferrer" className="detail-link">🔗 צפה בפוסט בפייסבוק</a>
+                  <a href={campaign.postUrl} target="_blank" rel="noopener noreferrer" className="detail-link">🔗 צפה בפוסט {campaign.postUrl.includes('instagram.com') ? 'באינסטגרם' : 'בפייסבוק'}</a>
                 </div>
               )}
 
@@ -4099,26 +4246,30 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                             </span>
                           </div>
                           <div className="detail-history-card-stats">
-                            <span className="detail-history-stat" title="לייקים">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
-                              {h.likes ?? '—'}
-                            </span>
-                            <span className="detail-history-stat" title="תגובות">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                              {h.comments ?? '—'}
-                            </span>
-                            {h.postUrl && (
-                              <a href={h.postUrl} target="_blank" rel="noopener noreferrer" className="detail-history-stat detail-history-link" title="פתח בפייסבוק">
+                            {h.igPublishType !== 'STORY' && (
+                              <>
+                                <span className="detail-history-stat" title="לייקים">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
+                                  {h.likes ?? '—'}
+                                </span>
+                                <span className="detail-history-stat" title="תגובות">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                                  {h.comments ?? '—'}
+                                </span>
+                              </>
+                            )}
+                            {h.postUrl && h.igPublishType !== 'STORY' && (
+                              <a href={h.postUrl} target="_blank" rel="noopener noreferrer" className="detail-history-stat detail-history-link" title={h.platform === 'INSTAGRAM' ? 'פתח באינסטגרם' : 'פתח בפייסבוק'}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                                צפה בפוסט
+                                {h.platform === 'INSTAGRAM' ? 'צפה באינסטגרם' : 'צפה בפוסט'}
                               </a>
                             )}
-                            {h.postUrl && (
+                            {h.status === 'SUCCESS' && h.igPublishType !== 'STORY' && (
                               <button
-                                className={`detail-history-stat detail-history-refresh ${refreshingId === h.id ? 'refreshing' : ''}`}
-                                title="מרענן מידע עבור פוסט זה"
+                                className={`detail-history-stat detail-history-refresh ${refreshingId === (h.originalId || h.id) ? 'refreshing' : ''}`}
+                                title="רענן לייקים ותגובות"
                                 disabled={!!refreshingId}
-                                onClick={() => handleRefreshMetrics(h.id)}
+                                onClick={() => handleRefreshMetrics(h.originalId || h.id)}
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                   <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>

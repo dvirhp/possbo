@@ -1,8 +1,42 @@
+import { useRef } from 'react'
 import '../styles/ig-preview.css'
 
-export default function InstagramPreview({ text, images, userName, mode = 'FEED' }) {
+export default function InstagramPreview({ text, images, userName, mode = 'FEED', onAddImage }) {
   const displayName = userName || 'postit_user'
   const usernameHandle = displayName.replace(/\s+/g, '_').toLowerCase()
+  const fileInputRef = useRef(null)
+
+  const handleFileClick = () => {
+    if (onAddImage) fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files)
+    if (files.length > 0 && onAddImage) onAddImage(files)
+    e.target.value = ''
+  }
+
+  const noImageUpload = (label) => (
+    <div className="igp-story-empty igp-upload-prompt" onClick={handleFileClick}>
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+      <p>{label}</p>
+      {onAddImage && <span className="igp-upload-btn">לחצי להוספת תמונה</span>}
+      {onAddImage && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={mode === 'REEL' ? 'video/mp4,video/quicktime,video/webm' : 'image/*,video/mp4,video/quicktime,video/webm'}
+          multiple
+          onChange={handleFileChange}
+          hidden
+        />
+      )}
+    </div>
+  )
 
   if (mode === 'REEL') {
     return (
@@ -22,12 +56,7 @@ export default function InstagramPreview({ text, images, userName, mode = 'FEED'
           <div className="igp-reel-media">
             {images && images.length > 0 ? (
               <img src={images[0]} alt="" className="igp-reel-image" />
-            ) : (
-              <div className="igp-story-empty">
-                <span>🎬</span>
-                <p>הוסיפי סרטון לריל</p>
-              </div>
-            )}
+            ) : noImageUpload('הוסיפי סרטון לריל')}
           </div>
 
           {/* Reel right actions */}
@@ -114,12 +143,7 @@ export default function InstagramPreview({ text, images, userName, mode = 'FEED'
           <div className="igp-story-media">
             {images && images.length > 0 ? (
               <img src={images[0]} alt="" className="igp-story-image" />
-            ) : (
-              <div className="igp-story-empty">
-                <span>📸</span>
-                <p>הוסיפי תמונה או סרטון לסטורי</p>
-              </div>
-            )}
+            ) : noImageUpload('הוסיפי תמונה או סרטון לסטורי')}
 
             {/* Text overlay on story */}
             {text && (
@@ -187,12 +211,7 @@ export default function InstagramPreview({ text, images, userName, mode = 'FEED'
         <div className="igp-post-image">
           {images && images.length > 0 ? (
             <img src={images[0]} alt="" />
-          ) : (
-            <div className="igp-image-placeholder">
-              <span>🖼️</span>
-              <p>הוסיפי תמונה לפוסט</p>
-            </div>
-          )}
+          ) : noImageUpload('הוסיפי תמונה לפוסט')}
           {images && images.length > 1 && (
             <div className="igp-carousel-dots">
               {images.slice(0, 5).map((_, i) => (

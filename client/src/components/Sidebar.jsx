@@ -13,7 +13,7 @@ import {
 
 const NAV_ITEMS = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'דשבורד', action: 'navigate', path: '/dashboard', tab: 'overview' },
-  { id: 'groups', icon: Users, label: 'קבוצות', action: 'navigate', path: '/dashboard', tab: 'groups' },
+  { id: 'groups', icon: Users, label: 'קבוצות פייסבוק', action: 'navigate', path: '/dashboard', tab: 'groups' },
   { id: 'posts', icon: FileText, label: 'קמפיינים', action: 'navigate', path: '/dashboard', tab: 'campaigns' },
   { id: 'calendar', icon: CalendarDays, label: 'יומן', action: 'navigate', path: '/scheduled' },
   { id: 'analytics', icon: BarChart3, label: 'סטטיסטיקות', action: 'navigate', path: '/dashboard', tab: 'stats' },
