@@ -1633,7 +1633,7 @@ router.get(
             STORY: "אינסטגרם סטורי",
             REEL: "אינסטגרם ריל",
           };
-          return types.map((type, idx) => ({
+          return types.map((type, _idx) => ({
             id: `${h.id}_${type}`,
             originalId: h.id,
             groupId: null,
@@ -2582,11 +2582,9 @@ router.post(
     }
 
     if (!pub.externalPostUrl && !pub.externalPostId) {
-      return res
-        .status(400)
-        .json({
-          error: "Publication has no external URL or ID to fetch metrics",
-        });
+      return res.status(400).json({
+        error: "Publication has no external URL or ID to fetch metrics",
+      });
     }
 
     const metrics = await refreshSinglePublicationMetrics(

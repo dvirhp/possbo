@@ -1,3 +1,4 @@
+/* global FormData */
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -44,7 +45,7 @@ export async function getPublicMediaUrl(localPath) {
   );
 }
 
-async function uploadToFreeImage(buffer, fileName) {
+async function uploadToFreeImage(buffer, _fileName) {
   try {
     const base64 = buffer.toString("base64");
     const formData = new FormData();
@@ -69,13 +70,13 @@ async function uploadToFreeImage(buffer, fileName) {
   return null;
 }
 
-async function uploadToImgur(buffer, fileName) {
+async function uploadToImgur(buffer, _fileName) {
   try {
     const base64 = buffer.toString("base64");
     const formData = new FormData();
     formData.append("image", base64);
     formData.append("type", "base64");
-    formData.append("name", fileName);
+    formData.append("name", _fileName);
 
     const res = await fetch("https://api.imgur.com/3/image", {
       method: "POST",
