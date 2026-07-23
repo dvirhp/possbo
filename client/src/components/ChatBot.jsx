@@ -524,14 +524,13 @@ export default function ChatBot() {
 
   // ─── Load groups ─────────────────────────────────────────
   const loadGroups = useCallback(async () => {
-    if (allGroups.length) return
     setLoadingGroups(true)
     try {
       const res = await groupsService.getSavedGroups()
       if (res.data.success && res.data.groups) setAllGroups(res.data.groups)
     } catch { /* silent */ }
     finally { setLoadingGroups(false) }
-  }, [allGroups.length])
+  }, [])
 
   // ─── FAQ Option Click ───────────────────────────────────
   const handleOptionClick = (option) => {
