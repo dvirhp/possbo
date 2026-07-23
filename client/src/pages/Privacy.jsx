@@ -13,7 +13,7 @@ export default function Privacy() {
     <div className="auth-container">
       <div className="privacy-page">
         <div className="privacy-topbar">
-          <img src="/logo.svg" alt="PostIt" className="privacy-logo-img" onClick={handleLogoClick} style={{ cursor: 'pointer' }} />
+          <img src="/logo.svg" alt="Possbo" className="privacy-logo-img" onClick={handleLogoClick} style={{ cursor: 'pointer' }} />
           <h1 className="privacy-topbar-title">מדיניות פרטיות ותנאי שימוש</h1>
           <button onClick={() => navigate(-1)} className="privacy-back-btn">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
@@ -24,7 +24,7 @@ export default function Privacy() {
           <section className="privacy-section">
             <h2>🔒 מדיניות פרטיות</h2>
             <p><strong>עדכון אחרון:</strong> יוני 2026</p>
-            <p>PostIt מחויב להגנה על הפרטיות שלך. מדיניות זו מסבירה כיצד אנו אוספים, משתמשים ושומרים את המידע שלך.</p>
+            <p>Possbo מחויב להגנה על הפרטיות שלך. מדיניות זו מסבירה כיצד אנו אוספים, משתמשים ושומרים את המידע שלך.</p>
 
             <h3>מידע שאנו אוספים</h3>
             <ul>
@@ -72,21 +72,21 @@ export default function Privacy() {
             </ul>
 
             <h3>הגבלת אחריות</h3>
-            <p>PostIt אינו אחראי לחסימות, הגבלות או נזקים שנגרמים כתוצאה משימוש בשירות. המשתמש אחראי באופן בלעדי לתכנים שהוא מפרסם.</p>
+            <p>Possbo אינו אחראי לחסימות, הגבלות או נזקים שנגרמים כתוצאה משימוש בשירות. המשתמש אחראי באופן בלעדי לתכנים שהוא מפרסם.</p>
           </section>
 
           <section className="privacy-section">
             <h2>📧 יצירת קשר</h2>
             <p>לכל שאלה, בקשה או דיווח:</p>
             <div className="privacy-contact">
-              <a href="mailto:postitnoweasyway@gmail.com">📧 postitnoweasyway@gmail.com</a>
+              <a href="mailto:possbonoweasyway@gmail.com">📧 possbonoweasyway@gmail.com</a>
             </div>
             <p className="privacy-note">נשתדל לחזור תוך 48 שעות עבודה.</p>
           </section>
         </div>
 
         <div className="privacy-footer">
-          <p>© {new Date().getFullYear()} PostIt. כל הזכויות שמורות.</p>
+          <p>© {new Date().getFullYear()} Possbo. כל הזכויות שמורות.</p>
         </div>
       </div>
     </div>

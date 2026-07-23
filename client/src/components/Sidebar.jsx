@@ -13,7 +13,7 @@ import {
 
 const NAV_ITEMS = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'דשבורד', action: 'navigate', path: '/dashboard', tab: 'overview' },
-  { id: 'groups', icon: Users, label: 'קבוצות פייסבוק', action: 'navigate', path: '/dashboard', tab: 'groups' },
+  { id: 'groups', icon: Users, label: 'קבוצות', action: 'navigate', path: '/dashboard', tab: 'groups' },
   { id: 'posts', icon: FileText, label: 'קמפיינים', action: 'navigate', path: '/dashboard', tab: 'campaigns' },
   { id: 'calendar', icon: CalendarDays, label: 'יומן', action: 'navigate', path: '/scheduled' },
   { id: 'analytics', icon: BarChart3, label: 'סטטיסטיקות', action: 'navigate', path: '/dashboard', tab: 'stats' },
@@ -55,13 +55,13 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
   const handleSyncGroups = () => {
     guardNavigate(() => {
       navigate('/dashboard?tab=groups', { replace: location.pathname === '/dashboard' })
-      window.dispatchEvent(new CustomEvent('postit-sync-start', { detail: { msg: 'מסנכרן קבוצות מפייסבוק...' } }))
+      window.dispatchEvent(new CustomEvent('possbo-sync-start', { detail: { msg: 'מסנכרן קבוצות מפייסבוק...' } }))
       groupsService.scrapeMyGroups().then(res => {
         if (res.data?.success) {
-          window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: true, msg: `✅ סונכרנו ${res.data.groups?.length || 0} קבוצות!` } }))
+          window.dispatchEvent(new CustomEvent('possbo-sync-done', { detail: { success: true, msg: `✅ סונכרנו ${res.data.groups?.length || 0} קבוצות!` } }))
         }
       }).catch(() => {
-        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: false, msg: '⚠️ שגיאה בסנכרון' } }))
+        window.dispatchEvent(new CustomEvent('possbo-sync-done', { detail: { success: false, msg: '⚠️ שגיאה בסנכרון' } }))
       })
     })
   }
@@ -70,8 +70,7 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
     <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
       {/* Logo */}
       <div className="sidebar-logo" onClick={() => guardNavigate(() => { navigate('/dashboard?tab=overview'); onTabChange?.('dashboard') })}>
-        <img src="/logo.svg" alt="PostIt" className="sidebar-logo-img" />
-        <span className="sidebar-logo-text">PostIt</span>
+        <img src="/logo.svg" alt="Possbo" className="sidebar-logo-img sidebar-logo-wordmark" />
       </div>
 
       {/* Main Navigation */}
@@ -119,9 +118,10 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
         <div className="sidebar-user-wrap">
           <button className="sidebar-user" onClick={() => setUserMenuOpen(!userMenuOpen)}>
             <div className="sidebar-user-avatar">
-              {user?.profileImage || user?.avatarUrl
-                ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('/uploads')) return `http://localhost:8000${v}`; if (v.startsWith('uploads/')) return `http://localhost:8000/${v}`; return v })()} alt="" />
-                : <span>{user?.name?.[0] || '?'}</span>}
+              {(user?.profileImage || user?.avatarUrl) && (
+                <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('uploads/')) return `/${v}`; return v })()} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', zIndex: 1 }} onError={e => { e.target.style.display = 'none' }} />
+              )}
+              <span>{user?.name?.[0] || '?'}</span>
             </div>
             <div className="sidebar-user-info">
               <span className="sidebar-user-name">{user?.name || 'משתמש'}</span>

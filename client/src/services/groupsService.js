@@ -1,25 +1,5 @@
 import api from "./http";
-
-function buildFormData(data, images, igTypeMedia) {
-  const fd = new FormData();
-  Object.entries(data).forEach(([key, val]) => {
-    if (val === null || val === undefined) return;
-    if (Array.isArray(val) || (typeof val === "object" && val !== null))
-      fd.append(key, JSON.stringify(val));
-    else fd.append(key, val);
-  });
-  if (images?.length) {
-    for (const img of images) fd.append("images", img);
-  }
-  if (igTypeMedia) {
-    for (const [type, files] of Object.entries(igTypeMedia)) {
-      if (files?.length) {
-        for (const f of files) fd.append(`igMedia_${type}`, f);
-      }
-    }
-  }
-  return fd;
-}
+import { buildFormData } from "../utils/formData";
 
 export const groupsService = {
   getDashboardData: () => api.get("/scheduler/dashboard-data"),

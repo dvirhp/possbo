@@ -196,4 +196,102 @@ describe("POST /api/ai/generate-post", () => {
     const prompt = fetchBody.contents[0].parts[0].text;
     expect(prompt).toContain("אל תשתמש באימוג׳ים");
   });
+
+  it("should return 400 when topic is empty string", async () => {
+    const res = await request(app)
+      .post("/api/ai/generate-post")
+      .send({ postType: "sell_product", topic: "", productOrService: "app" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 when productOrService is empty string", async () => {
+    const res = await request(app)
+      .post("/api/ai/generate-post")
+      .send({ postType: "sell_product", topic: "tech", productOrService: "" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 when postType is missing", async () => {
+    const res = await request(app)
+      .post("/api/ai/generate-post")
+      .send({ topic: "tech", productOrService: "app" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("should handle Gemini response with missing candidates field", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({}), // No candidates field at all
+    });
+
+    const res = await request(app)
+      .post("/api/ai/generate-post")
+      .send({ postType: "sell_product", topic: "tech", productOrService: "app" });
+
+    expect(res.status).toBe(502);
+  });
+
+  it("should handle Gemini response with null candidates", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: null }),
+    });
+
+    const res = await request(app)
+      .post("/api/ai/generate-post")
+      .send({ postType: "sell_product", topic: "tech", productOrService: "app" });
+
+    expect(res.status).toBe(502);
+  });
+
+  it("should handle valid otherType postType", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "Other type post" }] } }],
+      }),
+    });
+
+    const res = await request(app)
+      .post("/api/ai/generate-post")
+      .send({
+        postType: "other",
+        otherType: "survey",
+        topic: "tech",
+        productOrService: "app",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.post).toBe("Other type post");
+  });
+
+  it("should handle referencePost field in prompt", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "Referenced post" }] } }],
+      }),
+    });
+
+    const res = await request(app)
+      .post("/api/ai/generate-post")
+      .send({
+        postType: "sell_product",
+        topic: "tech",
+        productOrService: "app",
+        referencePost: "This is a reference post example",
+      });
+
+    expect(res.status).toBe(200);
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const prompt = fetchBody.contents[0].parts[0].text;
+    expect(prompt).toContain("This is a reference post example");
+  });
 });

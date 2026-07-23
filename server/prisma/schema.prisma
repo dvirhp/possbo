@@ -75,41 +75,46 @@ enum CampaignType {
 // ─── USERS ──────────────────────────────────────────────
 
 model User {
-  id                   String     @id @default(uuid())
-  email                String?    @unique
-  username             String?    @unique
-  passwordHash         String?    @map("password_hash")
-  name                 String?
-  firstName            String?    @map("first_name")
-  lastName             String?    @map("last_name")
-  phone                String?
-  profilePicture       String?    @map("profile_picture_url")
-  profileImage         String?    @map("profile_image")
-  facebookId           String?    @unique @map("facebook_id")
-  facebookAccessToken  String?    @map("facebook_access_token")
-  facebookAppId        String?    @map("facebook_app_id")
-  facebookAppSecret    String?    @map("facebook_app_secret")
-  facebookOauthId      String?    @unique @map("facebook_oauth_id")
-  facebookStorageState String?    @map("facebook_storage_state")
-  fbSessionValid       Boolean    @default(false) @map("fb_session_valid")
-  googleId             String?    @unique @map("google_id")
-  githubId             String?    @unique @map("github_id")
-  linkedinId           String?    @unique @map("linkedin_id")
-  appleId              String?    @unique @map("apple_id")
-  avatarUrl            String?    @map("avatar_url")
-  gender               String?
-  status               UserStatus @default(ACTIVE)
-  refreshToken         String?    @map("refresh_token")
-  whatsappNumber       String?    @map("whatsapp_number")
-  whatsappMessage      String?    @map("whatsapp_message")
-  notificationSettings Json?      @map("notification_settings")
-  emailVerifiedAt      DateTime?  @map("email_verified_at")
-  lastLoginAt          DateTime?  @map("last_login_at")
-  createdAt            DateTime   @default(now()) @map("created_at")
-  updatedAt            DateTime   @updatedAt @map("updated_at")
-  deletedAt            DateTime?  @map("deleted_at")
+  id                       String     @id @default(uuid())
+  email                    String?    @unique
+  username                 String?    @unique
+  idNumber                 String?    @unique @map("id_number")
+  passwordHash             String?    @map("password_hash")
+  name                     String?
+  firstName                String?    @map("first_name")
+  lastName                 String?    @map("last_name")
+  phone                    String?
+  profilePicture           String?    @map("profile_picture_url")
+  profileImage             String?    @map("profile_image")
+  facebookId               String?    @unique @map("facebook_id")
+  facebookAccessToken      String?    @map("facebook_access_token")
+  facebookAppId            String?    @map("facebook_app_id")
+  facebookAppSecret        String?    @map("facebook_app_secret")
+  facebookOauthId          String?    @unique @map("facebook_oauth_id")
+  facebookStorageState     String?    @map("facebook_storage_state")
+  fbSessionValid           Boolean    @default(false) @map("fb_session_valid")
+  googleId                 String?    @unique @map("google_id")
+  githubId                 String?    @unique @map("github_id")
+  linkedinId               String?    @unique @map("linkedin_id")
+  appleId                  String?    @unique @map("apple_id")
+  avatarUrl                String?    @map("avatar_url")
+  gender                   String?
+  status                   UserStatus @default(ACTIVE)
+  refreshToken             String?    @map("refresh_token")
+  whatsappNumber           String?    @map("whatsapp_number")
+  whatsappMessage          String?    @map("whatsapp_message")
+  whatsappSessionConnected Boolean    @default(false) @map("whatsapp_session_connected")
+  whatsappSessionPhone     String?    @map("whatsapp_session_phone")
+  notificationSettings     Json?      @map("notification_settings")
+  emailVerifiedAt          DateTime?  @map("email_verified_at")
+  lastLoginAt              DateTime?  @map("last_login_at")
+  createdAt                DateTime   @default(now()) @map("created_at")
+  updatedAt                DateTime   @updatedAt @map("updated_at")
+  deletedAt                DateTime?  @map("deleted_at")
 
   facebookGroups     FacebookGroup[]
+  whatsappContacts   WhatsAppContact[]
+  whatsappBroadcasts WhatsAppBroadcastList[]
   connectedAccounts  ConnectedAccount[]
   sessions           UserSession[]
   passwordResets     PasswordResetToken[]
@@ -222,6 +227,40 @@ model FacebookGroup {
   @@map("facebook_groups")
 }
 
+model WhatsAppContact {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  waId             String   @map("wa_id") // JID (e.g. 972501234567@s.whatsapp.net or 123456@g.us)
+  name             String?
+  pushName         String?  @map("push_name")
+  phone            String?
+  isGroup          Boolean  @default(false) @map("is_group")
+  participantCount Int?     @map("participant_count")
+  profilePicUrl    String?  @map("profile_pic_url")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, waId])
+  @@index([userId])
+  @@map("whatsapp_contacts")
+}
+
+model WhatsAppBroadcastList {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  name      String
+  members   Json     @default("[]") // Array of { phone: string, name?: string }
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("whatsapp_broadcast_lists")
+}
+
 model Group {
   id              String   @id @default(uuid())
   externalGroupId String?  @unique @map("external_group_id")
@@ -286,6 +325,8 @@ model Post {
   storyMediaMode       String?      @map("story_media_mode") // first | all | pick
   storyPickedIndex     Int?         @map("story_picked_index")
   storyCaptions        Json?        @map("story_captions") // per-image captions array
+  whatsappEnabled      Boolean      @default(false) @map("whatsapp_enabled")
+  whatsappTargets      Json?        @map("whatsapp_targets") // array of { id, type: 'group'|'broadcast', name }
   templateName         String?      @map("template_name")
   imageUrl             String?      @map("image_url")
   createdAt            DateTime     @default(now()) @map("created_at")
@@ -297,6 +338,7 @@ model Post {
   versions           PostVersion[]
   publicationHistory PublicationHistory[]
   publicationJobs    PublicationJob[]
+  schedules          PostGroupSchedule[]
 
   @@index([userId])
   @@index([status])
@@ -348,7 +390,11 @@ model PostGroup {
 
 model PostGroupSchedule {
   id            String        @id @default(uuid())
-  postGroupId   String        @map("post_group_id")
+  postGroupId   String?       @map("post_group_id")
+  postId        String?       @map("post_id")
+  targetType    String        @default("GROUP") @map("target_type") // GROUP | PROFILE | INSTAGRAM | WHATSAPP
+  platform      String        @default("FACEBOOK") @map("platform") // FACEBOOK | INSTAGRAM | WHATSAPP
+  igPublishType String?       @map("ig_publish_type") // FEED | STORY | REEL
   frequencyType FrequencyType @map("frequency_type")
   intervalValue Int?          @map("interval_value")
   intervalUnit  IntervalUnit? @map("interval_unit")
@@ -359,9 +405,11 @@ model PostGroupSchedule {
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  postGroup PostGroup @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+  postGroup PostGroup? @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+  post      Post?      @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postGroupId])
+  @@index([postId])
   @@index([nextRunAt, isActive])
   @@map("post_group_schedules")
 }
@@ -370,8 +418,8 @@ model PublicationJob {
   id            String    @id @default(uuid())
   postGroupId   String?   @map("post_group_id")
   postId        String?   @map("post_id")
-  targetType    String    @default("GROUP") @map("target_type") // GROUP | PROFILE | INSTAGRAM
-  platform      String    @default("FACEBOOK") @map("platform") // FACEBOOK | INSTAGRAM
+  targetType    String    @default("GROUP") @map("target_type") // GROUP | PROFILE | INSTAGRAM | WHATSAPP
+  platform      String    @default("FACEBOOK") @map("platform") // FACEBOOK | INSTAGRAM | WHATSAPP
   igPublishType String?   @map("ig_publish_type") // FEED | STORY | REEL — which IG type this job handles
   scheduledAt   DateTime  @map("scheduled_at")
   startedAt     DateTime? @map("started_at")
@@ -403,8 +451,8 @@ model PublicationHistory {
   userId           String            @map("user_id")
   postGroupId      String?           @map("post_group_id")
   publicationJobId String?           @map("publication_job_id")
-  targetType       String            @default("GROUP") @map("target_type") // GROUP | PROFILE | INSTAGRAM
-  platform         String            @default("FACEBOOK") @map("platform") // FACEBOOK | INSTAGRAM
+  targetType       String            @default("GROUP") @map("target_type") // GROUP | PROFILE | INSTAGRAM | WHATSAPP
+  platform         String            @default("FACEBOOK") @map("platform") // FACEBOOK | INSTAGRAM | WHATSAPP
   publishedAt      DateTime          @map("published_at")
   externalPostId   String?           @map("external_post_id")
   externalPostUrl  String?           @map("external_post_url")
@@ -481,12 +529,23 @@ model PostTemplate {
   storyMediaMode        String?  @map("story_media_mode")
   storyPickedIndex      Int?     @map("story_picked_index")
   igScheduleMode        String?  @map("ig_schedule_mode")
-  igScheduleDate        String?  @map("ig_schedule_date")
-  igScheduleTime        String?  @map("ig_schedule_time")
-  igRecurringDays       Int[]    @default([]) @map("ig_recurring_days")
-  igDayTimes            Json?    @map("ig_day_times")
-  igRecurringStartDate  String?  @map("ig_recurring_start_date")
-  igRecurringEndDate    String?  @map("ig_recurring_end_date")
+
+  // WhatsApp publishing
+  whatsappEnabled      Boolean @default(false) @map("whatsapp_enabled")
+  whatsappTargets      Json?   @map("whatsapp_targets") // array of { id, type, name }
+  waScheduleMode       String? @map("wa_schedule_mode")
+  waScheduleDate       String? @map("wa_schedule_date")
+  waScheduleTime       String? @map("wa_schedule_time")
+  waRecurringDays      Int[]   @default([]) @map("wa_recurring_days")
+  waDayTimes           Json?   @map("wa_day_times")
+  waRecurringStartDate String? @map("wa_recurring_start_date")
+  waRecurringEndDate   String? @map("wa_recurring_end_date")
+  igScheduleDate       String? @map("ig_schedule_date")
+  igScheduleTime       String? @map("ig_schedule_time")
+  igRecurringDays      Int[]   @default([]) @map("ig_recurring_days")
+  igDayTimes           Json?   @map("ig_day_times")
+  igRecurringStartDate String? @map("ig_recurring_start_date")
+  igRecurringEndDate   String? @map("ig_recurring_end_date")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

@@ -67,7 +67,7 @@ export default function Login() {
       ) : (
       <div className="auth-card">
         <div className="auth-toprow">
-          <Link to="/" className="auth-toprow-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /></Link>
+          <Link to="/" className="auth-toprow-logo"><img src="/logo.svg" alt="Possbo" className="auth-logo-img" /></Link>
           <Link to="/" className="auth-back-btn">←</Link>
         </div>
         <div className="auth-header">

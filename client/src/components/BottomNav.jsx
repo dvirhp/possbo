@@ -22,7 +22,7 @@ const MAIN_ITEMS = [
 
 const DRAWER_ITEMS = [
   { path: '/dashboard?tab=overview', icon: LayoutDashboard, label: 'דשבורד' },
-  { path: '/dashboard?tab=groups', icon: Users, label: 'קבוצות FB' },
+  { path: '/dashboard?tab=groups', icon: Users, label: 'קבוצות' },
   { path: '/dashboard?tab=campaigns', icon: SquarePen, label: 'קמפיינים' },
   { path: '/scheduled', icon: CalendarDays, label: 'יומן' },
   { path: '/dashboard?tab=stats', icon: BarChart3, label: 'סטטיסטיקות' },
@@ -126,7 +126,7 @@ export default function BottomNav() {
                 onClick={() => guardNavigate(() => { navigate(item.path); setDrawerOpen(false) })}
               >
                 <div className="bottom-nav-center-ring">
-                  <img src="/logo.svg" alt="" width="30" height="30" />
+                  <img src="/logo-icon.svg" alt="" width="30" height="30" />
                 </div>
                 <span className="bottom-nav-label">{item.label}</span>
               </button>
@@ -153,7 +153,7 @@ export default function BottomNav() {
           <div className="mobile-drawer-user">
             <div className="mobile-drawer-avatar">
               {user?.profileImage || user?.avatarUrl
-                ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('/uploads')) return `http://localhost:8000${v}`; if (v.startsWith('uploads/')) return `http://localhost:8000/${v}`; return v })()} alt="" />
+                ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('uploads/')) return `/${v}`; return v })()} alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = '') }} />
                 : <span>{user?.name?.[0] || '?'}</span>}
             </div>
             <div className="mobile-drawer-user-info">

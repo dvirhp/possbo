@@ -448,7 +448,7 @@ function MiniCalendar({ campaigns, posts, jobs }) {
 
 function getCachedKpis(from, to) {
   try {
-    const raw = localStorage.getItem('postit_kpi_cache')
+    const raw = localStorage.getItem('possbo_kpi_cache')
     if (!raw) return null
     const cached = JSON.parse(raw)
     if (cached.from === from && cached.to === to) {
@@ -460,7 +460,7 @@ function getCachedKpis(from, to) {
 
 function isCacheStale(from, to) {
   try {
-    const raw = localStorage.getItem('postit_kpi_cache')
+    const raw = localStorage.getItem('possbo_kpi_cache')
     if (!raw) return true
     const cached = JSON.parse(raw)
     if (cached.from !== from || cached.to !== to) return true
@@ -470,13 +470,13 @@ function isCacheStale(from, to) {
 
 function setCachedKpis(from, to, kpis, exposure) {
   try {
-    localStorage.setItem('postit_kpi_cache', JSON.stringify({ from, to, kpis, exposure, ts: Date.now() }))
+    localStorage.setItem('possbo_kpi_cache', JSON.stringify({ from, to, kpis, exposure, ts: Date.now() }))
   } catch { /* ignore */ }
 }
 
 function getSavedDateRange() {
   try {
-    const raw = localStorage.getItem('postit_date_range')
+    const raw = localStorage.getItem('possbo_date_range')
     if (raw) {
       const saved = JSON.parse(raw)
       if (saved.from && saved.to) return saved
@@ -487,7 +487,7 @@ function getSavedDateRange() {
 
 function saveeDateRange(from, to) {
   try {
-    localStorage.setItem('postit_date_range', JSON.stringify({ from, to }))
+    localStorage.setItem('possbo_date_range', JSON.stringify({ from, to }))
   } catch { /* ignore */ }
 }
 
@@ -570,6 +570,26 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
   const postsCount = campaigns?.length || 0
   const totalPublished = campaigns?.reduce((sum, c) => sum + (c.publishedCount || 0), 0) || 0
 
+  // Dynamic campaign count based on card height
+  const campaignsCardRef = useRef(null)
+  const [visibleCampaignCount, setVisibleCampaignCount] = useState(7)
+  useEffect(() => {
+    const el = campaignsCardRef.current
+    if (!el) return
+    const ROW_HEIGHT = 76 // min-height of pdt-row
+    const HEADER_HEIGHT = 56 // pdt-header height
+    const CARD_HEADER_HEIGHT = 60 // ov2-upcoming-header height
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const available = entry.contentRect.height - CARD_HEADER_HEIGHT - HEADER_HEIGHT
+        const count = Math.max(3, Math.floor(available / ROW_HEIGHT))
+        setVisibleCampaignCount(count)
+      }
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   // Filter posts by date range
   const filteredPosts = useMemo(() => {
     if (!posts) return []
@@ -605,6 +625,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
         if (topPostsPlatform === 'all') return true
         if (topPostsPlatform === 'facebook') return (p.platform || 'FACEBOOK') === 'FACEBOOK'
         if (topPostsPlatform === 'instagram') return p.platform === 'INSTAGRAM'
+        if (topPostsPlatform === 'whatsapp') return p.platform === 'WHATSAPP'
         return true
       })
       .sort((a, b) => {
@@ -706,7 +727,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
       {/* Main content: 3-panel layout */}
       <div className="ov2-layout">
         {/* Left: Recent Posts Table */}
-        <div className="ov2-upcoming-card" style={{ padding: 0 }}>
+        <div className="ov2-upcoming-card" ref={campaignsCardRef} style={{ padding: 0 }}>
           <div className="ov2-upcoming-header" style={{ padding: '20px 24px 0' }}>
             <div className="ov2-upcoming-title-row">
               <h2>קמפיינים אחרונים</h2>
@@ -714,7 +735,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
             </div>
             <Link to="/dashboard?tab=campaigns" className="ov2-card-link">צפה בכל הקמפיינים</Link>
           </div>
-          <PostsDataTable campaigns={(filteredCampaigns || []).slice(0, 7)} onUpdate={onUpdate} onViewCampaign={onViewCampaign} />
+          <PostsDataTable campaigns={(filteredCampaigns || []).slice(0, visibleCampaignCount)} onUpdate={onUpdate} onViewCampaign={onViewCampaign} />
         </div>
 
         {/* Right column */}
@@ -734,18 +755,19 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
               <button className={`ov2-platform-btn ${topPostsPlatform === 'all' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('all')}>הכל</button>
               <button className={`ov2-platform-btn ${topPostsPlatform === 'facebook' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('facebook')}>Facebook</button>
               <button className={`ov2-platform-btn ${topPostsPlatform === 'instagram' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('instagram')}>Instagram</button>
+              <button className={`ov2-platform-btn ${topPostsPlatform === 'whatsapp' ? 'active' : ''}`} onClick={() => setTopPostsPlatform('whatsapp')}>WhatsApp</button>
             </div>
             <div className="ov2-top-posts-list">
               {topPosts.map((post) => (
                 <div key={post.id} className="ov2-top-post-row" onClick={() => navigate(`/post/${post.postId || post.id}`)}>
                   <div className="ov2-top-post-thumb">
-                    <span>{post.platform === 'INSTAGRAM' ? '📸' : '📝'}</span>
+                    <span>{post.platform === 'INSTAGRAM' ? '📸' : post.platform === 'WHATSAPP' ? '💬' : '📝'}</span>
                   </div>
                   <div className="ov2-top-post-info">
                     <span className="ov2-top-post-title">{post.title}</span>
                     <span className="ov2-top-post-date">
-                      <span className={`ov2-platform-badge ${post.platform === 'INSTAGRAM' ? 'ig' : 'fb'}`}>
-                        {post.platform === 'INSTAGRAM' ? (post.igType === 'REEL' ? 'ריל' : post.igType === 'STORY' ? 'סטורי' : 'פוסט IG') : 'Facebook'}
+                      <span className={`ov2-platform-badge ${post.platform === 'INSTAGRAM' ? 'ig' : post.platform === 'WHATSAPP' ? 'wa' : 'fb'}`}>
+                        {post.platform === 'INSTAGRAM' ? (post.igType === 'REEL' ? 'ריל' : post.igType === 'STORY' ? 'סטורי' : 'פוסט IG') : post.platform === 'WHATSAPP' ? 'WhatsApp' : 'Facebook'}
                       </span>
                       {post.groupName ? ` • ${post.groupName}` : ''}
                       {post.date ? ` • ${new Date(post.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}` : ''}

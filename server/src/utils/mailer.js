@@ -1,7 +1,13 @@
 import nodemailer from "nodemailer";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import { createLogger } from "./logger.js";
 
 const log = createLogger("mailer");
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -13,9 +19,15 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Load the white logo PNG (for dark header; inverted via CSS in dark mode)
+const logoPngBuffer = readFileSync(
+  join(__dirname, "../assets/logo-email-white.png"),
+);
+
 /**
- * Build a light-mode HTML email wrapper that forces light appearance
- * even on clients with dark mode enabled.
+ * Build an HTML email wrapper that adapts to the user's light/dark mode preference.
+ * Light mode: white card on light gray bg, dark text.
+ * Dark mode: dark card on near-black bg, light text.
  */
 function buildEmailHtml({ title, bodyContent }) {
   return `<!DOCTYPE html>
@@ -23,8 +35,8 @@ function buildEmailHtml({ title, bodyContent }) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="light only">
-  <meta name="supported-color-schemes" content="light only">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
   <title>${title}</title>
   <!--[if mso]>
   <noscript>
@@ -36,24 +48,47 @@ function buildEmailHtml({ title, bodyContent }) {
   </noscript>
   <![endif]-->
   <style>
-    :root { color-scheme: light only; supported-color-schemes: light only; }
-    @media (prefers-color-scheme: dark) {
-      body, .email-body { background-color: #ffffff !important; color: #1a1a2e !important; }
-    }
+    :root { color-scheme: light dark; }
     body { margin: 0; padding: 0; background-color: #f4f6f9; font-family: 'Segoe UI', Arial, sans-serif; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
     table { border-spacing: 0; border-collapse: collapse; }
     img { border: 0; display: block; }
+    .email-outer { background-color: #f4f6f9; }
+    .email-card { background-color: #ffffff; }
+    .email-header { background-color: #0a0a0f; }
+    .email-title { color: #1a1a2e; }
+    .email-text { color: #4b5563; }
+    .email-muted { color: #6b7280; }
+    .email-code-box { background-color: #f5f5f5; border-color: #e0e0e0; }
+    .email-code { color: #1a1a2e; }
+    .email-footer-border { border-top-color: #eef0f4; }
+    .email-footer-text { color: #9ca3af; }
+    .email-footer-sub { color: #c0c7d1; }
+
+    @media (prefers-color-scheme: dark) {
+      .email-outer { background-color: #0a0a0f !important; }
+      .email-card { background-color: #1a1a2e !important; }
+      .email-header { background-color: #ffffff !important; }
+      .email-logo { filter: invert(1) !important; }
+      .email-title { color: #f0f0f5 !important; }
+      .email-text { color: #d1d5db !important; }
+      .email-muted { color: #9ca3af !important; }
+      .email-code-box { background-color: #1f1f2e !important; border-color: #3b3b4a !important; }
+      .email-code { color: #ffffff !important; }
+      .email-footer-border { border-top-color: #2d2d4a !important; }
+      .email-footer-text { color: #6b7280 !important; }
+      .email-footer-sub { color: #4b5563 !important; }
+    }
   </style>
 </head>
-<body class="email-body" style="margin: 0; padding: 0; background-color: #f4f6f9; direction: rtl;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f6f9;">
+<body style="margin: 0; padding: 0; background-color: #f4f6f9; direction: rtl;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="email-outer" style="background-color: #f4f6f9;">
     <tr>
       <td align="center" style="padding: 40px 16px;">
-        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width: 480px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08);">
-          <!-- Header -->
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0" class="email-card" style="max-width: 480px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08);">
+          <!-- Header with Logo -->
           <tr>
-            <td style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 28px 32px; text-align: center;">
-              <h1 style="margin: 0; font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">📌 PostIt</h1>
+            <td class="email-header" style="background-color: #0c0c10; padding: 24px 32px; text-align: center;">
+              <img class="email-logo" src="cid:possbo-logo" alt="Possbo" width="80" height="80" style="display:block; margin:0 auto; width:80px; height:80px;" />
             </td>
           </tr>
           <!-- Body -->
@@ -64,9 +99,9 @@ function buildEmailHtml({ title, bodyContent }) {
           </tr>
           <!-- Footer -->
           <tr>
-            <td style="padding: 20px 28px; border-top: 1px solid #eef0f4; text-align: center;">
-              <p style="margin: 0; font-size: 12px; color: #9ca3af;">© ${new Date().getFullYear()} PostIt. כל הזכויות שמורות.</p>
-              <p style="margin: 6px 0 0; font-size: 11px; color: #c0c7d1;">המייל הזה נשלח מ-PostIt. אם לא ביקשת אותו — ניתן להתעלם.</p>
+            <td class="email-footer-border" style="padding: 20px 28px; border-top: 1px solid #eef0f4; text-align: center;">
+              <p class="email-footer-text" style="margin: 0; font-size: 12px; color: #9ca3af;">© ${new Date().getFullYear()} Possbo כל הזכויות שמורות</p>
+              <p class="email-footer-sub" style="margin: 6px 0 0; font-size: 11px; color: #c0c7d1;">המייל הזה נשלח מ-Possbo אם לא ביקשת אותו ניתן להתעלם</p>
             </td>
           </tr>
         </table>
@@ -82,30 +117,37 @@ function buildEmailHtml({ title, bodyContent }) {
  */
 export async function sendVerificationEmail(to, code) {
   const bodyContent = `
-    <h2 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #1a1a2e; text-align: center;">קוד האימות שלך</h2>
-    <p style="margin: 0 0 24px; font-size: 14px; color: #6b7280; text-align: center;">הזן את הקוד הבא כדי לאמת את חשבונך</p>
+    <h2 class="email-title" style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #1a1a2e; text-align: center;">קוד האימות שלך</h2>
+    <p class="email-muted" style="margin: 0 0 24px; font-size: 14px; color: #6b7280; text-align: center;">הזן את הקוד הבא כדי לאמת את חשבונך</p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
       <tr>
         <td align="center">
-          <div style="background-color: #f0f0ff; border: 2px solid #e0e0ff; border-radius: 12px; padding: 20px 32px; display: inline-block;">
-            <span style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #6366f1; font-family: 'Courier New', monospace;">${code}</span>
+          <div class="email-code-box" style="background-color: #f5f5f5; border: 2px solid #e0e0e0; border-radius: 12px; padding: 20px 32px; display: inline-block;">
+            <span class="email-code" style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #1a1a2e; font-family: 'Courier New', monospace;">${code}</span>
           </div>
         </td>
       </tr>
     </table>
-    <p style="margin: 24px 0 0; font-size: 13px; color: #6b7280; text-align: center;">⏱️ הקוד תקף ל-10 דקות בלבד.</p>
+    <p class="email-muted" style="margin: 24px 0 0; font-size: 13px; color: #6b7280; text-align: center;">⏱️ הקוד תקף ל-10 דקות בלבד</p>
   `;
 
-  const html = buildEmailHtml({ title: "קוד אימות - PostIt", bodyContent });
-  const text = `קוד האימות שלך ב-PostIt: ${code}\nהקוד תקף ל-10 דקות.`;
+  const html = buildEmailHtml({ title: "קוד אימות - Possbo", bodyContent });
+  const text = `קוד האימות שלך ב-Possbo: ${code}\nהקוד תקף ל-10 דקות.`;
 
   try {
     await transporter.sendMail({
-      from: `"PostIt" <${process.env.SMTP_USER}>`,
+      from: `"Possbo" <${process.env.SMTP_USER}>`,
       to,
-      subject: `${code} - קוד אימות PostIt`,
+      subject: `${code} - קוד אימות Possbo`,
       html,
       text,
+      attachments: [
+        {
+          filename: "possbo-logo.png",
+          content: logoPngBuffer,
+          cid: "possbo-logo",
+        },
+      ],
       headers: {
         "List-Unsubscribe": `<mailto:${process.env.SMTP_USER}?subject=unsubscribe>`,
         "X-Priority": "1",
@@ -124,30 +166,37 @@ export async function sendVerificationEmail(to, code) {
  */
 export async function sendPasswordResetEmail(to, code) {
   const bodyContent = `
-    <h2 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #1a1a2e; text-align: center;">שינוי סיסמה</h2>
-    <p style="margin: 0 0 24px; font-size: 14px; color: #6b7280; text-align: center;">הזן את הקוד הבא כדי לאפס את הסיסמה שלך</p>
+    <h2 class="email-title" style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #1a1a2e; text-align: center;">שינוי סיסמה</h2>
+    <p class="email-muted" style="margin: 0 0 24px; font-size: 14px; color: #6b7280; text-align: center;">הזן את הקוד הבא כדי לאפס את הסיסמה שלך</p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
       <tr>
         <td align="center">
-          <div style="background-color: #f0f0ff; border: 2px solid #e0e0ff; border-radius: 12px; padding: 20px 32px; display: inline-block;">
-            <span style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #6366f1; font-family: 'Courier New', monospace;">${code}</span>
+          <div class="email-code-box" style="background-color: #f5f5f5; border: 2px solid #e0e0e0; border-radius: 12px; padding: 20px 32px; display: inline-block;">
+            <span class="email-code" style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #1a1a2e; font-family: 'Courier New', monospace;">${code}</span>
           </div>
         </td>
       </tr>
     </table>
-    <p style="margin: 24px 0 0; font-size: 13px; color: #6b7280; text-align: center;">⏱️ הקוד תקף ל-10 דקות. אם לא ביקשת שינוי סיסמה — התעלם.</p>
+    <p class="email-muted" style="margin: 24px 0 0; font-size: 13px; color: #6b7280; text-align: center;">⏱️ הקוד תקף ל-10 דקות אם לא ביקשת שינוי סיסמה התעלם</p>
   `;
 
-  const html = buildEmailHtml({ title: "שינוי סיסמה - PostIt", bodyContent });
-  const text = `קוד לשינוי סיסמה ב-PostIt: ${code}\nהקוד תקף ל-10 דקות. אם לא ביקשת — התעלם.`;
+  const html = buildEmailHtml({ title: "שינוי סיסמה - Possbo", bodyContent });
+  const text = `קוד לשינוי סיסמה ב-Possbo: ${code}\nהקוד תקף ל-10 דקות. אם לא ביקשת — התעלם.`;
 
   try {
     await transporter.sendMail({
-      from: `"PostIt" <${process.env.SMTP_USER}>`,
+      from: `"Possbo" <${process.env.SMTP_USER}>`,
       to,
-      subject: `${code} - שינוי סיסמה PostIt`,
+      subject: `${code} - שינוי סיסמה Possbo`,
       html,
       text,
+      attachments: [
+        {
+          filename: "possbo-logo.png",
+          content: logoPngBuffer,
+          cid: "possbo-logo",
+        },
+      ],
       headers: {
         "List-Unsubscribe": `<mailto:${process.env.SMTP_USER}?subject=unsubscribe>`,
         "X-Priority": "1",
@@ -225,7 +274,7 @@ export async function sendFeedbackEmail({
     }
   `;
 
-  const html = buildEmailHtml({ title: "פידבק חדש - PostIt", bodyContent });
+  const html = buildEmailHtml({ title: "פידבק חדש - Possbo", bodyContent });
 
   const textParts = [`פידבק חדש מ-${userName} (${userEmail})`];
   if (features.length > 0) textParts.push(`פיצ'רים: ${features.join(", ")}`);
@@ -238,12 +287,19 @@ export async function sendFeedbackEmail({
 
   try {
     await transporter.sendMail({
-      from: `"PostIt Feedback" <${process.env.SMTP_USER}>`,
+      from: `"Possbo Feedback" <${process.env.SMTP_USER}>`,
       to: process.env.SMTP_USER,
       replyTo: userEmail,
       subject: `📝 פידבק חדש מ-${userName}`,
       html,
       text: textParts.join("\n\n"),
+      attachments: [
+        {
+          filename: "possbo-logo.png",
+          content: logoPngBuffer,
+          cid: "possbo-logo",
+        },
+      ],
     });
     log.info(`Feedback email sent from ${userEmail}`);
     return true;

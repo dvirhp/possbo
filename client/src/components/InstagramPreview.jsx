@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import '../styles/ig-preview.css'
 
 export default function InstagramPreview({ text, images, userName, mode = 'FEED', onAddImage }) {
-  const displayName = userName || 'postit_user'
+  const displayName = userName || 'possbo_user'
   const usernameHandle = displayName.replace(/\s+/g, '_').toLowerCase()
   const fileInputRef = useRef(null)
 

@@ -49,7 +49,7 @@ export default function PostDetails() {
           <BackButton />
         </div>
         <div className="dash-loader">
-          <img src="/logo.svg" alt="" className="loader-logo-pulse" />
+          <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
         </div>
       </div>
     )

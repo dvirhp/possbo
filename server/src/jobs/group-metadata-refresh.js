@@ -1,8 +1,6 @@
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import { scrapeGroupsMetadata } from "../utils/facebook-automation.js";
 import { createLogger } from "../utils/logger.js";
-
-const prisma = new PrismaClient();
 const log = createLogger("group-meta");
 
 // Per-user lock to prevent concurrent metadata refreshes

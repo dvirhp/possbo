@@ -33,6 +33,7 @@ export default [
       "coverage/",
       "uploads/",
       "prisma/",
+      "src/jobs/",
       "src/utils/facebook-automation.js",
       "src/utils/puppeteer.js",
     ],

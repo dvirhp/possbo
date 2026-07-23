@@ -1,14 +1,10 @@
 /* eslint-disable no-undef */
-import { chromium } from "playwright";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import { decrypt } from "./encryption.js";
 import { createLogger } from "./logger.js";
+import { launchBrowser, createBrowserContext } from "./browser-factory.js";
 
 const log = createLogger("metrics-scraper");
-const prisma = new PrismaClient();
-
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 /**
  * Parse a Facebook engagement count string into a number.
@@ -691,18 +687,14 @@ export async function scrapeUserPublicationMetrics(userId, publications) {
   const validPubs = publications.filter((p) => p.externalPostUrl);
   if (validPubs.length === 0) return [];
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-  });
+  const browser = await launchBrowser();
 
   const results = [];
   const CONCURRENCY = 3;
 
   try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
-      userAgent: USER_AGENT,
+    const context = await createBrowserContext(browser, {
+      userId,
       storageState,
     });
 
@@ -762,12 +754,22 @@ export async function scrapeUserPublicationMetrics(userId, publications) {
  * Upsert metrics into the database for a publication.
  * Creates a new PublicationMetric entry per collection (time-series).
  */
-export async function savePublicationMetrics(publicationId, likes, comments) {
+export async function savePublicationMetrics(
+  publicationId,
+  likes,
+  comments,
+  shares = 0,
+  reach = 0,
+  impressions = 0,
+) {
   await prisma.publicationMetric.create({
     data: {
       publicationHistoryId: publicationId,
       likesCount: likes,
       commentsCount: comments,
+      sharesCount: shares,
+      reachCount: reach,
+      impressionsCount: impressions,
     },
   });
 }
@@ -776,22 +778,52 @@ export async function savePublicationMetrics(publicationId, likes, comments) {
  * Scrape & save metrics for a single publication (used by manual refresh).
  */
 export async function refreshSinglePublicationMetrics(userId, publicationId) {
-  const pub = await prisma.publicationHistory.findFirst({
+  const pubRaw = await prisma.publicationHistory.findFirst({
     where: { id: publicationId, userId },
-    select: { id: true, externalPostUrl: true, externalPostId: true, platform: true },
+    select: {
+      id: true,
+      externalPostUrl: true,
+      externalPostId: true,
+      platform: true,
+      publicationJob: { select: { igPublishType: true } },
+    },
   });
+  const pub = pubRaw
+    ? { ...pubRaw, igMediaType: pubRaw.publicationJob?.igPublishType || "FEED" }
+    : null;
   if (!pub) {
     log.warn(`Publication ${publicationId} not found`);
     return null;
   }
 
   // Instagram — use Graph API
-  if (pub.platform === 'INSTAGRAM' && pub.externalPostId) {
-    log.info(`Refreshing IG metrics for publication ${publicationId}`, { externalPostId: pub.externalPostId });
+  if (pub.platform === "INSTAGRAM" && pub.externalPostId) {
+    log.info(`Refreshing IG metrics for publication ${publicationId}`, {
+      externalPostId: pub.externalPostId,
+    });
     const results = await refreshInstagramMetrics(userId, [pub]);
-    const result = results[0] || { likes: 0, comments: 0 };
-    await savePublicationMetrics(publicationId, result.likes, result.comments);
-    return { likes: result.likes, comments: result.comments };
+    const result = results[0] || {
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      reach: 0,
+      impressions: 0,
+    };
+    await savePublicationMetrics(
+      publicationId,
+      result.likes,
+      result.comments,
+      result.shares || 0,
+      result.reach || 0,
+      result.impressions || 0,
+    );
+    return {
+      likes: result.likes,
+      comments: result.comments,
+      shares: result.shares || 0,
+      reach: result.reach || 0,
+      impressions: result.impressions || 0,
+    };
   }
 
   // Facebook — use Playwright scraping
@@ -819,8 +851,9 @@ export async function refreshSinglePublicationMetrics(userId, publicationId) {
 }
 
 /**
- * Fetch Instagram metrics via Graph API for publications that have externalPostId.
+ * Fetch Instagram metrics via Graph API Insights endpoint for publications that have externalPostId.
  * Uses the user's connected IG account token.
+ * See: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights
  */
 export async function refreshInstagramMetrics(userId, publications) {
   // Get user's IG token
@@ -834,36 +867,176 @@ export async function refreshInstagramMetrics(userId, publications) {
   }
 
   if (account.tokenExpiresAt && account.tokenExpiresAt < new Date()) {
-    log.warn(`IG token expired for user ${userId}`);
-    return [];
+    // Try to refresh the token before giving up
+    try {
+      const oldToken = decrypt(account.accessTokenEncrypted);
+      const refreshUrl = `https://graph.instagram.com/refresh_access_token?grant_type=ig_exchange_token&access_token=${oldToken}`;
+      const refreshResp = await fetch(refreshUrl);
+      if (refreshResp.ok) {
+        const refreshData = await refreshResp.json();
+        if (refreshData.access_token) {
+          const { encrypt } = await import("./encryption.js");
+          await prisma.connectedAccount.update({
+            where: { id: account.id },
+            data: {
+              accessTokenEncrypted: encrypt(refreshData.access_token),
+              tokenExpiresAt: new Date(
+                Date.now() + (refreshData.expires_in || 5184000) * 1000,
+              ),
+            },
+          });
+          log.info(`IG token refreshed for user ${userId}`);
+          // Use the new token
+          Object.defineProperty(account, "_refreshedToken", {
+            value: refreshData.access_token,
+          });
+        } else {
+          log.warn(
+            `IG token refresh failed for user ${userId}: no access_token in response`,
+          );
+          return [];
+        }
+      } else {
+        log.warn(
+          `IG token refresh failed for user ${userId}: HTTP ${refreshResp.status}`,
+        );
+        return [];
+      }
+    } catch (err) {
+      log.warn(`IG token refresh error for user ${userId}: ${err.message}`);
+      return [];
+    }
   }
 
-  const accessToken = decrypt(account.accessTokenEncrypted);
+  const accessToken =
+    account._refreshedToken || decrypt(account.accessTokenEncrypted);
   const results = [];
 
   for (const pub of publications) {
     if (!pub.externalPostId) continue;
     try {
-      const url = `https://graph.instagram.com/v21.0/${pub.externalPostId}?fields=like_count,comments_count&access_token=${accessToken}`;
-      const resp = await fetch(url);
+      // Use the Insights endpoint with correct metric names per media type
+      // Stories only support: impressions, reach, replies, follows, navigation, profile_activity, profile_visits
+      // Feed/Reels support: likes, comments, shares, reach, saved, total_interactions, views
+      const isStory = pub.igMediaType === "STORY";
+      const metrics = isStory
+        ? "impressions,reach"
+        : "likes,comments,shares,reach,saved";
+
+      const insightsUrl =
+        `https://graph.instagram.com/v25.0/${pub.externalPostId}/insights` +
+        `?metric=${metrics}&access_token=${accessToken}`;
+      const resp = await fetch(insightsUrl);
+
       if (!resp.ok) {
-        log.debug(`IG API error for ${pub.externalPostId}: ${resp.status}`);
+        const errBody = await resp.text().catch(() => "");
+        log.debug(
+          `IG Insights API error for ${pub.externalPostId}: ${resp.status} ${errBody}`,
+        );
+
+        // Fallback to basic media fields if insights endpoint fails
+        // (e.g. for media with hidden like counts or insufficient viewers)
+        const fallbackResult = await fetchIgMediaFields(
+          pub.externalPostId,
+          accessToken,
+        );
+        if (fallbackResult) {
+          results.push({ publicationId: pub.id, ...fallbackResult });
+        }
         continue;
       }
+
       const data = await resp.json();
-      results.push({
-        publicationId: pub.id,
-        likes: data.like_count || 0,
-        comments: data.comments_count || 0,
-      });
+      if (data.error) {
+        log.debug(
+          `IG Insights returned error for ${pub.externalPostId}: ${data.error.message}`,
+        );
+        const fallbackResult = await fetchIgMediaFields(
+          pub.externalPostId,
+          accessToken,
+        );
+        if (fallbackResult) {
+          results.push({ publicationId: pub.id, ...fallbackResult });
+        }
+        continue;
+      }
+
+      // Parse insights response: data[] contains {name, values: [{value}]}
+      const metricsMap = {};
+      if (data.data && Array.isArray(data.data)) {
+        for (const entry of data.data) {
+          metricsMap[entry.name] = entry.values?.[0]?.value || 0;
+        }
+      }
+
+      // If Insights returned 200 but with empty data, fall back to basic media fields
+      if (!isStory && Object.keys(metricsMap).length === 0) {
+        log.debug(
+          `IG Insights returned empty data for ${pub.externalPostId}, trying fallback`,
+        );
+        const fallbackResult = await fetchIgMediaFields(
+          pub.externalPostId,
+          accessToken,
+        );
+        if (fallbackResult) {
+          results.push({ publicationId: pub.id, ...fallbackResult });
+        }
+        continue;
+      }
+
+      if (isStory) {
+        results.push({
+          publicationId: pub.id,
+          likes: 0,
+          comments: 0,
+          shares: 0,
+          reach: metricsMap.reach || 0,
+          impressions: metricsMap.impressions || 0,
+        });
+      } else {
+        results.push({
+          publicationId: pub.id,
+          likes: metricsMap.likes || 0,
+          comments: metricsMap.comments || 0,
+          shares: metricsMap.shares || 0,
+          reach: metricsMap.reach || 0,
+          impressions: 0,
+          saved: metricsMap.saved || 0,
+        });
+      }
     } catch (err) {
-      log.debug(`Failed to fetch IG metrics for ${pub.externalPostId}: ${err.message}`);
+      log.debug(
+        `Failed to fetch IG metrics for ${pub.externalPostId}: ${err.message}`,
+      );
     }
     // Small delay to avoid rate limits
     await new Promise((r) => setTimeout(r, 200));
   }
 
   return results;
+}
+
+/**
+ * Fallback: fetch basic IG media fields (like_count, comments_count)
+ * when the Insights endpoint fails (hidden likes, insufficient viewers, etc.)
+ */
+async function fetchIgMediaFields(mediaId, accessToken) {
+  try {
+    const url = `https://graph.instagram.com/v25.0/${mediaId}?fields=like_count,comments_count&access_token=${accessToken}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (data.error) return null;
+    return {
+      likes: data.like_count || 0,
+      comments: data.comments_count || 0,
+      shares: 0,
+      reach: 0,
+      impressions: 0,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export { parseEngagementCount, parseLikesFromText, parseCommentsFromText };

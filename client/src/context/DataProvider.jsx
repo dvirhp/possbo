@@ -10,8 +10,11 @@ const CACHE_TTL = 30_000 // 30 seconds
 // Background polling interval (how often to check for stale data)
 const POLL_INTERVAL = 20_000 // 20 seconds
 // localStorage key for cached app data
-const DATA_CACHE_KEY = 'postit_app_data'
+const DATA_CACHE_KEY = 'possbo_app_data'
 const DATA_CACHE_TTL = 5 * 60 * 1000 // 5 minutes — show cached data instantly
+// localStorage key for cached WA contacts
+const WA_CONTACTS_CACHE_KEY = 'possbo_wa_contacts'
+const WA_BROADCASTS_CACHE_KEY = 'possbo_wa_broadcasts'
 
 // Load cached data from localStorage (runs synchronously at module level for speed)
 function loadCachedData() {
@@ -31,7 +34,7 @@ function saveCachedData(data) {
 }
 
 // localStorage key for cached user (for instant auth-checked feel)
-const USER_CACHE_KEY = 'postit_user'
+const USER_CACHE_KEY = 'possbo_user'
 
 function loadCachedUser() {
   try {
@@ -80,6 +83,101 @@ export function DataProvider({ children }) {
   const authVerifiedRef = useRef(false) // true only after checkAuth completes (not just cached)
   const userRef = useRef(cachedUser)
   const pollTimerRef = useRef(null)
+
+  // ── WhatsApp sync state (persists across page navigation) ──
+  const [waGroups, setWaGroups] = useState(() => {
+    try {
+      const raw = localStorage.getItem(WA_CONTACTS_CACHE_KEY)
+      return raw ? JSON.parse(raw) : []
+    } catch { return [] }
+  })
+  const [waBroadcastLists, setWaBroadcastLists] = useState(() => {
+    try {
+      const raw = localStorage.getItem(WA_BROADCASTS_CACHE_KEY)
+      return raw ? JSON.parse(raw) : []
+    } catch { return [] }
+  })
+  const [waSyncing, setWaSyncing] = useState(false)
+  const [waQrDataUrl, setWaQrDataUrl] = useState(null)
+  const [waError, setWaError] = useState(null)
+  const waGroupsLoadedRef = useRef(false)
+
+  // Load WA groups from DB (called once on auth, then on-demand)
+  const loadWaGroups = useCallback(async () => {
+    try {
+      const [groupsRes, broadcastRes] = await Promise.all([
+        authAPI.getWhatsappGroups(),
+        authAPI.getWhatsappBroadcastLists(),
+      ])
+      const groups = groupsRes.data?.groups || []
+      const lists = broadcastRes.data?.lists || []
+      setWaGroups(groups)
+      setWaBroadcastLists(lists)
+      try { localStorage.setItem(WA_CONTACTS_CACHE_KEY, JSON.stringify(groups)) } catch { /* ignore */ }
+      try { localStorage.setItem(WA_BROADCASTS_CACHE_KEY, JSON.stringify(lists)) } catch { /* ignore */ }
+      waGroupsLoadedRef.current = true
+      return { groups, broadcastLists: lists }
+    } catch (err) {
+      console.error('[WA] loadGroups error:', err)
+      return { groups: waGroups, broadcastLists: waBroadcastLists }
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync WA groups — runs in background, survives page navigation
+  const waSyncingRef = useRef(false)
+  const waSyncAbortRef = useRef(null)
+  const syncWaGroups = useCallback(async () => {
+    if (waSyncingRef.current) return
+    waSyncingRef.current = true
+    waSyncAbortRef.current = new AbortController()
+    setWaSyncing(true)
+    setWaError(null)
+    try {
+      await authAPI.syncWhatsappGroups(waSyncAbortRef.current.signal)
+      // Reload from DB after sync
+      await loadWaGroups()
+      window.dispatchEvent(new CustomEvent('possbo-wa-sync-done'))
+    } catch (err) {
+      if (err?.code === 'ERR_CANCELED') return // intentionally aborted
+      console.error('[WA] sync error:', err)
+      setWaError(err.userMessage || 'שגיאה בסנכרון')
+    } finally {
+      waSyncAbortRef.current = null
+      waSyncingRef.current = false
+      setWaSyncing(false)
+    }
+  }, [loadWaGroups])
+
+  const cancelWaSync = useCallback(() => {
+    if (waSyncAbortRef.current) waSyncAbortRef.current.abort()
+  }, [])
+
+  const clearWaQr = useCallback(() => setWaQrDataUrl(null), [])
+
+  // Track previous connection state to detect new connections
+  const prevWaConnectedRef = useRef(user?.whatsappSessionConnected)
+
+  // Auto-sync WA when connection state changes to true (new connection)
+  useEffect(() => {
+    const wasConnected = prevWaConnectedRef.current
+    const isConnected = user?.whatsappSessionConnected
+    prevWaConnectedRef.current = isConnected
+
+    if (!isConnected || !authVerifiedRef.current) return
+
+    if (!wasConnected) {
+      // Just connected — wait for server auto-sync, then trigger full sync
+      const timer = setTimeout(() => {
+        syncWaGroups()
+      }, 6000) // server auto-syncs groups at 5s, we sync at 6s
+      return () => clearTimeout(timer)
+    }
+
+    // Already connected on page load — just load from DB if not loaded yet
+    if (!waGroupsLoadedRef.current) {
+      loadWaGroups()
+    }
+  }, [user?.whatsappSessionConnected, loadWaGroups, syncWaGroups])
 
   // Fetch all data - silent=true means background refresh (no loading state)
   const fetchAll = useCallback(async (silent = true) => {
@@ -225,6 +323,14 @@ export function DataProvider({ children }) {
     lastFetchRef.current = {}
     clearCachedUser()
     try { localStorage.removeItem(DATA_CACHE_KEY) } catch { /* ignore */ }
+    try { localStorage.removeItem(WA_CONTACTS_CACHE_KEY) } catch { /* ignore */ }
+    try { localStorage.removeItem(WA_BROADCASTS_CACHE_KEY) } catch { /* ignore */ }
+    setWaGroups([])
+    setWaBroadcastLists([])
+    setWaSyncing(false)
+    setWaQrDataUrl(null)
+    setWaError(null)
+    waGroupsLoadedRef.current = false
     // Fire-and-forget server logout — don't block UI
     authAPI.logout().catch(() => {})
   }, [])
@@ -264,13 +370,13 @@ export function DataProvider({ children }) {
       lastFetchRef.current = {}
       fetchAll(false) // non-silent: bypasses in-progress guard, version counter discards any stale in-flight results
     }
-    window.addEventListener('postit-publish-done', handlePublishDone)
-    window.addEventListener('postit-op-done', handlePublishDone)
+    window.addEventListener('possbo-publish-done', handlePublishDone)
+    window.addEventListener('possbo-op-done', handlePublishDone)
 
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current)
-      window.removeEventListener('postit-publish-done', handlePublishDone)
-      window.removeEventListener('postit-op-done', handlePublishDone)
+      window.removeEventListener('possbo-publish-done', handlePublishDone)
+      window.removeEventListener('possbo-op-done', handlePublishDone)
     }
   }, [user, fetchAll])
 
@@ -352,6 +458,17 @@ export function DataProvider({ children }) {
     setStats,
     setTemplates,
     setRecentCampaigns,
+    // WhatsApp
+    waGroups,
+    waBroadcastLists,
+    waSyncing,
+    waQrDataUrl,
+    waError,
+    loadWaGroups,
+    syncWaGroups,
+    cancelWaSync,
+    setWaBroadcastLists,
+    clearWaQr,
   }
 
   return (

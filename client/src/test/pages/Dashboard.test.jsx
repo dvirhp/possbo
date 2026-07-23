@@ -210,10 +210,14 @@ describe('Dashboard page', () => {
 
   it('should show campaigns with data', async () => {
     mockAppData.campaigns = [
-      { id: 'c1', title: 'קמפיין ראשון', content: 'תוכן', status: 'ACTIVE', createdAt: '2026-06-20T10:00:00Z', groupNames: ['קבוצה 1'] },
+      { id: 'c1', title: 'קמפיין ראשון', content: 'תוכן', status: 'active', createdAt: '2026-06-20T10:00:00Z', groupNames: ['קבוצה 1'], groupCount: 1 },
     ];
 
-    renderDashboard();
+    render(
+      <MemoryRouter initialEntries={['/dashboard?tab=campaigns']}>
+        <Dashboard />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('קמפיין ראשון')).toBeInTheDocument();

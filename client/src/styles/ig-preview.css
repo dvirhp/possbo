@@ -656,6 +656,17 @@
   transition: fill 0.2s;
 }
 
+.cp-toggle-wa.active {
+  color: #25D366;
+}
+.cp-toggle-wa.active svg {
+  fill: #25D366;
+}
+.cp-toggle-wa svg {
+  fill: var(--text-muted, #6b7684);
+  transition: fill 0.2s;
+}
+
 .cp-preview-toggle-btn svg {
   flex-shrink: 0;
 }

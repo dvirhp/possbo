@@ -1,7 +1,7 @@
 import axios from "axios";
 import http, { setAccessToken, clearAccessToken } from "./http.js";
 
-const API_BASE_URL = "http://localhost:8000/api";
+const API_BASE_URL = "/api";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -9,13 +9,22 @@ const api = axios.create({
 });
 
 export const authAPI = {
-  register: async (email, password, name, gender, phone, captchaToken) => {
+  register: async (
+    email,
+    password,
+    name,
+    gender,
+    phone,
+    idNumber,
+    captchaToken,
+  ) => {
     const res = await http.post("/auth/register", {
       email,
       password,
       name,
       gender,
       phone,
+      idNumber,
       captchaToken,
     });
     if (res.data.accessToken) {
@@ -67,6 +76,26 @@ export const authAPI = {
   connectInstagram: (code) => http.post("/instagram/connect", { code }),
   disconnectInstagram: () => http.post("/instagram/disconnect"),
   publishToInstagram: (data) => http.post("/instagram/publish", data),
+  // WhatsApp Session
+  connectWhatsapp: () => http.post("/whatsapp/connect"),
+  connectWhatsappPhone: (phoneNumber) =>
+    http.post("/whatsapp/connect-phone", { phoneNumber }),
+  getWhatsappStatus: () => http.get("/whatsapp/status"),
+  disconnectWhatsapp: (signal) =>
+    http.post("/whatsapp/disconnect", {}, { _noRetry: true, signal }),
+  getWhatsappContacts: () => http.get("/whatsapp/contacts"),
+  getWhatsappGroups: () => http.get("/whatsapp/groups"),
+  syncWhatsappGroups: (signal) =>
+    http.post("/whatsapp/groups/sync", {}, { _noRetry: true, signal }),
+  syncWhatsappContacts: () => http.post("/whatsapp/contacts/sync"),
+  // WhatsApp Broadcast Lists
+  getWhatsappBroadcastLists: () => http.get("/whatsapp/broadcast-lists"),
+  createWhatsappBroadcastList: (data) =>
+    http.post("/whatsapp/broadcast-lists", data),
+  updateWhatsappBroadcastList: (id, data) =>
+    http.put(`/whatsapp/broadcast-lists/${encodeURIComponent(id)}`, data),
+  deleteWhatsappBroadcastList: (id) =>
+    http.delete(`/whatsapp/broadcast-lists/${encodeURIComponent(id)}`),
   updateNotificationSettings: (settings) =>
     http.patch("/auth/notification-settings", settings),
   uploadAvatar: (file) => {

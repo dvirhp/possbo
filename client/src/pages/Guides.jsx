@@ -11,7 +11,7 @@ export default function Guides() {
       <div className="guides-empty">
         <div className="guides-empty-icon">📚</div>
         <h2>בקרוב כאן יהיו מדריכים</h2>
-        <p>אנחנו עובדים על מדריכים מפורטים שיעזרו לך להפיק את המקסימום מ-PostIt</p>
+        <p>אנחנו עובדים על מדריכים מפורטים שיעזרו לך להפיק את המקסימום מ-Possbo</p>
       </div>
     </div>
   )

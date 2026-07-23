@@ -1,11 +1,11 @@
 const he = {
   // App general
-  appName: "PostIt",
+  appName: "Possbo",
   logout: "התנתק",
 
   // Login page
   login: {
-    title: "PostIt",
+    title: "Possbo",
     subtitle: "חיפוש וצילום קבוצות פייסבוק",
     loginTab: "התחברות",
     registerTab: "הרשמה",

@@ -66,4 +66,58 @@ describe("asyncHandler", () => {
 
     expect(next).toHaveBeenCalled();
   });
+
+  it("should handle thrown non-Error objects (strings)", async () => {
+    const handler = async () => {
+      throw "string error";
+    };
+    const wrapped = asyncHandler(handler);
+    const req = { method: "GET", originalUrl: "/test" };
+    const res = mockRes();
+
+    await wrapped(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+
+  it("should handle errors with no message", async () => {
+    const handler = async () => {
+      throw new Error();
+    };
+    const wrapped = asyncHandler(handler);
+    const req = { method: "GET", originalUrl: "/test" };
+    const res = mockRes();
+
+    await wrapped(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalled();
+  });
+
+  it("should handle synchronous handler functions", async () => {
+    const handler = (_req, res) => {
+      res.json({ sync: true });
+    };
+    const wrapped = asyncHandler(handler);
+    const req = { method: "GET", originalUrl: "/test" };
+    const res = mockRes();
+
+    await wrapped(req, res);
+
+    expect(res.json).toHaveBeenCalledWith({ sync: true });
+  });
+
+  it("should handle TypeError thrown in handler", async () => {
+    const handler = async () => {
+      const obj = null;
+      obj.property; // TypeError
+    };
+    const wrapped = asyncHandler(handler);
+    const req = { method: "GET", originalUrl: "/test" };
+    const res = mockRes();
+
+    await wrapped(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
 });

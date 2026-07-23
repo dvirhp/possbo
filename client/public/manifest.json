@@ -1,6 +1,6 @@
 {
-  "name": "PostIt",
-  "short_name": "PostIt",
+  "name": "Possbo",
+  "short_name": "Possbo",
   "description": "פרסום אוטומטי לקבוצות פייסבוק",
   "start_url": "/",
   "display": "standalone",
@@ -11,7 +11,7 @@
   "lang": "he",
   "icons": [
     {
-      "src": "/logo.svg",
+      "src": "/logo-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     },

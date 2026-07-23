@@ -9,6 +9,7 @@ import confetti from 'canvas-confetti'
 import LocationAutocomplete from '../components/LocationAutocomplete'
 import FacebookPreview from '../components/FacebookPreview'
 import InstagramPreview from '../components/InstagramPreview'
+import WhatsAppPreview from '../components/WhatsAppPreview'
 import ConfirmDialog from '../components/ConfirmDialog'
 import OptimalTimesHint from '../components/OptimalTimesHint'
 import EmojiPicker from '../components/EmojiPicker'
@@ -249,7 +250,7 @@ function SingleDatePicker({ value, onChange, minDate }) {
 export default function CreatePost() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, setUser, authChecked, groups: cachedGroups, forceRefresh, templates: cachedTemplates, recentCampaigns: cachedRecent, dataReady } = useAppData()
+  const { user, setUser, authChecked, groups: cachedGroups, forceRefresh, templates: cachedTemplates, recentCampaigns: cachedRecent, dataReady, waGroups, waBroadcastLists, loadWaGroups } = useAppData()
   const { setDirty, isDirty } = useNavigationGuard()
 
   const preSelectedGroup = location.state?.group || null
@@ -266,8 +267,15 @@ export default function CreatePost() {
   const [instagramPublishTypes, setInstagramPublishTypes] = useState(fromTemplate?.instagramPublishTypes || (fromTemplate?.instagramPublishType ? [fromTemplate.instagramPublishType] : ['FEED'])) // array of 'FEED' | 'STORY' | 'REEL'
   const [igTypeMedia, setIgTypeMedia] = useState({ FEED: [], STORY: [], REEL: [] }) // per-type specific media
   const [igTypeMediaPreviews, setIgTypeMediaPreviews] = useState({ FEED: [], STORY: [], REEL: [] })
-  const [previewMode, setPreviewMode] = useState('facebook') // 'facebook' | 'ig-feed' | 'ig-story' | 'ig-reel'
+  const [igTypeCaptions, setIgTypeCaptions] = useState({ FEED: '', STORY: '', REEL: '' }) // per-type captions
+  const [previewMode, setPreviewMode] = useState('facebook') // 'facebook' | 'ig-feed' | 'ig-story' | 'ig-reel' | 'whatsapp'
   const instagramConnected = user?.instagramConnected || false
+
+  // WhatsApp distribution
+  const [whatsappDistEnabled, setWhatsappDistEnabled] = useState(fromTemplate?.whatsappEnabled || false)
+  const [selectedWaTargets, setSelectedWaTargets] = useState(fromTemplate?.whatsappTargets || []) // array of { id, type: 'group'|'broadcast', name }
+  const whatsappConnected = user?.whatsappSessionConnected || false
+  const [waSearch, setWaSearch] = useState('')
 
   // Live-check Instagram connection when tab is first opened (in case cached user is stale)
   const checkInstagramStatus = useCallback(async () => {
@@ -275,8 +283,9 @@ export default function CreatePost() {
     try {
       const res = await authAPI.getInstagramStatus()
       if (res?.data?.connected) {
-        setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: res.data.account?.username }))
-        setInstagramEnabled(true)
+        const updates = { instagramConnected: true, instagramUsername: res.data.account?.username }
+        if (res.data.avatarUrl) updates.avatarUrl = res.data.avatarUrl
+        setUser(prev => ({ ...prev, ...updates }))
       }
     } catch { /* ignore */ }
   }, [instagramConnected, setUser])
@@ -365,8 +374,17 @@ export default function CreatePost() {
   const [igRecurringStartDate, setIgRecurringStartDate] = useState(fromTemplate?.igRecurringStartDate || '')
   const [igRecurringEndDate, setIgRecurringEndDate] = useState(fromTemplate?.igRecurringEndDate || '')
   const [scheduleSubTab, setScheduleSubTab] = useState('groups') // 'groups' | 'profile' | 'instagram'
-  const [schedulePlatformTab, setSchedulePlatformTab] = useState('facebook') // 'facebook' | 'instagram'
+  const [schedulePlatformTab, setSchedulePlatformTab] = useState('facebook') // 'facebook' | 'instagram' | 'whatsapp'
   const [fbScheduleSubTab, setFbScheduleSubTab] = useState('groups') // 'groups' | 'profile'
+
+  // WhatsApp scheduling
+  const [waScheduleMode, setWaScheduleMode] = useState(fromTemplate?.waScheduleMode || 'now')
+  const [waScheduleDate, setWaScheduleDate] = useState(fromTemplate?.waScheduleDate || '')
+  const [waScheduleTime, setWaScheduleTime] = useState(fromTemplate?.waScheduleTime || '')
+  const [waRecurringDays, setWaRecurringDays] = useState(fromTemplate?.waRecurringDays || [])
+  const [waDayTimes, setWaDayTimes] = useState(fromTemplate?.waDayTimes || {})
+  const [waRecurringStartDate, setWaRecurringStartDate] = useState(fromTemplate?.waRecurringStartDate || '')
+  const [waRecurringEndDate, setWaRecurringEndDate] = useState(fromTemplate?.waRecurringEndDate || '')
 
   // Groups - use cached data
   const [groups, setGroups] = useState(cachedGroups || [])
@@ -565,6 +583,16 @@ export default function CreatePost() {
           igRecurringStartDate: igScheduleMode === 'recurring' ? igRecurringStartDate : null,
           igRecurringEndDate: igScheduleMode === 'recurring' ? igRecurringEndDate : null,
           igPerTypeSchedules: instagramEnabled && instagramConnected ? igTypeSchedules : null,
+          igTypeCaptions: instagramEnabled && instagramConnected ? igTypeCaptions : null,
+          whatsappEnabled: whatsappDistEnabled,
+          whatsappTargets: whatsappDistEnabled ? selectedWaTargets : null,
+          waScheduleMode,
+          waScheduleDate: waScheduleMode === 'scheduled' ? waScheduleDate : null,
+          waScheduleTime: waScheduleMode === 'scheduled' ? waScheduleTime : null,
+          waRecurringDays: waScheduleMode === 'recurring' ? waRecurringDays : null,
+          waDayTimes: waScheduleMode === 'recurring' ? waDayTimes : null,
+          waRecurringStartDate: waScheduleMode === 'recurring' ? waRecurringStartDate : null,
+          waRecurringEndDate: waScheduleMode === 'recurring' ? waRecurringEndDate : null,
         }, postImages, hasIgTypeMedia ? igTypeMedia : null)
         if (res.data.success) {
           setDirty(false)
@@ -580,7 +608,7 @@ export default function CreatePost() {
             const msg = scheduleMode === 'recurring'
               ? '🔄 קמפיין חוזר תוזמן בהצלחה!'
               : '📅 פוסט תוזמן בהצלחה!'
-            window.dispatchEvent(new CustomEvent('postit-op-done', { detail: { id: 'schedule', success: true, msg } }))
+            window.dispatchEvent(new CustomEvent('possbo-op-done', { detail: { id: 'schedule', success: true, msg } }))
           }, 100)
         } else {
           setError(res.data.error || 'שגיאה ביצירת הקמפיין')
@@ -599,7 +627,7 @@ export default function CreatePost() {
       : postText
 
     try {
-      const groupCount = selectedGroups.length + (publishToProfile ? 1 : 0) + (instagramEnabled ? 1 : 0)
+      const groupCount = selectedGroups.length + (publishToProfile ? 1 : 0) + (instagramEnabled ? 1 : 0) + (whatsappDistEnabled ? selectedWaTargets.length : 0)
       const res = await groupsService.createCampaign({
         title: campaignTitle,
         text: finalText,
@@ -630,6 +658,16 @@ export default function CreatePost() {
         igRecurringStartDate: igScheduleMode === 'recurring' ? igRecurringStartDate : null,
         igRecurringEndDate: igScheduleMode === 'recurring' ? igRecurringEndDate : null,
         igPerTypeSchedules: instagramEnabled ? igTypeSchedules : null,
+        igTypeCaptions: instagramEnabled ? igTypeCaptions : null,
+        whatsappEnabled: whatsappDistEnabled,
+        whatsappTargets: whatsappDistEnabled ? selectedWaTargets : null,
+        waScheduleMode,
+        waScheduleDate: waScheduleMode === 'scheduled' ? waScheduleDate : null,
+        waScheduleTime: waScheduleMode === 'scheduled' ? waScheduleTime : null,
+        waRecurringDays: waScheduleMode === 'recurring' ? waRecurringDays : null,
+        waDayTimes: waScheduleMode === 'recurring' ? waDayTimes : null,
+        waRecurringStartDate: waScheduleMode === 'recurring' ? waRecurringStartDate : null,
+        waRecurringEndDate: waScheduleMode === 'recurring' ? waRecurringEndDate : null,
       }, postImages, hasIgTypeMedia ? igTypeMedia : null)
 
       if (res.data.success) {
@@ -637,7 +675,7 @@ export default function CreatePost() {
         if (fromTemplate?.id) {
           templatesService.markUsed(fromTemplate.id).catch(() => {})
         }
-        window.dispatchEvent(new CustomEvent('postit-publish-start', { detail: { count: groupCount, postId: res.data.postId, targets: { groups: selectedGroups.length, profile: publishToProfile, instagram: instagramEnabled } } }))
+        window.dispatchEvent(new CustomEvent('possbo-publish-start', { detail: { count: groupCount, postId: res.data.postId, targets: { groups: selectedGroups.length, profile: publishToProfile, instagram: instagramEnabled, whatsapp: whatsappDistEnabled ? selectedWaTargets.length : 0 } } }))
         navigate(-1)
       } else {
         setError(res.data.error || 'שגיאה ביצירת הפרסום')
@@ -856,8 +894,10 @@ export default function CreatePost() {
       if (!postText.trim()) errors[0] = 'יש לכתוב טקסט לפוסט'
     }
     if (step >= 1) {
-      if (selectedGroups.length === 0 && !publishToProfile && !instagramEnabled) errors[1] = 'יש לבחור לפחות קבוצה אחת, פרסום בפרופיל, או פרסום באינסטגרם'
-      else if (instagramEnabled && postImages.length === 0) errors[1] = 'יש להוסיף תמונה או סרטון לפרסום באינסטגרם'
+      const hasIgMedia = Object.values(igTypeMedia).some(arr => arr.length > 0)
+      if (selectedGroups.length === 0 && !publishToProfile && !instagramEnabled && !whatsappDistEnabled) errors[1] = 'יש לבחור לפחות קבוצה אחת, פרסום בפרופיל, אינסטגרם או וואטסאפ'
+      else if (instagramEnabled && postImages.length === 0 && !hasIgMedia) errors[1] = 'יש להוסיף תמונה או סרטון לפרסום באינסטגרם'
+      else if (whatsappDistEnabled && selectedWaTargets.length === 0) errors[1] = 'יש לבחור לפחות קבוצה או רשימת תפוצה אחת לוואטסאפ'
     }
     if (step >= 2) {
       if (scheduleMode === 'scheduled') {
@@ -1034,6 +1074,14 @@ export default function CreatePost() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
                 Instagram
               </button>
+              <button
+                type="button"
+                className={`cp-preview-toggle-btn cp-toggle-wa ${previewMode === 'whatsapp' ? 'active' : ''}`}
+                onClick={() => setPreviewMode('whatsapp')}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                WhatsApp
+              </button>
             </div>
             {previewMode.startsWith('ig-') && (
               <div className="cp-preview-sub-toggle">
@@ -1050,6 +1098,13 @@ export default function CreatePost() {
                 userName={user?.name}
                 whatsappNumber={showWhatsapp ? whatsappNumber : ''}
                 isAnonymous={isAnonymous}
+              />
+            ) : previewMode === 'whatsapp' ? (
+              <WhatsAppPreview
+                text={postText}
+                images={postImagePreviews}
+                userName={user?.name}
+                targetName={selectedWaTargets[0]?.name}
               />
             ) : (
               <InstagramPreview
@@ -1364,10 +1419,18 @@ export default function CreatePost() {
                   <button
                     type="button"
                     className={`cp-platform-tab ${distributionTab === 'instagram' ? 'active' : ''}`}
-                    onClick={() => { setDistributionTab('instagram'); checkInstagramStatus(); if (instagramConnected) setInstagramEnabled(true) }}
+                    onClick={() => { setDistributionTab('instagram'); checkInstagramStatus() }}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
                     <span>Instagram</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`cp-platform-tab cp-platform-tab-whatsapp ${distributionTab === 'whatsapp' ? 'active' : ''}`}
+                    onClick={() => { setDistributionTab('whatsapp'); if (whatsappConnected) { setWhatsappDistEnabled(true); loadWaGroups() } }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    <span>WhatsApp</span>
                   </button>
                 </div>
 
@@ -1612,6 +1675,15 @@ export default function CreatePost() {
                               ))}
                             </div>
                             <span className="cp-ig-upload-note">📌 מדיה זו תשמש רק לסטורי</span>
+                            <div className="cp-ig-type-caption">
+                              <input
+                                type="text"
+                                className="cp-ig-story-caption-input"
+                                placeholder="שנה טקסט לסטורי (ברירת מחדל: טקסט הפוסט)"
+                                value={igTypeCaptions.STORY}
+                                onChange={(e) => setIgTypeCaptions(prev => ({ ...prev, STORY: e.target.value }))}
+                              />
+                            </div>
                           </div>
                         )}
 
@@ -1789,6 +1861,147 @@ export default function CreatePost() {
                     )}
                   </div>
                 )}
+
+                {/* ─── WhatsApp section ─── */}
+                {distributionTab === 'whatsapp' && (
+                  <div className="cp-card cp-whatsapp-card">
+                    {!whatsappConnected ? (
+                      <div className="cp-ig-connect-notice">
+                        <div className="cp-ig-notice-icon" style={{ color: '#25d366', fontSize: 48 }}>
+                          <svg width="48" height="48" viewBox="0 0 24 24" fill="#25d366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                        </div>
+                        <h3 className="cp-ig-notice-title">חבר את חשבון הוואטסאפ שלך</h3>
+                        <p className="cp-ig-notice-text">כדי לשלוח הודעות בוואטסאפ, יש לחבר את חשבון הוואטסאפ שלך דרך הגדרות הפלטפורמות.</p>
+                        <button
+                          type="button"
+                          className="cp-ig-connect-btn"
+                          style={{ background: '#25d366' }}
+                          onClick={() => navigate('/settings/platforms')}
+                        >
+                          חבר וואטסאפ
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                      {/* WhatsApp Enable Toggle */}
+                      <div className="cp-card cp-profile-toggle-card">
+                        <label className="cp-profile-toggle">
+                          <span className="cp-profile-toggle-icon">💬</span>
+                          <span className="cp-profile-toggle-label">
+                            <span>שליחה דרך וואטסאפ</span>
+                            <span className="cp-profile-toggle-hint">הפוסט ישלח לקבוצות וואטסאפ ורשימות תפוצה</span>
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={whatsappDistEnabled}
+                            onChange={(e) => setWhatsappDistEnabled(e.target.checked)}
+                          />
+                        </label>
+                      </div>
+
+                      {whatsappDistEnabled && (
+                        <div className="cp-card">
+                          {(() => {
+                            const allWaItems = [
+                              ...(waGroups || []).map(g => ({ id: g.id, type: 'group', name: g.name, size: g.participants || null })),
+                              ...(waBroadcastLists || []).map(bl => ({ id: bl.id, type: 'broadcast', name: bl.name, size: bl.members?.length || 0 })),
+                            ]
+                            const searchLower = waSearch.toLowerCase()
+                            const filteredWaItems = searchLower
+                              ? allWaItems.filter(item => item.name.toLowerCase().includes(searchLower))
+                              : allWaItems
+                            const waGroupItems = filteredWaItems.filter(item => item.type === 'group')
+                            const waBroadcastItems = filteredWaItems.filter(item => item.type === 'broadcast')
+
+                            return allWaItems.length === 0 ? (
+                              <div className="cp-no-groups">
+                                <p>אין קבוצות או רשימות תפוצה</p>
+                                <Link to="/settings/platforms">סנכרן מוואטסאפ</Link>
+                              </div>
+                            ) : (
+                              <div className="cp-groups-panel">
+                                <div className="cp-group-search">
+                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                  </svg>
+                                  <input
+                                    type="text"
+                                    placeholder="חפש קבוצה או רשימת תפוצה..."
+                                    value={waSearch}
+                                    onChange={(e) => setWaSearch(e.target.value)}
+                                  />
+                                </div>
+
+                                <div className="cp-group-actions">
+                                  <button onClick={() => {
+                                    const all = filteredWaItems.map(item => ({ id: item.id, type: item.type, name: item.name }))
+                                    setSelectedWaTargets(prev => {
+                                      const existing = new Set(prev.map(t => `${t.type}:${t.id}`))
+                                      const toAdd = all.filter(t => !existing.has(`${t.type}:${t.id}`))
+                                      return [...prev, ...toAdd]
+                                    })
+                                  }}>בחר הכל</button>
+                                  <button onClick={() => setSelectedWaTargets([])}>נקה בחירה</button>
+                                  <span className="cp-selected-count">{selectedWaTargets.length} נבחרו</span>
+                                </div>
+
+                                <div className="cp-groups-list">
+                                  {waBroadcastItems.length > 0 && (
+                                    <div className="cp-wa-section-label">📢 רשימות תפוצה</div>
+                                  )}
+                                  {waBroadcastItems.map(item => {
+                                    const isSelected = selectedWaTargets.some(t => t.id === item.id && t.type === 'broadcast')
+                                    return (
+                                      <label key={`bl-${item.id}`} className={`cp-group-item ${isSelected ? 'selected' : ''}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => {
+                                            if (isSelected) {
+                                              setSelectedWaTargets(prev => prev.filter(t => !(t.id === item.id && t.type === 'broadcast')))
+                                            } else {
+                                              setSelectedWaTargets(prev => [...prev, { id: item.id, type: 'broadcast', name: item.name }])
+                                            }
+                                          }}
+                                        />
+                                        <span className="cp-group-name">{item.name}</span>
+                                        {item.size != null && <span className="cp-group-members">{item.size.toLocaleString()}</span>}
+                                      </label>
+                                    )
+                                  })}
+                                  {waGroupItems.length > 0 && (
+                                    <div className="cp-wa-section-label">👥 קבוצות</div>
+                                  )}
+                                  {waGroupItems.map(item => {
+                                    const isSelected = selectedWaTargets.some(t => t.id === item.id && t.type === 'group')
+                                    return (
+                                      <label key={`g-${item.id}`} className={`cp-group-item ${isSelected ? 'selected' : ''}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => {
+                                            if (isSelected) {
+                                              setSelectedWaTargets(prev => prev.filter(t => !(t.id === item.id && t.type === 'group')))
+                                            } else {
+                                              setSelectedWaTargets(prev => [...prev, { id: item.id, type: 'group', name: item.name }])
+                                            }
+                                          }}
+                                        />
+                                        <span className="cp-group-name">{item.name}</span>
+                                        {item.size != null && <span className="cp-group-members">{item.size.toLocaleString()}</span>}
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1796,12 +2009,14 @@ export default function CreatePost() {
             {currentStep === 2 && (() => {
               const hasFacebook = selectedGroups.length > 0 || publishToProfile
               const hasInstagram = instagramEnabled
-              const hasAnyTarget = hasFacebook || hasInstagram
+              const hasWhatsApp = whatsappDistEnabled
+              const hasAnyTarget = hasFacebook || hasInstagram || hasWhatsApp
 
               // Auto-correct platform tab
               const activePlatform = (schedulePlatformTab === 'facebook' && hasFacebook) ? 'facebook'
                 : (schedulePlatformTab === 'instagram' && hasInstagram) ? 'instagram'
-                : hasFacebook ? 'facebook' : 'instagram'
+                : (schedulePlatformTab === 'whatsapp' && hasWhatsApp) ? 'whatsapp'
+                : hasFacebook ? 'facebook' : hasInstagram ? 'instagram' : 'whatsapp'
 
               // Auto-correct FB sub-tab
               const activeFbSub = (fbScheduleSubTab === 'groups' && selectedGroups.length > 0) ? 'groups'
@@ -1853,6 +2068,14 @@ export default function CreatePost() {
                           <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
                         </svg>
                         <span>Instagram</span>
+                      </button>
+                    )}
+                    {hasWhatsApp && (
+                      <button type="button"
+                        className={`cp-schedule-sub-tab cp-schedule-sub-tab-wa ${activePlatform === 'whatsapp' ? 'active' : ''}`}
+                        onClick={() => setSchedulePlatformTab('whatsapp')}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#25d366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                        <span>WhatsApp</span>
                       </button>
                     )}
                   </div>
@@ -2346,6 +2569,130 @@ export default function CreatePost() {
                     </>
                   )}
 
+                  {/* ═══ WhatsApp panel ═══ */}
+                  {activePlatform === 'whatsapp' && (
+                    <div className="cp-schedule">
+                      <div className="schedule-tabs">
+                        <button type="button" className={`schedule-tab ${waScheduleMode === 'now' ? 'active' : ''}`} onClick={() => setWaScheduleMode('now')}>
+                          <span className="schedule-tab-icon">⚡</span>
+                          <span>עכשיו</span>
+                        </button>
+                        <button type="button" className={`schedule-tab ${waScheduleMode === 'scheduled' ? 'active' : ''}`} onClick={() => { setWaScheduleMode('scheduled'); setWaRecurringDays([]); setWaDayTimes({}); setWaRecurringStartDate(''); setWaRecurringEndDate('') }}>
+                          <span className="schedule-tab-icon">📅</span>
+                          <span>חד-פעמי</span>
+                        </button>
+                        <button type="button" className={`schedule-tab ${waScheduleMode === 'recurring' ? 'active' : ''}`} onClick={() => { setWaScheduleMode('recurring'); setWaScheduleDate(''); setWaScheduleTime('') }}>
+                          <span className="schedule-tab-icon">🔄</span>
+                          <span>חוזר</span>
+                        </button>
+                      </div>
+
+                      {waScheduleMode === 'now' && (
+                        <div className="schedule-info">
+                          <p className="schedule-info-text">ישלח בוואטסאפ מיד עם יצירת הקמפיין</p>
+                        </div>
+                      )}
+
+                      {waScheduleMode === 'scheduled' && (
+                        <div className="schedule-fields">
+                          <div className="schedule-row-centered">
+                            <div className="schedule-field">
+                              <label>תאריך</label>
+                              <SingleDatePicker
+                                value={waScheduleDate}
+                                onChange={setWaScheduleDate}
+                                minDate={toDateStr(new Date())}
+                              />
+                            </div>
+                            <div className="schedule-field schedule-field-time-wrap">
+                              <label>שעה</label>
+                              <input
+                                type="time"
+                                value={waScheduleTime}
+                                onChange={(e) => setWaScheduleTime(e.target.value)}
+                                disabled={!waScheduleDate}
+                                className={!waScheduleDate ? 'disabled-input' : ''}
+                              />
+                            </div>
+                          </div>
+                          {waScheduleDate && waScheduleTime && (
+                            <div className="schedule-summary">
+                              📅 {new Date(`${waScheduleDate}T${waScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })} בשעה {waScheduleTime}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {waScheduleMode === 'recurring' && (
+                        <div className="schedule-fields">
+                          <div className="schedule-section">
+                            <label className="schedule-section-label">תקופה</label>
+                            <RecurringDateRange
+                              startDate={waRecurringStartDate}
+                              endDate={waRecurringEndDate}
+                              onStartChange={setWaRecurringStartDate}
+                              onEndChange={setWaRecurringEndDate}
+                              minDate={toDateStr(new Date())}
+                              initialMonth={waRecurringStartDate ? new Date(waRecurringStartDate) : new Date()}
+                            />
+                          </div>
+                          <div className="schedule-section">
+                            <label className="schedule-section-label">באילו ימים?</label>
+                            <div className="days-grid">
+                              {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
+                                <button key={i} type="button" className={`day-btn ${waRecurringDays.includes(i)?'active':''}`}
+                                  onClick={() => {
+                                    setWaRecurringDays(prev => {
+                                      if(prev.includes(i)){setWaDayTimes(dt=>{const c={...dt};delete c[i];return c});return prev.filter(d=>d!==i)}
+                                      else{setWaDayTimes(dt=>({...dt,[i]:['']}));return[...prev,i]}
+                                    })
+                                  }}>{day}</button>
+                              ))}
+                              <button type="button" className={`day-btn day-btn-all ${waRecurringDays.length===7?'active':''}`}
+                                onClick={() => {
+                                  if(waRecurringDays.length===7){setWaRecurringDays([]);setWaDayTimes({})}
+                                  else{setWaRecurringDays([0,1,2,3,4,5,6]);setWaDayTimes(dt=>{const c={...dt};for(let i=0;i<7;i++){if(!c[i])c[i]=['']}return c})}
+                                }}>כל יום</button>
+                            </div>
+                          </div>
+                          {waRecurringDays.length > 0 && (
+                            <div className="schedule-section day-times-section">
+                              <label className="schedule-section-label">שעות לכל יום</label>
+                              <div className="day-times-list">
+                                {waRecurringDays.sort((a,b)=>a-b).map(dayIdx => {
+                                  const dayName = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][dayIdx]
+                                  const times = waDayTimes[dayIdx] || ['']
+                                  return (
+                                    <div key={dayIdx} className="day-times-card">
+                                      <div className="day-times-header">
+                                        <span className="day-times-day-name">יום {dayName}</span>
+                                        <span className="day-times-count">{times.filter(t=>t).length} שעות</span>
+                                      </div>
+                                      <div className="day-times-slots">
+                                        {times.map((time,ti) => (
+                                          <div key={ti} className="time-slot">
+                                            <input type="time" value={time} onChange={(e) => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
+                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                          </div>
+                                        ))}
+                                        {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {waRecurringDays.length > 0 && Object.values(waDayTimes).some(ts => Array.isArray(ts) && ts.some(t => t)) && waRecurringStartDate && (
+                            <div className="schedule-summary">
+                              🔄 {waRecurringDays.sort((a,b)=>a-b).map(d => { const n=['א','ב','ג','ד','ה','ו','ש'][d]; const ts=(waDayTimes[d]||[]).filter(t=>t); return ts.length?`${n}: ${ts.join(', ')}`:null }).filter(Boolean).join(' | ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                 </div>
                 )}
               </div>
@@ -2391,7 +2738,12 @@ export default function CreatePost() {
                             {instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' && ` (תמונה ${storyPickedIndex + 1})`}
                           </span>
                         )}
-                        {!publishToProfile && selectedGroups.length === 0 && !instagramEnabled && <span className="cp-review-value">לא נבחרו יעדים</span>}
+                        {whatsappDistEnabled && (
+                          <span className="cp-review-chip cp-chip-whatsapp">
+                            💬 WhatsApp — {selectedWaTargets.length} יעדים
+                          </span>
+                        )}
+                        {!publishToProfile && selectedGroups.length === 0 && !instagramEnabled && !whatsappDistEnabled && <span className="cp-review-value">לא נבחרו יעדים</span>}
                       </div>
                     </div>
 
@@ -2431,6 +2783,16 @@ export default function CreatePost() {
                               {igScheduleMode === 'now' && '⚡ מיידי'}
                               {igScheduleMode === 'scheduled' && `📅 ${igScheduleDate && igScheduleTime ? new Date(`${igScheduleDate}T${igScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + igScheduleTime : 'לא הוגדר'}`}
                               {igScheduleMode === 'recurring' && `🔄 ${igRecurringDays.length} ימים בשבוע`}
+                            </span>
+                          </div>
+                        )}
+                        {whatsappDistEnabled && (
+                          <div className="cp-review-schedule-item">
+                            <span className="cp-review-schedule-platform">💬 WhatsApp:</span>
+                            <span>
+                              {waScheduleMode === 'now' && '⚡ מיידי'}
+                              {waScheduleMode === 'scheduled' && `📅 ${waScheduleDate && waScheduleTime ? new Date(`${waScheduleDate}T${waScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + waScheduleTime : 'לא הוגדר'}`}
+                              {waScheduleMode === 'recurring' && `🔄 ${waRecurringDays.length} ימים בשבוע`}
                             </span>
                           </div>
                         )}
@@ -2483,6 +2845,7 @@ export default function CreatePost() {
                     if (selectedGroups.length > 0) targets.push(`${selectedGroups.length} קבוצות`)
                     if (publishToProfile) targets.push('פרופיל')
                     if (instagramEnabled) targets.push('Instagram')
+                    if (whatsappDistEnabled) targets.push('WhatsApp')
                     const targetStr = targets.join(' + ')
 
                     if (publishing) return `⏳ מפרסם ${targetStr ? `ב-${targetStr}` : ''}...`
@@ -2519,6 +2882,14 @@ export default function CreatePost() {
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
                   IG
                 </button>
+                <button
+                  type="button"
+                  className={`cp-preview-toggle-btn cp-toggle-wa ${previewMode === 'whatsapp' ? 'active' : ''}`}
+                  onClick={() => setPreviewMode('whatsapp')}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                  WA
+                </button>
               </div>
               {previewMode.startsWith('ig-') && (
                 <div className="cp-preview-sub-toggle" style={{ marginBottom: 10 }}>
@@ -2535,6 +2906,13 @@ export default function CreatePost() {
                   userName={user?.name}
                   whatsappNumber={showWhatsapp ? whatsappNumber : ''}
                   isAnonymous={isAnonymous}
+                />
+              ) : previewMode === 'whatsapp' ? (
+                <WhatsAppPreview
+                  text={postText}
+                  images={postImagePreviews}
+                  userName={user?.name}
+                  targetName={selectedWaTargets[0]?.name}
                 />
               ) : (
                 <InstagramPreview

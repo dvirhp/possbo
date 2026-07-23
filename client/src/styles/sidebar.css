@@ -217,6 +217,7 @@
   background: var(--bg-elevated, #252830);
 }
 .sidebar-user-avatar {
+  position: relative;
   width: 36px;
   height: 36px;
   border-radius: 50%;

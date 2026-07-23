@@ -6,8 +6,8 @@ const AGENT_NAME = 'פוסטי'
 const TOPICS = [
   {
     id: 'what-is',
-    label: '🤔 מה זה PostIt?',
-    answer: `PostIt היא פלטפורמה לניהול ופרסום אוטומטי בקבוצות פייסבוק.\n\nבמקום לפרסם ידנית בכל קבוצה, אתה מחבר את החשבון, בוחר קבוצות, כותב פוסט אחד ומפרסם בכולן בלחיצה אחת. 🚀`
+    label: '🤔 מה זה Possbo?',
+    answer: `Possbo היא פלטפורמה לניהול ופרסום אוטומטי בקבוצות פייסבוק.\n\nבמקום לפרסם ידנית בכל קבוצה, אתה מחבר את החשבון, בוחר קבוצות, כותב פוסט אחד ומפרסם בכולן בלחיצה אחת. 🚀`
   },
   {
     id: 'features',
@@ -21,13 +21,13 @@ const TOPICS = [
   },
   {
     id: 'advantages',
-    label: '💪 למה PostIt?',
+    label: '💪 למה Possbo?',
     answer: `• ⏱️ חוסך שעות של פרסום ידני\n• 🎯 פרסום ממוקד, בוחרים בדיוק לאיזה קבוצות\n• 🔒 אבטחה מתקדמת, הסיסמאות מוצפנות\n• 📱 עובד מכל מכשיר\n• 🇮🇱 ממשק עברי מלא\n• 🤖 אוטומציה חכמה, ניסיונות חוזרים, תזמונים\n• 📊 דוחות מפורטים על ביצועי הפרסום`
   },
   {
     id: 'pricing',
     label: '💰 כמה זה עולה?',
-    answer: `כרגע PostIt בגרסת בטא פתוחה, חינם לחלוטין! 🎉\n\nהירשמו עכשיו ותיהנו מכל התכונות ללא עלות.\n\nבעתיד יהיו תוכניות שונות לפי נפח השימוש.`
+    answer: `כרגע Possbo בגרסת בטא פתוחה, חינם לחלוטין! 🎉\n\nהירשמו עכשיו ותיהנו מכל התכונות ללא עלות.\n\nבעתיד יהיו תוכניות שונות לפי נפח השימוש.`
   },
   {
     id: 'security',
@@ -92,7 +92,7 @@ export default function LandingChatBot() {
           <div className="lcb-header">
             <div className="lcb-header-info">
               <img src="/bot-avatar.svg" alt="פוסטי" className="lcb-avatar" />
-              <span className="lcb-title">{AGENT_NAME}, עוזר PostIt</span>
+              <span className="lcb-title">{AGENT_NAME}, עוזר Possbo</span>
             </div>
             <button className="lcb-close" onClick={() => setOpen(false)} aria-label="סגור">✕</button>
           </div>

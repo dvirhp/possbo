@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import '../styles/accessibility.css'
 
-const A11Y_STORAGE_KEY = 'postit-a11y-settings'
+const A11Y_STORAGE_KEY = 'possbo-a11y-settings'
 
 const DEFAULT_SETTINGS = {
   fontSize: 0, // 0 = normal, 1 = large, 2 = largest

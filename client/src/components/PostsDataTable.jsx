@@ -150,6 +150,7 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
                 <div className="pdt-platform-tags">
                   {(groupCount > 0 || campaign.publishToProfile) && <span className="platform-badge platform-facebook">FB</span>}
                   {campaign.instagramEnabled && <span className="platform-badge platform-instagram">IG</span>}
+                  {campaign.whatsappEnabled && <span className="platform-badge platform-whatsapp">WA</span>}
                 </div>
               </div>
 

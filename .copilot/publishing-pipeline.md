@@ -1,8 +1,8 @@
-# Publishing Pipeline — PostIt
+# Publishing Pipeline — Possbo
 
 ## Overview
 
-PostIt supports two publishing modes:
+Possbo supports two publishing modes:
 
 1. **Immediate** — User publishes from the UI, one group at a time (server)
 2. **Multi-group immediate** — User selects groups, client fires requests in parallel
@@ -280,5 +280,132 @@ Job fails (attempt 3 of 3)
 
 - `GET /api/scheduler/jobs` — pending/running jobs
 - `GET /api/scheduler/history` — completed publications
+- `GET /api/scheduler/history/:pubId` — single publication detail
 - `GET /api/scheduler/session-status` — FB session health
 - `GET /api/scheduler/notifications` — failure notifications
+- `GET /api/scheduler/stats` — aggregated publication stats
+- `GET /api/scheduler/exposure` — reach/impression data
+- `GET /api/scheduler/dashboard-data` — dashboard KPIs snapshot
+- `GET /api/scheduler/dashboard-kpis` — detailed KPIs with date range
+- `GET /api/scheduler/top-posts` — best performing posts
+
+## Mode 4: Instagram Publishing
+
+**Endpoint**: `POST /api/instagram/publish`
+
+Instagram uses the **Graph API** (unlike Facebook which uses Playwright).
+
+### Flow:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 1. User connects Instagram via OAuth                      │
+│    GET /api/instagram/auth-url → redirect to FB/IG OAuth │
+│    POST /api/instagram/connect → save access token        │
+│                                                           │
+│ 2. User publishes to Instagram                            │
+│    POST /api/instagram/publish                            │
+│    ┌────────────────────────────────────────┐             │
+│    │ a. Upload media to public URL          │             │
+│    │    (freeimage.host or imgur)            │             │
+│    │ b. Create media container via Graph API│             │
+│    │ c. Publish container via Graph API     │             │
+│    │ d. Save PublicationHistory (platform:  │             │
+│    │    "instagram")                         │             │
+│    └────────────────────────────────────────┘             │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Supported Types:
+
+| Type      | Endpoint              | Requirements                       |
+| --------- | --------------------- | ---------------------------------- |
+| Feed Post | `/{ig-user-id}/media` | Image URL + caption                |
+| Story     | `/{ig-user-id}/media` | Image URL, `media_type: "STORIES"` |
+| Reel      | `/{ig-user-id}/media` | Video URL, `media_type: "REELS"`   |
+
+### Media Upload (`utils/media-upload.js`):
+
+Instagram Graph API requires publicly accessible media URLs. Possbo uploads local files to external hosts:
+
+1. **freeimage.host** — primary (free image hosting)
+2. **imgur** — fallback
+
+## Mode 5: Profile Publishing
+
+**Endpoint**: `POST /api/publish/profile`
+
+Publishes to the user's own Facebook profile (not a group) using Playwright.
+
+```
+Request:
+  text: "Post content"
+  image: <file> (optional)
+
+Flow:
+  1. Validate user has Facebook session
+  2. Load & decrypt storage state
+  3. Launch headless Playwright
+  4. Navigate to facebook.com → user's profile
+  5. Create post on profile wall
+  6. Save PublicationHistory (platform: "facebook")
+```
+
+## Metrics Collection
+
+### Background Job: `metrics-collector.js`
+
+Periodically scrapes engagement metrics from published posts using Playwright.
+
+```
+For each recent publication:
+  1. Navigate to external post URL
+  2. Scrape: likes, comments, shares, reach, impressions
+  3. Save to PublicationMetric table
+  4. Update DailyStats + DailyExposure aggregates
+```
+
+### Manual Refresh:
+
+- `POST /api/scheduler/publications/:id/refresh-metrics` — single publication
+- `POST /api/scheduler/refresh-all-metrics` — all user publications
+
+### Metrics Model:
+
+```prisma
+model PublicationMetric {
+  id             String   @id @default(uuid())
+  publicationId  String   @map("publication_id")
+  likes          Int      @default(0)
+  comments       Int      @default(0)
+  shares         Int      @default(0)
+  reach          Int      @default(0)
+  impressions    Int      @default(0)
+  collectedAt    DateTime @map("collected_at")
+}
+```
+
+## Campaign Management
+
+Campaigns are the user-facing abstraction over the publishing pipeline.
+
+### CRUD Endpoints:
+
+| Method | Path                                         | Description                             |
+| ------ | -------------------------------------------- | --------------------------------------- |
+| POST   | `/api/scheduler/campaigns`                   | Create campaign (multipart with images) |
+| GET    | `/api/scheduler/campaigns`                   | List all campaigns                      |
+| GET    | `/api/scheduler/campaigns/recent`            | Drafts + recent for quick restore       |
+| GET    | `/api/scheduler/campaigns/:postId`           | Single campaign detail                  |
+| PUT    | `/api/scheduler/campaigns/:postId`           | Update campaign (multipart)             |
+| DELETE | `/api/scheduler/campaigns/:postId`           | Delete campaign + related jobs          |
+| POST   | `/api/scheduler/campaigns/:postId/duplicate` | Duplicate campaign                      |
+| PATCH  | `/api/scheduler/campaigns/:postId/pause`     | Toggle pause state (ACTIVE ↔ PAUSED)    |
+
+### Campaign Lifecycle:
+
+```
+DRAFT → ACTIVE (when scheduled) → PAUSED (user toggles) → ARCHIVED (all jobs done)
+         │
+         └→ Creates: PostGroup[] + PostGroupSchedule[] + PublicationJob[]
+```

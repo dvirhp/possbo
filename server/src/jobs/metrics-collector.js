@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import {
   scrapeUserPublicationMetrics,
   savePublicationMetrics,
@@ -7,7 +7,6 @@ import {
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("metrics-job");
-const prisma = new PrismaClient();
 
 /**
  * Collect engagement metrics for all publications from the last 30 days
@@ -60,7 +59,7 @@ export async function collectAllMetrics() {
       });
 
       // Get IG publications from last 30 days with externalPostId
-      const igPublications = await prisma.publicationHistory.findMany({
+      const igPublicationsRaw = await prisma.publicationHistory.findMany({
         where: {
           userId,
           status: "SUCCESS",
@@ -68,9 +67,17 @@ export async function collectAllMetrics() {
           externalPostId: { not: null },
           publishedAt: { gte: thirtyDaysAgo },
         },
-        select: { id: true, externalPostId: true },
+        select: {
+          id: true,
+          externalPostId: true,
+          publicationJob: { select: { igPublishType: true } },
+        },
         orderBy: { publishedAt: "desc" },
       });
+      const igPublications = igPublicationsRaw.map((p) => ({
+        ...p,
+        igMediaType: p.publicationJob?.igPublishType || "FEED",
+      }));
 
       if (fbPublications.length === 0 && igPublications.length === 0) {
         log.debug(`User ${userId}: no recent publications to scrape`);
@@ -106,14 +113,15 @@ export async function collectAllMetrics() {
         );
         const igResults = await refreshInstagramMetrics(userId, igPublications);
         for (const result of igResults) {
-          if (result.likes > 0 || result.comments > 0) {
-            await savePublicationMetrics(
-              result.publicationId,
-              result.likes,
-              result.comments,
-            );
-            totalSaved++;
-          }
+          await savePublicationMetrics(
+            result.publicationId,
+            result.likes,
+            result.comments,
+            result.shares || 0,
+            result.reach || 0,
+            result.impressions || 0,
+          );
+          totalSaved++;
         }
         totalScraped += igResults.length;
       }

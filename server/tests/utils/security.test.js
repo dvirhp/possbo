@@ -196,4 +196,52 @@ describe("safeFilename", () => {
     expect(name).not.toContain("\\");
     expect(name).not.toContain("..");
   });
+
+  it("should generate unique filenames in rapid succession", () => {
+    const names = new Set();
+    for (let i = 0; i < 50; i++) {
+      names.add(safeFilename("image/png"));
+    }
+    expect(names.size).toBe(50);
+  });
+
+  it("should handle gif and webp MIME types", () => {
+    expect(safeFilename("image/gif")).toMatch(/\.gif$/);
+    expect(safeFilename("image/webp")).toMatch(/\.webp$/);
+  });
+});
+
+describe("additional isAllowedUrl edge cases", () => {
+  it("should handle case-insensitive hostnames", () => {
+    expect(isAllowedUrl("https://FACEBOOK.COM/groups/123")).toBe(true);
+    expect(isAllowedUrl("https://Facebook.Com/groups/123")).toBe(true);
+    expect(isAllowedUrl("https://WWW.FACEBOOK.COM/groups/123")).toBe(true);
+  });
+
+  it("should reject URLs with ports other than default", () => {
+    expect(isAllowedUrl("https://facebook.com:8080/groups/123")).toBe(false);
+  });
+
+  it("should reject data: URIs", () => {
+    expect(isAllowedUrl("data:text/html,<h1>test</h1>")).toBe(false);
+  });
+
+  it("should reject javascript: URIs", () => {
+    expect(isAllowedUrl("javascript:alert(1)")).toBe(false);
+  });
+});
+
+describe("sanitizeText edge cases", () => {
+  it("should handle Hebrew text correctly", () => {
+    expect(sanitizeText("שלום עולם")).toBe("שלום עולם");
+  });
+
+  it("should handle text with emojis", () => {
+    expect(sanitizeText("Hello 🌍🔥")).toBe("Hello 🌍🔥");
+  });
+
+  it("should handle multiline text", () => {
+    const multiline = "Line 1\nLine 2\nLine 3";
+    expect(sanitizeText(multiline)).toBe(multiline);
+  });
 });

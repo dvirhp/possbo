@@ -37,6 +37,11 @@
   border-radius: 8px;
 }
 
+.nav-logo-img.nav-logo-wordmark {
+  width: auto;
+  height: 30px;
+}
+
 .nav-buttons {
   display: flex;
   align-items: center;

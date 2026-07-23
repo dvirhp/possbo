@@ -1,5 +1,5 @@
 /**
- * PostIt Logger
+ * Possbo Logger
  *
  * Centralized structured logger for the entire server.
  * Designed with a transport-ready architecture — currently outputs to console,
@@ -200,12 +200,32 @@ export function createLogger(module) {
 
 const systemLog = createLogger("system");
 
+import { writeFileSync } from "fs";
+
 process.on("uncaughtException", (error) => {
   systemLog.error("Uncaught exception — process will exit", error);
+  try {
+    writeFileSync(
+      "crash.log",
+      `[${new Date().toISOString()}] UNCAUGHT EXCEPTION:\n${error?.stack || error}\n`,
+      { flag: "a" },
+    );
+  } catch {
+    /* ignore */
+  }
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason) => {
   const error = reason instanceof Error ? reason : new Error(String(reason));
   systemLog.error("Unhandled promise rejection", error);
+  try {
+    writeFileSync(
+      "crash.log",
+      `[${new Date().toISOString()}] UNHANDLED REJECTION:\n${error?.stack || error}\n`,
+      { flag: "a" },
+    );
+  } catch {
+    /* ignore */
+  }
 });

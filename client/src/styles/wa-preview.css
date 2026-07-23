@@ -1,0 +1,338 @@
+/* ─── WhatsApp Preview - Phone Frame ─── */
+.wap-phone-frame {
+  width: 360px;
+  min-height: 580px;
+  background: #0b141a;
+  border-radius: 40px;
+  border: 8px solid #1a1a2e;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(255,255,255,0.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  direction: rtl;
+}
+
+/* ─── Phone Notch ─── */
+.wap-phone-notch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px 6px;
+  background: #1f2c34;
+  position: relative;
+}
+
+.wap-phone-island {
+  width: 80px;
+  height: 22px;
+  background: #1a1a2e;
+  border-radius: 14px;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 6px;
+}
+
+.wap-phone-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  z-index: 1;
+}
+
+.wap-phone-icons {
+  display: flex;
+  gap: 4px;
+  z-index: 1;
+}
+
+.wap-signal, .wap-wifi, .wap-battery {
+  width: 14px;
+  height: 10px;
+  background: #fff;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+.wap-battery {
+  width: 18px;
+  border-radius: 3px;
+}
+
+/* ─── App Bar ─── */
+.wap-app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #1f2c34;
+}
+
+.wap-app-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wap-back-arrow {
+  transform: rotate(180deg);
+}
+
+.wap-contact-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #2a3942;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wap-contact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.wap-contact-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e9edef;
+  line-height: 1.2;
+}
+
+.wap-contact-status {
+  font-size: 11px;
+  color: #8696a0;
+}
+
+.wap-app-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* ─── Chat Area ─── */
+.wap-chat-area {
+  flex: 1;
+  position: relative;
+  padding: 8px 12px;
+  min-height: 380px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.wap-chat-bg {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* ─── Date Chip ─── */
+.wap-date-chip {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.wap-date-chip span {
+  background: #182229;
+  color: #8696a0;
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* ─── Empty State ─── */
+.wap-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.wap-empty-state p {
+  font-size: 13px;
+  color: #8696a0;
+  margin: 0;
+}
+
+/* ─── Message Bubble ─── */
+.wap-bubble-container {
+  display: flex;
+  justify-content: flex-start;
+  position: relative;
+  z-index: 1;
+  margin-bottom: 6px;
+}
+
+.wap-bubble {
+  max-width: 85%;
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.wap-bubble-out {
+  background: #005c4b;
+  border-radius: 8px 0 8px 8px;
+}
+
+.wap-bubble-tail {
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 10px 10px;
+  border-color: transparent transparent transparent #005c4b;
+}
+
+/* ─── Bubble Images ─── */
+.wap-bubble-images {
+  overflow: hidden;
+}
+
+.wap-bubble-images.single .wap-bubble-img-wrap {
+  max-height: 200px;
+}
+
+.wap-bubble-images.single .wap-bubble-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 6px 6px 0 0;
+}
+
+.wap-bubble-images.multi {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 3px;
+}
+
+.wap-bubble-images.multi .wap-bubble-img-wrap {
+  height: 100px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.wap-bubble-images.multi .wap-bubble-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.wap-bubble-img-wrap {
+  position: relative;
+}
+
+.wap-bubble-img-more {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ─── Bubble Text ─── */
+.wap-bubble-text {
+  padding: 6px 10px 2px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #e9edef;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ─── Bubble Meta (time + checks) ─── */
+.wap-bubble-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  padding: 0 8px 5px;
+  direction: ltr;
+}
+
+.wap-bubble-time {
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+}
+
+.wap-bubble-check {
+  flex-shrink: 0;
+}
+
+/* ─── Input Bar ─── */
+.wap-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 10px;
+  background: #0b141a;
+}
+
+.wap-input-actions-right {
+  display: flex;
+  align-items: center;
+}
+
+.wap-input-field {
+  flex: 1;
+  background: #1f2c34;
+  border-radius: 22px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+}
+
+.wap-input-field span {
+  font-size: 13px;
+  color: #8696a0;
+}
+
+.wap-input-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: absolute;
+  left: 60px;
+}
+
+.wap-mic-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #00a884;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ─── Mobile responsive ─── */
+@media (max-width: 768px) {
+  .wap-phone-frame {
+    width: 92vw;
+    max-width: 380px;
+    min-height: 550px;
+  }
+}

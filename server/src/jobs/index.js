@@ -18,8 +18,8 @@ const INTERVALS = {
   PROCESS_JOBS: 60 * 1000,
   // Generate new jobs from schedules every 5 minutes
   GENERATE_JOBS: 5 * 60 * 1000,
-  // Keep-alive check every 3 days
-  SESSION_KEEPALIVE: 3 * 24 * 60 * 60 * 1000,
+  // Keep-alive check every 7.5 hours
+  SESSION_KEEPALIVE: 7.5 * 60 * 60 * 1000,
   // Refresh group metadata once a day
   GROUP_METADATA: 24 * 60 * 60 * 1000,
 };
@@ -53,7 +53,7 @@ export function startScheduler() {
   }, INTERVALS.GENERATE_JOBS);
   timers.push(jobGenerator);
 
-  // Session keep-alive every 3 days
+  // Session keep-alive every 7.5 hours
   const keepAlive = setInterval(async () => {
     try {
       await runSessionKeepAlive();
@@ -90,7 +90,7 @@ export function startScheduler() {
   log.info("Background jobs started", {
     processJobs: `${INTERVALS.PROCESS_JOBS / 1000}s`,
     generateJobs: `${INTERVALS.GENERATE_JOBS / 1000}s`,
-    keepAlive: `${INTERVALS.SESSION_KEEPALIVE / 86400000} days`,
+    keepAlive: `${INTERVALS.SESSION_KEEPALIVE / 3600000} hours`,
     metricsCollection: "2x daily (02:00 + random 08:00-20:00)",
   });
 }

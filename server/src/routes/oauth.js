@@ -1,55 +1,11 @@
 import express from "express";
-import bcrypt from "bcrypt";
 import prisma from "../config/prisma.js";
 import { OAuth2Client } from "google-auth-library";
-import { generateAccessToken, generateRefreshToken } from "../utils/jwt.js";
 import { createLogger } from "../utils/logger.js";
+import { issueTokens } from "../utils/auth-service.js";
 
 const router = express.Router();
 const log = createLogger("oauth");
-const SALT_ROUNDS = 12;
-
-const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
-
-function setRefreshCookie(res, token) {
-  res.cookie("refreshToken", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: REFRESH_TOKEN_MAX_AGE,
-    path: "/api/auth",
-  });
-}
-
-async function issueTokens(res, user) {
-  const accessToken = generateAccessToken(user.id);
-  const refreshToken = generateRefreshToken(user.id);
-  const refreshTokenHash = await bcrypt.hash(refreshToken, SALT_ROUNDS);
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { refreshToken: refreshTokenHash, lastLoginAt: new Date() },
-  });
-
-  setRefreshCookie(res, refreshToken);
-
-  return {
-    success: true,
-    accessToken,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      profileImage: user.profileImage || null,
-      avatarUrl: user.avatarUrl || null,
-      fbSessionValid: user.fbSessionValid || false,
-      whatsappNumber: user.whatsappNumber || null,
-      whatsappMessage: user.whatsappMessage || null,
-      notificationSettings: user.notificationSettings || null,
-      createdAt: user.createdAt,
-    },
-  };
-}
 
 // ─── Google OAuth ─────────────────────────────────────────
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -111,7 +67,7 @@ router.post("/google", async (req, res) => {
       }
     }
 
-    const result = await issueTokens(res, user);
+    const result = await issueTokens(res, user, req);
     res.json(result);
   } catch (error) {
     log.error("Google OAuth failed", error);
@@ -180,7 +136,7 @@ router.post("/facebook", async (req, res) => {
       }
     }
 
-    const result = await issueTokens(res, user);
+    const result = await issueTokens(res, user, req);
     res.json(result);
   } catch (error) {
     log.error("Facebook OAuth failed", error);
@@ -279,7 +235,7 @@ router.post("/github", async (req, res) => {
       }
     }
 
-    const result = await issueTokens(res, user);
+    const result = await issueTokens(res, user, req);
     res.json(result);
   } catch (error) {
     log.error("GitHub OAuth failed", error);
@@ -365,7 +321,7 @@ router.post("/linkedin", async (req, res) => {
       }
     }
 
-    const result = await issueTokens(res, user);
+    const result = await issueTokens(res, user, req);
     res.json(result);
   } catch (error) {
     log.error("LinkedIn OAuth failed", error);
@@ -433,7 +389,7 @@ router.post("/apple", async (req, res) => {
       }
     }
 
-    const result = await issueTokens(res, user);
+    const result = await issueTokens(res, user, req);
     res.json(result);
   } catch (error) {
     log.error("Apple OAuth failed", error);

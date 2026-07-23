@@ -13,6 +13,7 @@ export default function Register() {
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
   const [phone, setPhone] = useState('')
+  const [idNumber, setIdNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -49,6 +50,10 @@ export default function Register() {
       setError('יש לאמת שאתה לא רובוט')
       return
     }
+    if (!idNumber || idNumber.length !== 9) {
+      setError('יש להזין תעודת זהות תקינה (9 ספרות)')
+      return
+    }
     if (!agreedToTerms) {
       setError('יש לאשר את תנאי השימוש ומדיניות הפרטיות')
       return
@@ -56,7 +61,7 @@ export default function Register() {
     setLoading(true)
     setError(null)
     try {
-      const res = await authAPI.register(email, password, name, gender, phone, captchaToken)
+      const res = await authAPI.register(email, password, name, gender, phone, idNumber, captchaToken)
       if (res.data?.requiresVerification) {
         setVerificationStep(true)
       } else if (res.data?.user) {
@@ -120,7 +125,7 @@ export default function Register() {
       ) : verificationStep ? (
         <div className="auth-card">
           <div className="auth-toprow">
-            <div className="auth-toprow-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /></div>
+            <div className="auth-toprow-logo"><img src="/logo.svg" alt="Possbo" className="auth-logo-img" /></div>
             <button className="auth-back-btn" onClick={() => setVerificationStep(false)}>←</button>
           </div>
           <div className="auth-header">
@@ -148,7 +153,7 @@ export default function Register() {
       ) : (
       <div className="auth-card">
         <div className="auth-toprow">
-          <Link to="/" className="auth-toprow-logo"><img src="/logo.svg" alt="PostIt" className="auth-logo-img" /></Link>
+          <Link to="/" className="auth-toprow-logo"><img src="/logo.svg" alt="Possbo" className="auth-logo-img" /></Link>
           <Link to="/" className="auth-back-btn">←</Link>
         </div>
         <div className="auth-header">
@@ -186,6 +191,16 @@ export default function Register() {
             placeholder="מספר טלפון"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
+          />
+          <input
+            type="text"
+            className="auth-input"
+            placeholder="תעודת זהות *"
+            value={idNumber}
+            onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, '').slice(0, 9))}
+            required
+            maxLength={9}
+            inputMode="numeric"
           />
 
           <div className="auth-select-wrapper">

@@ -81,31 +81,37 @@ function GlobalPublishBanner() {
       if (targets?.groups) targetParts.push(`${targets.groups} קבוצות`)
       if (targets?.profile) targetParts.push('פרופיל')
       if (targets?.instagram) targetParts.push('Instagram')
+      if (targets?.whatsapp) targetParts.push('WhatsApp')
       const targetLabel = targetParts.length > 0 ? targetParts.join(' + ') : `${count} יעדים`
       addBanner('publish', { type: 'progress', msg: `⏳ מפרסם ב-${targetLabel}...` })
 
       // Poll for completion
       if (postId) {
         if (pollRef.current) clearInterval(pollRef.current)
+        let pollCycle = 0
         pollRef.current = setInterval(async () => {
           try {
+            pollCycle++
             const res = await groupsService.getCampaign(postId)
             const campaign = res.data?.campaign
             if (!campaign) return
             const history = campaign.publicationHistory || []
-            const totalJobs = (campaign.groups?.length || 0) + (campaign.publishToProfile ? 1 : 0) + (campaign.instagramEnabled ? 1 : 0)
-            const completed = history.length
-            if (completed >= totalJobs && totalJobs > 0) {
+            const totalJobs = campaign.totalJobs || (campaign.groups?.length || 0) + (campaign.publishToProfile ? 1 : 0) + (campaign.instagramPublishType ? campaign.instagramPublishType.split(',').length : 0)
+            const completed = campaign.completedJobs ?? history.length
+            const pending = campaign.pendingJobs ?? (totalJobs - completed)
+            if (pending <= 0 && totalJobs > 0) {
               clearInterval(pollRef.current)
               pollRef.current = null
               const failed = history.filter(h => h.status === 'FAILED').length
               const succeeded = history.filter(h => h.status === 'SUCCESS').length
               // Build platform-aware success message
               const successParts = []
-              const fbSuccess = history.filter(h => h.status === 'SUCCESS' && h.platform !== 'INSTAGRAM').length
+              const fbSuccess = history.filter(h => h.status === 'SUCCESS' && h.platform !== 'INSTAGRAM' && h.platform !== 'WHATSAPP').length
               const igSuccess = history.filter(h => h.status === 'SUCCESS' && h.platform === 'INSTAGRAM').length
+              const waSuccess = history.filter(h => h.status === 'SUCCESS' && h.platform === 'WHATSAPP').length
               if (fbSuccess > 0) successParts.push(`${fbSuccess} בפייסבוק`)
               if (igSuccess > 0) successParts.push(`${igSuccess} באינסטגרם`)
+              if (waSuccess > 0) successParts.push(`${waSuccess} בוואטסאפ`)
               const successLabel = successParts.length > 0 ? successParts.join(' + ') : `${succeeded} יעדים`
               if (failed === 0) {
                 addBanner('publish', { type: 'success', msg: `✅ פורסם בהצלחה ב-${successLabel}!` })
@@ -114,9 +120,24 @@ function GlobalPublishBanner() {
                 addBanner('publish', { type: 'error', msg: `⚠️ ${succeeded}/${totalJobs} פורסמו. ${failed} נכשלו.` })
               }
               setTimeout(() => removeBanner('publish'), 8000)
-              window.dispatchEvent(new CustomEvent('postit-publish-done', { detail: { allSuccess: failed === 0, total: totalJobs, failed, targets: { groups: campaign.groups?.length || 0, profile: campaign.publishToProfile, instagram: campaign.instagramEnabled } } }))
+              window.dispatchEvent(new CustomEvent('possbo-publish-done', { detail: { allSuccess: failed === 0, total: totalJobs, failed, targets: { groups: campaign.groups?.length || 0, profile: campaign.publishToProfile, instagram: campaign.instagramEnabled } } }))
+              // Trigger dashboard data refresh
+              window.dispatchEvent(new CustomEvent('possbo-pull-refresh'))
             } else if (completed > 0) {
-              addBanner('publish', { type: 'progress', msg: `⏳ מפרסם... ${completed}/${totalJobs} הושלמו` })
+              // Show which targets completed so far
+              const doneParts = []
+              const fbDone = history.filter(h => h.platform !== 'INSTAGRAM' && h.platform !== 'WHATSAPP' && (h.status === 'SUCCESS' || h.status === 'FAILED')).length
+              const igDone = history.filter(h => h.platform === 'INSTAGRAM' && (h.status === 'SUCCESS' || h.status === 'FAILED')).length
+              const waDone = history.filter(h => h.platform === 'WHATSAPP' && (h.status === 'SUCCESS' || h.status === 'FAILED')).length
+              if (fbDone > 0) doneParts.push(`${fbDone} FB`)
+              if (igDone > 0) doneParts.push(`${igDone} IG`)
+              if (waDone > 0) doneParts.push(`${waDone} WA`)
+              const doneLabel = doneParts.length > 0 ? ` (${doneParts.join(', ')})` : ''
+              addBanner('publish', { type: 'progress', msg: `⏳ מפרסם... ${completed}/${totalJobs} הושלמו${doneLabel}` })
+              // Refresh dashboard data every 3rd poll cycle (~15s) for live updates
+              if (pollCycle % 3 === 0) {
+                window.dispatchEvent(new CustomEvent('possbo-pull-refresh'))
+              }
             }
           } catch {
             // Ignore polling errors
@@ -128,7 +149,7 @@ function GlobalPublishBanner() {
       if (pollRef.current) return // Already handled by polling
       const { allSuccess, total, failed, targets } = e.detail
       const label = targets
-        ? [targets.groups && `${targets.groups} קבוצות`, targets.profile && 'פרופיל', targets.instagram && 'Instagram'].filter(Boolean).join(' + ')
+        ? [targets.groups && `${targets.groups} קבוצות`, targets.profile && 'פרופיל', targets.instagram && 'Instagram', targets.whatsapp && 'WhatsApp'].filter(Boolean).join(' + ')
         : `${total} יעדים`
       if (allSuccess) {
         addBanner('publish', { type: 'success', msg: `✅ פורסם בהצלחה ב-${label}!` })
@@ -160,19 +181,19 @@ function GlobalPublishBanner() {
       setTimeout(() => removeBanner(id), 4000)
     }
 
-    window.addEventListener('postit-publish-start', handlePublishStart)
-    window.addEventListener('postit-publish-done', handlePublishDone)
-    window.addEventListener('postit-sync-start', handleSyncStart)
-    window.addEventListener('postit-sync-done', handleSyncDone)
-    window.addEventListener('postit-op-start', handleOpStart)
-    window.addEventListener('postit-op-done', handleOpDone)
+    window.addEventListener('possbo-publish-start', handlePublishStart)
+    window.addEventListener('possbo-publish-done', handlePublishDone)
+    window.addEventListener('possbo-sync-start', handleSyncStart)
+    window.addEventListener('possbo-sync-done', handleSyncDone)
+    window.addEventListener('possbo-op-start', handleOpStart)
+    window.addEventListener('possbo-op-done', handleOpDone)
     return () => {
-      window.removeEventListener('postit-publish-start', handlePublishStart)
-      window.removeEventListener('postit-publish-done', handlePublishDone)
-      window.removeEventListener('postit-sync-start', handleSyncStart)
-      window.removeEventListener('postit-sync-done', handleSyncDone)
-      window.removeEventListener('postit-op-start', handleOpStart)
-      window.removeEventListener('postit-op-done', handleOpDone)
+      window.removeEventListener('possbo-publish-start', handlePublishStart)
+      window.removeEventListener('possbo-publish-done', handlePublishDone)
+      window.removeEventListener('possbo-sync-start', handleSyncStart)
+      window.removeEventListener('possbo-sync-done', handleSyncDone)
+      window.removeEventListener('possbo-op-start', handleOpStart)
+      window.removeEventListener('possbo-op-done', handleOpDone)
       if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [])

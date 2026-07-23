@@ -598,6 +598,148 @@ describe("POST /api/auth/disconnect-facebook", () => {
   });
 });
 
+describe("POST /api/auth/register — additional edge cases", () => {
+  it("should return 400 for password longer than 128 chars", async () => {
+    const res = await request(app)
+      .post("/api/auth/register")
+      .send({
+        email: "test@test.com",
+        password: "a".repeat(129),
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 for password at exactly 5 chars", async () => {
+    const res = await request(app).post("/api/auth/register").send({
+      email: "test@test.com",
+      password: "12345",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("should accept password at exactly 6 chars", async () => {
+    mockUserFindUnique.mockResolvedValue(null);
+    const res = await request(app).post("/api/auth/register").send({
+      email: "test@test.com",
+      password: "123456",
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("should accept password at exactly 128 chars", async () => {
+    mockUserFindUnique.mockResolvedValue(null);
+    const res = await request(app)
+      .post("/api/auth/register")
+      .send({
+        email: "test@test.com",
+        password: "a".repeat(128),
+      });
+    expect(res.status).toBe(200);
+  });
+
+  it("should return 400 when password is missing", async () => {
+    const res = await request(app).post("/api/auth/register").send({
+      email: "test@test.com",
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/auth/login — additional edge cases", () => {
+  it("should return 400 when password is missing", async () => {
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "test@test.com" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 when both email and password are missing", async () => {
+    const res = await request(app).post("/api/auth/login").send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("should not leak whether user exists on wrong password", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      id: "user-1",
+      email: "test@test.com",
+      passwordHash: "hashed_correctpassword",
+    });
+    const wrongRes = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "test@test.com", password: "wrongpassword" });
+
+    mockUserFindUnique.mockResolvedValue(null);
+    const noUserRes = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "noone@test.com", password: "password" });
+
+    // Both should return same status — no user enumeration
+    expect(wrongRes.status).toBe(noUserRes.status);
+  });
+});
+
+describe("POST /api/auth/reset-password — additional edge cases", () => {
+  it("should return 400 when newPassword is missing", async () => {
+    const res = await request(app)
+      .post("/api/auth/reset-password")
+      .send({ email: "test@test.com", code: "123456" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 when code is missing", async () => {
+    const res = await request(app)
+      .post("/api/auth/reset-password")
+      .send({ email: "test@test.com", newPassword: "newpass123" });
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 for wrong reset code", async () => {
+    // Trigger forgot-password first
+    mockUserFindUnique.mockResolvedValue({
+      id: "user-1",
+      email: "reset@test.com",
+    });
+    await request(app)
+      .post("/api/auth/forgot-password")
+      .send({ email: "reset@test.com" });
+
+    const res = await request(app).post("/api/auth/reset-password").send({
+      email: "reset@test.com",
+      code: "000000",
+      newPassword: "newpassword123",
+    });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/auth/profile — additional edge cases", () => {
+  it("should accept valid email update", async () => {
+    mockUserFindFirst.mockResolvedValue(null); // email not taken
+    mockUserUpdate.mockResolvedValue({
+      id: "user-1",
+      email: "new@test.com",
+      name: "Test",
+    });
+    const res = await request(app)
+      .patch("/api/auth/profile")
+      .send({ email: "new@test.com" });
+    expect(res.status).toBe(200);
+  });
+
+  it("should accept name and phone together", async () => {
+    mockUserUpdate.mockResolvedValue({
+      id: "user-1",
+      name: "Updated",
+      phone: "0501234567",
+    });
+    const res = await request(app)
+      .patch("/api/auth/profile")
+      .send({ name: "Updated", phone: "0501234567" });
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("PATCH /api/auth/whatsapp", () => {
   it("should save valid whatsapp number", async () => {
     mockUserUpdate.mockResolvedValue({});
@@ -629,7 +771,7 @@ describe("PATCH /api/auth/whatsapp", () => {
     mockUserUpdate.mockResolvedValue({});
     const res = await request(app)
       .patch("/api/auth/whatsapp")
-      .send({ whatsappMessage: "Hello from PostIt" });
+      .send({ whatsappMessage: "Hello from Possbo" });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
   });

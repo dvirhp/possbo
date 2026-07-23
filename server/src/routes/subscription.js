@@ -65,7 +65,7 @@ router.post("/subscribe", async (req, res) => {
     //   token,
     //   amount: plan.priceMonthly * 100, // in agorot
     //   currency: 'ILS',
-    //   description: `PostIt - ${plan.name}`,
+    //   description: `Possbo - ${plan.name}`,
     //   recurring: true
     // })
 

@@ -120,6 +120,11 @@
   border-radius: 8px;
 }
 
+.auth-logo-img.auth-logo-wordmark {
+  width: auto;
+  height: 34px;
+}
+
 .auth-header h2 {
   font-size: 22px;
   margin-bottom: 4px;

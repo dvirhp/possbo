@@ -42,4 +42,70 @@ describe("encryption", () => {
     const parts = encrypted.split(":");
     expect(parts).toHaveLength(4);
   });
+
+  it("should throw when decrypting corrupted ciphertext (wrong format)", () => {
+    expect(() => decrypt("not:enough:parts")).toThrow();
+    expect(() => decrypt("onlyone")).toThrow();
+  });
+
+  it("should throw when decrypting tampered ciphertext", () => {
+    const encrypted = encrypt("sensitive-data");
+    const parts = encrypted.split(":");
+    // Tamper with the ciphertext portion
+    parts[3] = "ff".repeat(parts[3].length / 2);
+    const tampered = parts.join(":");
+    expect(() => decrypt(tampered)).toThrow();
+  });
+
+  it("should throw when auth tag is corrupted", () => {
+    const encrypted = encrypt("test-data");
+    const parts = encrypted.split(":");
+    // Corrupt the auth tag
+    parts[2] = "00".repeat(parts[2].length / 2);
+    const corrupted = parts.join(":");
+    expect(() => decrypt(corrupted)).toThrow();
+  });
+
+  it("should handle unicode and Hebrew text", () => {
+    const plaintext = "שלום עולם 🌍 مرحبا";
+    const encrypted = encrypt(plaintext);
+    expect(decrypt(encrypted)).toBe(plaintext);
+  });
+
+  it("should handle very long strings", () => {
+    const plaintext = "a".repeat(100000);
+    const encrypted = encrypt(plaintext);
+    expect(decrypt(encrypted)).toBe(plaintext);
+  });
+
+  it("should throw when ENCRYPTION_KEY is too short", () => {
+    const original = process.env.ENCRYPTION_KEY;
+    process.env.ENCRYPTION_KEY = "short";
+    expect(() => encrypt("test")).toThrow("ENCRYPTION_KEY");
+    process.env.ENCRYPTION_KEY = original;
+  });
+
+  it("should throw when ENCRYPTION_KEY is missing", () => {
+    const original = process.env.ENCRYPTION_KEY;
+    delete process.env.ENCRYPTION_KEY;
+    expect(() => encrypt("test")).toThrow("ENCRYPTION_KEY");
+    process.env.ENCRYPTION_KEY = original;
+  });
+
+  it("should fail decryption with a different encryption key", () => {
+    const encrypted = encrypt("secret");
+    const original = process.env.ENCRYPTION_KEY;
+    process.env.ENCRYPTION_KEY =
+      "different-encryption-key-that-is-at-least-32-chars";
+    expect(() => decrypt(encrypted)).toThrow();
+    process.env.ENCRYPTION_KEY = original;
+  });
+
+  it("should only contain hex characters in each part", () => {
+    const encrypted = encrypt("test");
+    const parts = encrypted.split(":");
+    parts.forEach((part) => {
+      expect(part).toMatch(/^[0-9a-f]+$/);
+    });
+  });
 });
