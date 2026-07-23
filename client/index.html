@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="/logo-icon.svg" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
@@ -21,14 +21,22 @@
       href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=Heebo:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <title>PostIt</title>
+    <title>Possbo</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
-      (function(){
-        var t=localStorage.getItem('postit-theme')||'dark';
-        var bg=t==='light'?'#f8fafc':'#0a0a0a';
-        document.documentElement.style.background=bg;
-        document.write('<style>body{margin:0;background:'+bg+'}#root{background:'+bg+';min-height:100vh}#splash{background:'+bg+'}</style>');
+      (function () {
+        var t = localStorage.getItem("possbo-theme") || "dark";
+        var bg = t === "light" ? "#f8fafc" : "#0a0a0a";
+        document.documentElement.style.background = bg;
+        document.write(
+          "<style>body{margin:0;background:" +
+            bg +
+            "}#root{background:" +
+            bg +
+            ";min-height:100vh}#splash{background:" +
+            bg +
+            "}</style>",
+        );
       })();
     </script>
   </head>
@@ -45,7 +53,7 @@
         "
       >
         <img
-          src="/logo.svg"
+          src="/logo-icon.svg"
           alt=""
           width="80"
           height="80"

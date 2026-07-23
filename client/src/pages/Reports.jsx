@@ -287,7 +287,7 @@ export default function Reports() {
   const navigate = useNavigate()
   const { user, authChecked, posts, campaigns, groups, jobs, ensureFresh, forceRefresh } = useAppData()
   const [period, setPeriod] = useState('weekly')
-  const [platformFilter, setPlatformFilter] = useState('all') // 'all' | 'facebook' | 'instagram'
+  const [platformFilter, setPlatformFilter] = useState('all') // 'all' | 'facebook' | 'instagram' | 'whatsapp'
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showMoreHistory, setShowMoreHistory] = useState(false)
@@ -307,24 +307,24 @@ export default function Reports() {
 
     // Refresh when a publish completes or campaign is created
     const handleRefresh = () => forceRefresh()
-    window.addEventListener('postit-publish-done', handleRefresh)
-    window.addEventListener('postit-op-done', handleRefresh)
+    window.addEventListener('possbo-publish-done', handleRefresh)
+    window.addEventListener('possbo-op-done', handleRefresh)
 
     // Respond to global pull-to-refresh from AuthLayout
     const handlePullRefresh = async () => {
       await forceRefresh()
-      window.dispatchEvent(new Event('postit-pull-refresh-done'))
+      window.dispatchEvent(new Event('possbo-pull-refresh-done'))
     }
-    window.addEventListener('postit-pull-refresh', handlePullRefresh)
+    window.addEventListener('possbo-pull-refresh', handlePullRefresh)
 
     // Refresh when user returns to this tab
     const handleFocus = () => ensureFresh()
     window.addEventListener('focus', handleFocus)
 
     return () => {
-      window.removeEventListener('postit-publish-done', handleRefresh)
-      window.removeEventListener('postit-op-done', handleRefresh)
-      window.removeEventListener('postit-pull-refresh', handlePullRefresh)
+      window.removeEventListener('possbo-publish-done', handleRefresh)
+      window.removeEventListener('possbo-op-done', handleRefresh)
+      window.removeEventListener('possbo-pull-refresh', handlePullRefresh)
       window.removeEventListener('focus', handleFocus)
     }
   }, [])
@@ -408,11 +408,11 @@ export default function Reports() {
   }, [posts, campaigns])
 
   // Helper: resolve effective platform from platform + targetType fields
-  const getEffectivePlatform = (p) => p.platform || (p.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK')
+  const getEffectivePlatform = (p) => p.platform || (p.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : p.targetType === 'WHATSAPP' ? 'WHATSAPP' : 'FACEBOOK')
 
   // Compute stats based on period
   const stats = useMemo(() => {
-    if (!posts?.length) return { total: 0, success: 0, failed: 0, successRate: 0, groups: 0, exposure: 0, fbCount: 0, igCount: 0 }
+    if (!posts?.length) return { total: 0, success: 0, failed: 0, successRate: 0, groups: 0, exposure: 0, fbCount: 0, igCount: 0, waCount: 0 }
 
     let filtered = posts.filter(p => {
       const d = new Date(p.publishedAt || p.createdAt)
@@ -421,9 +421,11 @@ export default function Reports() {
 
     // Apply platform filter
     if (platformFilter === 'facebook') {
-      filtered = filtered.filter(p => getEffectivePlatform(p) !== 'INSTAGRAM')
+      filtered = filtered.filter(p => getEffectivePlatform(p) === 'FACEBOOK')
     } else if (platformFilter === 'instagram') {
       filtered = filtered.filter(p => getEffectivePlatform(p) === 'INSTAGRAM')
+    } else if (platformFilter === 'whatsapp') {
+      filtered = filtered.filter(p => getEffectivePlatform(p) === 'WHATSAPP')
     }
 
     const success = filtered.filter(p => p.status === 'SUCCESS').length
@@ -431,10 +433,11 @@ export default function Reports() {
     const total = filtered.length
     const uniqueGroups = new Set(filtered.map(p => p.groupId).filter(Boolean)).size
     const exposure = filtered.reduce((sum, p) => sum + (p.groupMemberCount || 0), 0)
-    const fbCount = filtered.filter(p => getEffectivePlatform(p) !== 'INSTAGRAM').length
+    const fbCount = filtered.filter(p => getEffectivePlatform(p) === 'FACEBOOK').length
     const igCount = filtered.filter(p => getEffectivePlatform(p) === 'INSTAGRAM').length
+    const waCount = filtered.filter(p => getEffectivePlatform(p) === 'WHATSAPP').length
 
-    return { total, success, failed, successRate: total ? Math.round((success / total) * 100) : 0, groups: uniqueGroups, exposure, fbCount, igCount }
+    return { total, success, failed, successRate: total ? Math.round((success / total) * 100) : 0, groups: uniqueGroups, exposure, fbCount, igCount, waCount }
   }, [posts, startDate, endDate, platformFilter])
 
   // Recent activity log
@@ -444,8 +447,9 @@ export default function Reports() {
       .filter(p => {
         const d = new Date(p.publishedAt || p.createdAt)
         if (d < startDate || d > endDate) return false
-        if (platformFilter === 'facebook') return getEffectivePlatform(p) !== 'INSTAGRAM'
+        if (platformFilter === 'facebook') return getEffectivePlatform(p) === 'FACEBOOK'
         if (platformFilter === 'instagram') return getEffectivePlatform(p) === 'INSTAGRAM'
+        if (platformFilter === 'whatsapp') return getEffectivePlatform(p) === 'WHATSAPP'
         return true
       })
       .sort((a, b) => new Date(b.publishedAt || b.createdAt) - new Date(a.publishedAt || a.createdAt))
@@ -455,7 +459,7 @@ export default function Reports() {
         postId: p.postGroupId || p.postId || p.id,
         campaignName: p.post?.title || p.campaignTitle || p.title || p.post?.content?.slice(0, 40) || 'ללא שם',
         groupName: p.group?.name || p.groupName || 'לא ידוע',
-        platform: p.platform || (p.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'),
+        platform: p.platform || (p.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : p.targetType === 'WHATSAPP' ? 'WHATSAPP' : 'FACEBOOK'),
         targetType: p.targetType || 'GROUP',
         status: p.status,
         date: p.publishedAt || p.createdAt,
@@ -686,7 +690,7 @@ export default function Reports() {
       printWindow.document.write(`
         <html dir="rtl">
         <head>
-          <title>דוח PostIt - ${period === 'daily' ? 'יומי' : period === 'weekly' ? 'שבועי' : 'חודשי'}</title>
+          <title>דוח Possbo - ${period === 'daily' ? 'יומי' : period === 'weekly' ? 'שבועי' : 'חודשי'}</title>
           <style>
             body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 40px; color: #222; direction: rtl; }
             h1 { color: #6366f1; font-size: 24px; border-bottom: 2px solid #6366f1; padding-bottom: 8px; }
@@ -704,7 +708,7 @@ export default function Reports() {
           </style>
         </head>
         <body>
-          <h1>📊 דוח פעילות PostIt</h1>
+          <h1>📊 דוח פעילות Possbo</h1>
           <p>תקופה: ${period === 'daily' ? 'יומי (24 שעות אחרונות)' : period === 'weekly' ? 'שבועי (7 ימים אחרונים)' : 'חודשי (30 ימים אחרונים)'}</p>
           <p>תאריך הפקה: ${new Date().toLocaleDateString('he-IL')}</p>
           
@@ -742,7 +746,7 @@ export default function Reports() {
             </table>
           ` : ''}
 
-          <div class="footer">הופק אוטומטית על ידי PostIt • ${new Date().toLocaleDateString('he-IL')}</div>
+          <div class="footer">הופק אוטומטית על ידי Possbo • ${new Date().toLocaleDateString('he-IL')}</div>
         </body>
         </html>
       `)
@@ -797,6 +801,7 @@ export default function Reports() {
           <button className={`rpf-btn ${platformFilter === 'all' ? 'active' : ''}`} onClick={() => setPlatformFilter('all')}>הכל</button>
           <button className={`rpf-btn ${platformFilter === 'facebook' ? 'active' : ''}`} onClick={() => setPlatformFilter('facebook')}>פייסבוק</button>
           <button className={`rpf-btn ${platformFilter === 'instagram' ? 'active' : ''}`} onClick={() => setPlatformFilter('instagram')}>אינסטגרם</button>
+          <button className={`rpf-btn ${platformFilter === 'whatsapp' ? 'active' : ''}`} onClick={() => setPlatformFilter('whatsapp')}>וואטסאפ</button>
         </div>
 
         {/* KPI Cards */}
@@ -834,10 +839,11 @@ export default function Reports() {
         </div>
 
         {/* Platform breakdown mini stats */}
-        {platformFilter === 'all' && (stats.fbCount > 0 || stats.igCount > 0) && (
+        {platformFilter === 'all' && (stats.fbCount > 0 || stats.igCount > 0 || stats.waCount > 0) && (
           <div className="reports-platform-breakdown">
             {stats.fbCount > 0 && <span className="rpb-item rpb-facebook">פייסבוק: {stats.fbCount}</span>}
             {stats.igCount > 0 && <span className="rpb-item rpb-instagram">אינסטגרם: {stats.igCount}</span>}
+            {stats.waCount > 0 && <span className="rpb-item rpb-whatsapp">וואטסאפ: {stats.waCount}</span>}
           </div>
         )}
 
@@ -863,7 +869,7 @@ export default function Reports() {
                     <tr key={a.id} onClick={() => openDetail(a)}>
                       <td className="reports-cell-campaign">{a.campaignName}</td>
                       <td className="reports-cell-group">{a.groupName}</td>
-                      <td><span className={`reports-platform-tag ${a.platform === 'INSTAGRAM' ? 'rpt-ig' : 'rpt-fb'}`}>{a.platform === 'INSTAGRAM' ? 'אינסטגרם' : a.targetType === 'PROFILE' ? 'פרופיל' : 'פייסבוק'}{a.targetType === 'INSTAGRAM' && a.platform === 'INSTAGRAM' ? '' : ''}</span></td>
+                      <td><span className={`reports-platform-tag ${a.platform === 'INSTAGRAM' ? 'rpt-ig' : a.platform === 'WHATSAPP' ? 'rpt-wa' : 'rpt-fb'}`}>{a.platform === 'INSTAGRAM' ? 'אינסטגרם' : a.platform === 'WHATSAPP' ? 'וואטסאפ' : a.targetType === 'PROFILE' ? 'פרופיל' : 'פייסבוק'}</span></td>
                       <td>
                         <span className={`reports-status ${a.status === 'SUCCESS' ? 'success' : 'failed'}`}>
                           {a.status === 'SUCCESS' ? <><CheckCircle size={14} /> הצלחה</> : <><XCircle size={14} /> נכשל</>}

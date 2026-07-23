@@ -1,8 +1,5 @@
 import express from "express";
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import multer from "multer";
 import prisma from "../config/prisma.js";
 import {
   publishToGroup,
@@ -13,29 +10,12 @@ import {
   getAllPosts,
   getPostsByGroup,
 } from "../utils/posts-storage.js";
-import {
-  sanitizeText,
-  imageFileFilter,
-  MAX_FILE_SIZE,
-  safeFilename,
-} from "../utils/security.js";
+import { sanitizeText } from "../utils/security.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { createLogger } from "../utils/logger.js";
 import { requireAuth } from "../utils/auth-middleware.js";
+import { uploadImages } from "../utils/upload-service.js";
 const log = createLogger("publish");
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const uploadsDir = path.join(__dirname, "..", "..", "uploads");
-
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (_req, file, cb) => cb(null, safeFilename(file.mimetype)),
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: MAX_FILE_SIZE },
-  fileFilter: imageFileFilter,
-});
 
 const router = express.Router();
 
@@ -43,7 +23,7 @@ const router = express.Router();
 router.post(
   "/",
   requireAuth,
-  upload.array("images", 10),
+  uploadImages(),
   asyncHandler(async (req, res) => {
     const { groupUrl, groupName, text, anonymous, location, title } = req.body;
     if (!groupUrl || !text) {
@@ -104,30 +84,32 @@ router.post(
             },
           });
         }
-        // Create a post record for the failed attempt
-        const post = await prisma.post.create({
-          data: {
-            userId: req.user.id,
-            title: title || null,
-            content: sanitizedText,
-            status: "DRAFT",
-            isAnonymous: isAnonymous,
-            location: sanitizedLocation || null,
-          },
-        });
-        const postGroup = await prisma.postGroup.create({
-          data: { postId: post.id, groupId: group.id, userId: req.user.id },
-        });
-        await prisma.publicationHistory.create({
-          data: {
-            postId: post.id,
-            groupId: group.id,
-            userId: req.user.id,
-            postGroupId: postGroup.id,
-            publishedAt: new Date(),
-            status: "FAILED",
-            errorMessage: err.message || "Unknown error",
-          },
+        // Record the failed attempt inside a transaction
+        await prisma.$transaction(async (tx) => {
+          const post = await tx.post.create({
+            data: {
+              userId: req.user.id,
+              title: title || null,
+              content: sanitizedText,
+              status: "DRAFT",
+              isAnonymous: isAnonymous,
+              location: sanitizedLocation || null,
+            },
+          });
+          const postGroup = await tx.postGroup.create({
+            data: { postId: post.id, groupId: group.id, userId: req.user.id },
+          });
+          await tx.publicationHistory.create({
+            data: {
+              postId: post.id,
+              groupId: group.id,
+              userId: req.user.id,
+              postGroupId: postGroup.id,
+              publishedAt: new Date(),
+              status: "FAILED",
+              errorMessage: err.message || "Unknown error",
+            },
+          });
         });
       } catch (dbErr) {
         log.error("Failed to record failed publication", {
@@ -156,7 +138,7 @@ router.get("/history", requireAuth, async (req, res) => {
 router.post(
   "/profile",
   requireAuth,
-  upload.array("images", 10),
+  uploadImages(),
   asyncHandler(async (req, res) => {
     const { text, location, title } = req.body;
     if (!text) {
@@ -221,20 +203,23 @@ router.post(
             location: sanitizedLocation || null,
           },
         });
-        const postGroup = await prisma.postGroup.create({
-          data: { postId: post.id, groupId: group.id, userId: req.user.id },
-        });
-        await prisma.publicationHistory.create({
-          data: {
-            postId: post.id,
-            groupId: group.id,
-            userId: req.user.id,
-            postGroupId: postGroup.id,
-            targetType: "PROFILE",
-            publishedAt: new Date(),
-            status: "FAILED",
-            errorMessage: err.message || "Unknown error",
-          },
+        // Wrap dependent creates in a transaction
+        await prisma.$transaction(async (tx) => {
+          const postGroup = await tx.postGroup.create({
+            data: { postId: post.id, groupId: group.id, userId: req.user.id },
+          });
+          await tx.publicationHistory.create({
+            data: {
+              postId: post.id,
+              groupId: group.id,
+              userId: req.user.id,
+              postGroupId: postGroup.id,
+              targetType: "PROFILE",
+              publishedAt: new Date(),
+              status: "FAILED",
+              errorMessage: err.message || "Unknown error",
+            },
+          });
         });
       } catch (dbErr) {
         log.error("Failed to record failed profile publication", {

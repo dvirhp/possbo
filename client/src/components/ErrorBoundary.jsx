@@ -12,7 +12,7 @@ export default class ErrorBoundary extends Component {
 
   render() {
     if (this.state.hasError) {
-      const mailto = 'mailto:support@postit.co.il?subject=שגיאה באפליקציה&body=שלום, נתקלתי בשגיאה באפליקציה. אשמח לעזרה.'
+      const mailto = 'mailto:support@possbo.co.il?subject=שגיאה באפליקציה&body=שלום, נתקלתי בשגיאה באפליקציה. אשמח לעזרה.'
       return (
         <div className="error-boundary">
           <div className="error-boundary-card">

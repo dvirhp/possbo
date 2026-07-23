@@ -1,9 +1,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import axios from "axios";
-import multer from "multer";
 import prisma from "../config/prisma.js";
 import {
   bootstrapFacebookSession,
@@ -18,31 +16,10 @@ import {
   isRefreshInProgress,
   getRefreshProgress,
 } from "../jobs/group-metadata-refresh.js";
-import {
-  isAllowedUrl,
-  sanitizeText,
-  imageFileFilter,
-  MAX_FILE_SIZE,
-  safeFilename,
-} from "../utils/security.js";
+import { isAllowedUrl, sanitizeText } from "../utils/security.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { requireAuth } from "../utils/auth-middleware.js";
-
-const uploadsDir = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "uploads",
-);
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (_req, file, cb) => cb(null, safeFilename(file.mimetype)),
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: MAX_FILE_SIZE },
-  fileFilter: imageFileFilter,
-});
+import { uploadSingle, uploadsDir } from "../utils/upload-service.js";
 
 const router = express.Router();
 const log = createLogger("groups");
@@ -602,7 +579,7 @@ router.get(
 router.post(
   "/publish",
   requireAuth,
-  upload.single("image"),
+  uploadSingle("", "image"),
   asyncHandler(async (req, res) => {
     const { groupUrl, groupName, text, anonymous, location } = req.body;
     if (!groupUrl || !text) {

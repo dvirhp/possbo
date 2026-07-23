@@ -1,22 +1,41 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 
 const ThemeContext = createContext()
 
+function getSystemTheme() {
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(() => {
-    return localStorage.getItem('postit-theme') || 'light'
+  const [themeMode, setThemeModeState] = useState(() => {
+    return localStorage.getItem('possbo-theme') || 'system'
   })
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('postit-theme', theme)
-  }, [theme])
+  const resolvedTheme = themeMode === 'system' ? getSystemTheme() : themeMode
 
-  const setTheme = (t) => setThemeState(t)
-  const toggleTheme = () => setThemeState(prev => prev === 'dark' ? 'light' : 'dark')
+  const applyTheme = useCallback((t) => {
+    document.documentElement.setAttribute('data-theme', t)
+  }, [])
+
+  useEffect(() => {
+    applyTheme(resolvedTheme)
+    localStorage.setItem('possbo-theme', themeMode)
+  }, [themeMode, resolvedTheme, applyTheme])
+
+  // Listen for OS theme changes when in system mode
+  useEffect(() => {
+    if (themeMode !== 'system') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = () => applyTheme(getSystemTheme())
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [themeMode, applyTheme])
+
+  const setTheme = (t) => setThemeModeState(t)
+  const toggleTheme = () => setThemeModeState(prev => prev === 'dark' ? 'light' : 'dark')
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme: resolvedTheme, themeMode, setTheme, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   )

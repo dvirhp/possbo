@@ -105,7 +105,7 @@ import OtpInput from '../components/OtpInput'
 
 const TABS = [
   { id: 'campaigns', icon: '📅', label: 'קמפיינים' },
-  { id: 'groups', icon: '👥', label: 'קבוצות פייסבוק' },
+  { id: 'groups', icon: '👥', label: 'קבוצות' },
   { id: 'posts', icon: '📝', label: 'פרסומים' },
   { id: 'stats', icon: '📊', label: 'סטטיסטיקה' },
   { id: 'account', icon: '👤', label: 'ניהול חשבון' },
@@ -113,7 +113,7 @@ const TABS = [
 
 const NAV_ITEMS = [
   { id: 'campaigns', icon: 'calendar', label: 'קמפיינים' },
-  { id: 'groups', icon: 'users', label: 'קבוצות פייסבוק' },
+  { id: 'groups', icon: 'users', label: 'קבוצות' },
   { id: 'posts', icon: 'send', label: 'פרסומים' },
   { id: 'stats', icon: 'chart', label: 'סטטיסטיקה' },
   { id: 'account', icon: 'account', label: 'ניהול חשבון' },
@@ -150,10 +150,10 @@ export default function Dashboard() {
   useEffect(() => {
     const handler = async () => {
       await forceRefresh()
-      window.dispatchEvent(new Event('postit-pull-refresh-done'))
+      window.dispatchEvent(new Event('possbo-pull-refresh-done'))
     }
-    window.addEventListener('postit-pull-refresh', handler)
-    return () => window.removeEventListener('postit-pull-refresh', handler)
+    window.addEventListener('possbo-pull-refresh', handler)
+    return () => window.removeEventListener('possbo-pull-refresh', handler)
   }, [forceRefresh])
 
   // Sync subTab from URL (e.g. navigating from Overview KPIs)
@@ -292,7 +292,7 @@ export default function Dashboard() {
   const handleRefreshGroups = async () => {
     setRefreshingGroups(true)
     setSessionRequired(false)
-    window.dispatchEvent(new CustomEvent('postit-sync-start', { detail: { msg: 'מסנכרן קבוצות מפייסבוק... אפשר להמשיך לגלוש באתר' } }))
+    window.dispatchEvent(new CustomEvent('possbo-sync-start', { detail: { msg: 'מסנכרן קבוצות מפייסבוק... אפשר להמשיך לגלוש באתר' } }))
     try {
       const res = await groupsService.scrapeMyGroups()
       if (res.data.success && res.data.groups) {
@@ -306,7 +306,7 @@ export default function Dashboard() {
           memberCount: g.memberCount || oldMap[g.id]?.memberCount || null,
           privacyType: g.privacyType || oldMap[g.id]?.privacyType || null,
         })))
-        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: true, msg: `✅ סונכרנו ${res.data.groups.length} קבוצות בהצלחה! מעדכן מטא-דאטה ברקע...` } }))
+        window.dispatchEvent(new CustomEvent('possbo-sync-done', { detail: { success: true, msg: `✅ סונכרנו ${res.data.groups.length} קבוצות בהצלחה! מעדכן מטא-דאטה ברקע...` } }))
         // Trigger background metadata refresh (returns immediately with 202)
         groupsService.refreshGroupsMetadata().catch(() => {})
         // Poll for completion and refresh groups when done
@@ -331,9 +331,9 @@ export default function Dashboard() {
         setSessionRequired(true)
         // Update user state so the FB session banner appears
         setUser(prev => prev ? { ...prev, fbSessionValid: false } : prev)
-        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: false, msg: '⚠️ חיבור הפייסבוק פג תוקף, יש להתחבר מחדש' } }))
+        window.dispatchEvent(new CustomEvent('possbo-sync-done', { detail: { success: false, msg: '⚠️ חיבור הפייסבוק פג תוקף, יש להתחבר מחדש' } }))
       } else {
-        window.dispatchEvent(new CustomEvent('postit-sync-done', { detail: { success: false, msg: '⚠️ שגיאה בסנכרון הקבוצות' } }))
+        window.dispatchEvent(new CustomEvent('possbo-sync-done', { detail: { success: false, msg: '⚠️ שגיאה בסנכרון הקבוצות' } }))
       }
     } finally {
       setRefreshingGroups(false)
@@ -409,11 +409,13 @@ export default function Dashboard() {
 
     if (platformFilter !== 'all') {
       if (platformFilter === 'facebook') {
-        list = list.filter(c => (c.groupCount > 0 || c.publishToProfile) && !c.instagramEnabled)
+        list = list.filter(c => (c.groupCount > 0 || c.publishToProfile) && !c.instagramEnabled && !c.whatsappEnabled)
       } else if (platformFilter === 'instagram') {
-        list = list.filter(c => c.instagramEnabled && c.groupCount === 0 && !c.publishToProfile)
+        list = list.filter(c => c.instagramEnabled && c.groupCount === 0 && !c.publishToProfile && !c.whatsappEnabled)
+      } else if (platformFilter === 'whatsapp') {
+        list = list.filter(c => c.whatsappEnabled && c.groupCount === 0 && !c.publishToProfile && !c.instagramEnabled)
       } else if (platformFilter === 'both') {
-        list = list.filter(c => c.instagramEnabled && (c.groupCount > 0 || c.publishToProfile))
+        list = list.filter(c => (c.instagramEnabled && (c.groupCount > 0 || c.publishToProfile)) || (c.whatsappEnabled && (c.groupCount > 0 || c.publishToProfile || c.instagramEnabled)))
       }
     }
 
@@ -576,8 +578,7 @@ export default function Dashboard() {
       <aside className={`dash-sidebar ${sidebarOpen ? 'open' : 'collapsed'} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-top">
           <Link to="/dashboard" className="sidebar-logo" onClick={() => setMobileMenuOpen(false)}>
-            <img src="/logo.svg" alt="PostIt" className="sidebar-logo-img" />
-            {sidebarOpen && <span className="sidebar-logo-text">PostIt</span>}
+            <img src={sidebarOpen ? "/logo.svg" : "/logo-icon.svg"} alt="Possbo" className={`sidebar-logo-img ${sidebarOpen ? 'sidebar-logo-wordmark' : ''}`} />
           </Link>
         </div>
 
@@ -605,7 +606,7 @@ export default function Dashboard() {
             <div className="sidebar-user">
               <div className="sidebar-avatar">
                 {user.profileImage || user.avatarUrl
-                  ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('/uploads')) return `http://localhost:8000${v}`; if (v.startsWith('uploads/')) return `http://localhost:8000/${v}`; return v })()} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                  ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('uploads/')) return `/${v}`; return v })()} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={e => { e.target.style.display = 'none' }} />
                   : (user.name?.charAt(0) || user.email?.charAt(0) || '?')}
               </div>
               <div className="sidebar-user-info">
@@ -656,11 +657,11 @@ export default function Dashboard() {
         <div className="dash-body">
           {!authChecked ? (
             <div className="dash-loader">
-              <img src="/logo.svg" alt="" className="loader-logo-pulse" />
+              <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
             </div>
           ) : !dataReady ? (
             <div className="dash-loader">
-              <img src="/logo.svg" alt="" className="loader-logo-pulse" />
+              <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
             </div>
           ) : (
             <>
@@ -723,7 +724,7 @@ export default function Dashboard() {
                         </div>
                         <div className="kpi-card-data">
                           <span className="kpi-card-number">{kpiData.groups}</span>
-                          <span className="kpi-card-label">קבוצות פייסבוק</span>
+                          <span className="kpi-card-label">קבוצות</span>
                         </div>
                       </div>
                       <div className="kpi-card kpi-clickable" onClick={() => { setActiveTab('campaigns'); setCampaignSubTab('all'); }}>
@@ -765,7 +766,7 @@ export default function Dashboard() {
               )}
 
               {/* ─── FILTER BAR ─── */}
-              {activeTab !== 'account' && activeTab !== 'stats' && activeTab !== 'overview' && (
+              {activeTab !== 'account' && activeTab !== 'stats' && activeTab !== 'overview' && activeTab !== 'groups' && (
                 <div className="filter-bar">
                   <div className="filter-bar-search">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -835,7 +836,8 @@ export default function Dashboard() {
                         <option value="all">כל הפלטפורמות</option>
                         <option value="facebook">פייסבוק בלבד</option>
                         <option value="instagram">אינסטגרם בלבד</option>
-                        <option value="both">פייסבוק + אינסטגרם</option>
+                        <option value="whatsapp">וואטסאפ בלבד</option>
+                        <option value="both">משולב</option>
                       </select>
                     )}
 
@@ -1077,7 +1079,8 @@ export default function Dashboard() {
                             { value: 'all', label: 'הכל' },
                             { value: 'facebook', label: 'פייסבוק' },
                             { value: 'instagram', label: 'אינסטגרם' },
-                            { value: 'both', label: 'שתיהן' },
+                            { value: 'whatsapp', label: 'וואטסאפ' },
+                            { value: 'both', label: 'משולב' },
                           ].map(opt => (
                             <button
                               key={opt.value}
@@ -1212,7 +1215,7 @@ export default function Dashboard() {
               <div className="dash-panel">
                 {activeTab === 'overview' && <DashboardOverview campaigns={campaigns} groups={groups} posts={posts} jobs={jobs} stats={stats} user={user} onUpdate={forceRefresh} onViewCampaign={(c, edit) => { setOverviewDetail(c); setOverviewEditMode(!!edit) }} />}
                 {activeTab === 'campaigns' && <CampaignsPanel campaigns={filteredCampaigns} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} posts={filteredPosts} subTab={campaignSubTab} />}
-                {activeTab === 'groups' && <GroupsPanel groups={filteredGroups} navigate={navigate} sessionRequired={sessionRequired} viewMode={viewMode} />}
+                {activeTab === 'groups' && <GroupsPanel groups={groups} navigate={navigate} sessionRequired={sessionRequired} onRefresh={handleRefreshGroups} refreshing={refreshingGroups} />}
                 {activeTab === 'posts' && <PostsPanel posts={filteredPosts} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} />}
                 {activeTab === 'stats' && (
                   <StatsPanel stats={stats} />
@@ -1558,6 +1561,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
                 <div className="cl-platform-tags">
                   {(campaign.groupCount > 0 || campaign.publishToProfile) && <span className="platform-badge platform-facebook">FB</span>}
                   {campaign.instagramEnabled && <span className="platform-badge platform-instagram">IG</span>}
+                  {campaign.whatsappEnabled && <span className="platform-badge platform-whatsapp">WA</span>}
                 </div>
               </div>
               {/* Status */}
@@ -1800,11 +1804,543 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
   )
 }
 
-function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
+// ─── WHATSAPP SYNC PANEL ───────────────────────────────
+
+function WhatsAppSyncPanel({ user, navigate }) {
+  const { waGroups: groups, waBroadcastLists: broadcastLists, waSyncing: syncing, waQrDataUrl: qrDataUrl, waError: error,
+    loadWaGroups, syncWaGroups, clearWaQr, setUser, setWaBroadcastLists } = useAppData()
+  const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [waSubTab, setWaSubTab] = useState('groups') // 'groups' | 'broadcasts'
+  const [connectQr, setConnectQr] = useState(null)
+  const [connecting, setConnecting] = useState(false)
+  const [connectMode, setConnectMode] = useState('qr') // 'qr' | 'phone'
+  const [phoneInput, setPhoneInput] = useState('')
+  const [pairingCode, setPairingCode] = useState(null)
+  const [showBroadcastForm, setShowBroadcastForm] = useState(false)
+  const [editingBroadcast, setEditingBroadcast] = useState(null)
+  const [broadcastName, setBroadcastName] = useState('')
+  const [broadcastMembers, setBroadcastMembers] = useState([{ phone: '', name: '' }])
+  const [broadcastSaving, setBroadcastSaving] = useState(false)
+  const [expandedBroadcast, setExpandedBroadcast] = useState(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null)
+  const [showAllMembers, setShowAllMembers] = useState({})
+  const pollRef = useRef(null)
+  const membersListRef = useRef(null)
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
+
+  // Reload groups when sync completes (e.g. auto-sync after connect)
+  useEffect(() => {
+    const onSyncDone = () => { loadWaGroups() }
+    window.addEventListener('possbo-wa-sync-done', onSyncDone)
+    return () => window.removeEventListener('possbo-wa-sync-done', onSyncDone)
+  }, [loadWaGroups])
+
+  useEffect(() => {
+    if (user?.whatsappSessionConnected) {
+      setLoading(true)
+      loadWaGroups().finally(() => setLoading(false))
+    }
+  }, [user?.whatsappSessionConnected]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleConnect = async () => {
+    setConnecting(true)
+    try {
+      const res = await authAPI.connectWhatsapp()
+      if (res.data?.connected) {
+        setUser(prev => ({ ...prev, whatsappSessionConnected: true, whatsappSessionPhone: res.data.phone || null }))
+        setConnecting(false)
+        return
+      }
+      if (res.data?.qrDataUrl) {
+        setConnectQr(res.data.qrDataUrl)
+        startConnectionPoll()
+      }
+    } catch (err) {
+      console.error('[WA-Connect] Failed:', err)
+      setConnecting(false)
+    }
+  }
+
+  const handleConnectPhone = async () => {
+    const digits = phoneInput.replace(/\D/g, '')
+    if (!digits || digits.length < 10) return
+    setConnecting(true)
+    setPairingCode(null)
+    try {
+      const res = await authAPI.connectWhatsappPhone(digits)
+      if (res.data?.connected) {
+        setUser(prev => ({ ...prev, whatsappSessionConnected: true, whatsappSessionPhone: res.data.phone || null }))
+        setConnecting(false)
+        return
+      }
+      if (res.data?.pairingCode) {
+        setPairingCode(res.data.pairingCode)
+        startConnectionPoll()
+      }
+    } catch (err) {
+      console.error('[WA-ConnectPhone] Failed:', err)
+      setConnecting(false)
+    }
+  }
+
+  const startConnectionPoll = () => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = setInterval(async () => {
+      try {
+        const status = await authAPI.getWhatsappStatus()
+        if (status.data?.connected) {
+          clearInterval(pollRef.current)
+          pollRef.current = null
+          setConnectQr(null)
+          setPairingCode(null)
+          setConnecting(false)
+          setUser(prev => ({
+            ...prev,
+            whatsappSessionConnected: true,
+            whatsappSessionPhone: status.data.phone || null,
+          }))
+        }
+      } catch { /* ignore */ }
+    }, 5000)
+  }
+
+  const handleSync = async () => {
+    await syncWaGroups()
+  }
+
+  // ── Broadcast list form helpers ──
+  const openNewBroadcast = () => {
+    setEditingBroadcast(null)
+    setBroadcastName('')
+    setBroadcastMembers([{ phone: '', name: '' }])
+    setShowBroadcastForm(true)
+  }
+
+  const openEditBroadcast = (bl) => {
+    setEditingBroadcast(bl)
+    setBroadcastName(bl.name)
+    setBroadcastMembers(bl.members?.length ? bl.members.map(m => ({ phone: m.phone || '', name: m.name || '' })) : [{ phone: '', name: '' }])
+    setShowBroadcastForm(true)
+  }
+
+  const closeBroadcastForm = () => {
+    setShowBroadcastForm(false)
+    setEditingBroadcast(null)
+    setBroadcastName('')
+    setBroadcastMembers([{ phone: '', name: '' }])
+  }
+
+  const addMemberRow = () => {
+    if (broadcastMembers.length >= 100) return
+    setBroadcastMembers(prev => [...prev, { phone: '', name: '' }])
+    requestAnimationFrame(() => {
+      if (membersListRef.current) {
+        membersListRef.current.scrollTo({ top: membersListRef.current.scrollHeight, behavior: 'smooth' })
+      }
+    })
+  }
+
+  const removeMemberRow = (idx) => {
+    setBroadcastMembers(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const updateMember = (idx, field, value) => {
+    setBroadcastMembers(prev => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m))
+  }
+
+  const handleSaveBroadcast = async () => {
+    const validMembers = broadcastMembers.filter(m => m.phone.trim())
+    if (!broadcastName.trim()) return
+    if (!validMembers.length) return
+    if (validMembers.length > 100) return
+
+    setBroadcastSaving(true)
+    try {
+      if (editingBroadcast) {
+        const res = await authAPI.updateWhatsappBroadcastList(editingBroadcast.id, {
+          name: broadcastName.trim(),
+          members: validMembers,
+        })
+        setWaBroadcastLists(prev => prev.map(bl => bl.id === editingBroadcast.id ? res.data.list : bl))
+      } else {
+        const res = await authAPI.createWhatsappBroadcastList({
+          name: broadcastName.trim(),
+          members: validMembers,
+        })
+        setWaBroadcastLists(prev => [res.data.list, ...prev])
+      }
+      closeBroadcastForm()
+    } catch (err) {
+      console.error('[WA] Save broadcast error:', err)
+    } finally {
+      setBroadcastSaving(false)
+    }
+  }
+
+  const handleDeleteBroadcast = async (id) => {
+    try {
+      await authAPI.deleteWhatsappBroadcastList(id)
+      setWaBroadcastLists(prev => prev.filter(bl => bl.id !== id))
+      setDeleteConfirmId(null)
+    } catch (err) {
+      console.error('[WA] Delete broadcast error:', err)
+    }
+  }
+
+  if (!user?.whatsappSessionConnected) {
+    return (
+      <div className="wa-connect-panel">
+        <div className="wa-connect-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#25D366" strokeWidth="1.5">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+          </svg>
+        </div>
+        {connectQr ? (
+          <>
+            <h3>סרקי את קוד ה-QR</h3>
+            <p>פתחי וואטסאפ בטלפון ← הגדרות ← מכשירים מקושרים ← קשר מכשיר</p>
+            <img src={connectQr} alt="QR Code" className="wa-qr-image" />
+            <div className="wa-connect-waiting">
+              <div className="wa-connect-spinner"></div>
+              <span>ממתינה לסריקה...</span>
+            </div>
+            <button className="wa-mode-switch" onClick={() => { setConnectQr(null); setConnecting(false); if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } setConnectMode('phone') }}>
+              📱 חיבור עם מספר טלפון במקום
+            </button>
+          </>
+        ) : pairingCode ? (
+          <>
+            <h3>הזיני את הקוד בוואטסאפ</h3>
+            <p>פתחי וואטסאפ ← הגדרות ← מכשירים מקושרים ← קשר מכשיר ← קישור עם מספר טלפון</p>
+            <div className="wa-pairing-code">{pairingCode}</div>
+            <div className="wa-connect-waiting">
+              <div className="wa-connect-spinner"></div>
+              <span>ממתינה לאישור...</span>
+            </div>
+            <button className="wa-mode-switch" onClick={() => { setPairingCode(null); setConnecting(false); if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } setConnectMode('qr') }}>
+              🔲 חיבור עם QR במקום
+            </button>
+          </>
+        ) : (
+          <>
+            <h3>חברי את חשבון הוואטסאפ</h3>
+            <p>סנכרני קבוצות ישירות מוואטסאפ</p>
+            <div className="wa-connect-mode-tabs">
+              <button className={`wa-mode-tab ${connectMode === 'qr' ? 'active' : ''}`} onClick={() => setConnectMode('qr')}>🔲 סריקת QR</button>
+              <button className={`wa-mode-tab ${connectMode === 'phone' ? 'active' : ''}`} onClick={() => setConnectMode('phone')}>📱 מספר טלפון</button>
+            </div>
+            {connectMode === 'qr' ? (
+              <button className="wa-connect-btn" onClick={handleConnect} disabled={connecting}>
+                {connecting ? (
+                  <><div className="wa-connect-spinner"></div> מתחבר...</>
+                ) : (
+                  <>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    חברי חשבון וואטסאפ
+                  </>
+                )}
+              </button>
+            ) : (
+              <div className="wa-phone-connect">
+                <input
+                  type="tel"
+                  className="wa-phone-input"
+                  placeholder="מספר טלפון עם קידומת מדינה (למשל 972501234567)"
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  dir="ltr"
+                  disabled={connecting}
+                />
+                <button className="wa-connect-btn" onClick={handleConnectPhone} disabled={connecting || phoneInput.replace(/\D/g, '').length < 10}>
+                  {connecting ? (
+                    <><div className="wa-connect-spinner"></div> מתחבר...</>
+                  ) : 'קבלי קוד חיבור'}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // Filtered items by search
+  const filteredGroups = groups.filter(g => !search || (g.name || '').toLowerCase().includes(search.toLowerCase()))
+  const filteredBroadcasts = broadcastLists.filter(bl => !search || (bl.name || '').toLowerCase().includes(search.toLowerCase()))
+  const validMemberCount = broadcastMembers.filter(m => m.phone.trim()).length
+
+  return (
+    <div className="wa-sync-panel">
+      {/* ── Sub-Tabs: קבוצות / תפוצה ── */}
+      <div className="wa-inner-tabs">
+        <button className={`wa-inner-tab ${waSubTab === 'groups' ? 'active' : ''}`} onClick={() => { setWaSubTab('groups'); setSearch('') }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          קבוצות
+          <span className="wa-tab-count">{groups.length}</span>
+        </button>
+        <button className={`wa-inner-tab ${waSubTab === 'broadcasts' ? 'active' : ''}`} onClick={() => { setWaSubTab('broadcasts'); setSearch('') }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
+          תפוצה
+          <span className="wa-tab-count">{broadcastLists.length}</span>
+        </button>
+      </div>
+
+      {error && <div className="wa-sync-error">{error}</div>}
+
+      {/* ═══ GROUPS SUB-TAB ═══ */}
+      {waSubTab === 'groups' && (
+        <>
+          <div className="wa-sync-toolbar">
+            <div className="wa-sync-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" placeholder="חפש קבוצה..." value={search} onChange={e => setSearch(e.target.value)} dir="rtl" />
+              {search && <button className="wa-search-clear" onClick={() => setSearch('')}>✕</button>}
+            </div>
+            <button className="wa-sync-refresh" onClick={handleSync} disabled={syncing} title="סנכרן קבוצות מוואטסאפ">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spinning' : ''}>
+                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115.45-6.36L21 8"/>
+                <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15.45 6.36L3 16"/>
+              </svg>
+            </button>
+          </div>
+
+          {loading && !groups.length ? (
+            <div className="wa-sync-loading">
+              <div className="wa-sync-spinner"></div>
+              <p>טוען קבוצות...</p>
+            </div>
+          ) : filteredGroups.length === 0 ? (
+            <div className="empty-state">
+              <h3>{search ? 'לא נמצאו תוצאות' : 'אין קבוצות'}</h3>
+              <p>{search ? 'נסי לשנות את החיפוש' : 'לחצי על רענון כדי לסנכרן קבוצות מוואטסאפ'}</p>
+            </div>
+          ) : (
+            <div className="wa-contacts-list">
+              {filteredGroups.map(g => (
+                <div key={g.id} className="wa-contact-row wa-contact-group">
+                  <div className="wa-contact-avatar">
+                    <div className="wa-contact-avatar-fallback">👥</div>
+                  </div>
+                  <div className="wa-contact-info">
+                    <h4>{g.name}</h4>
+                    <span className="wa-contact-meta">{g.participants || 0} משתתפים</span>
+                  </div>
+                  <span className="wa-badge wa-badge-group">קבוצה</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ═══ BROADCASTS SUB-TAB ═══ */}
+      {waSubTab === 'broadcasts' && (
+        <>
+          <div className="wa-sync-toolbar">
+            <div className="wa-sync-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" placeholder="חפש רשימת תפוצה..." value={search} onChange={e => setSearch(e.target.value)} dir="rtl" />
+              {search && <button className="wa-search-clear" onClick={() => setSearch('')}>✕</button>}
+            </div>
+            <button className="wa-add-broadcast-btn" onClick={openNewBroadcast} title="צור רשימת תפוצה חדשה">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
+
+          {/* ── Create / Edit Form ── */}
+          {showBroadcastForm && (
+            <div className="wa-broadcast-form">
+              <div className="wa-broadcast-form-header">
+                <div className="wa-broadcast-form-title">
+                  <span className="wa-broadcast-form-icon">{editingBroadcast ? '✏️' : '📋'}</span>
+                  <h4>{editingBroadcast ? 'ערוך רשימת תפוצה' : 'רשימת תפוצה חדשה'}</h4>
+                </div>
+                <button className="wa-broadcast-form-close" onClick={closeBroadcastForm}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+
+              <div className="wa-broadcast-field">
+                <label className="wa-broadcast-label">שם הרשימה</label>
+                <input
+                  type="text"
+                  className="wa-broadcast-name-input"
+                  placeholder="לדוגמה: לקוחות VIP, צוות מכירות..."
+                  value={broadcastName}
+                  onChange={e => setBroadcastName(e.target.value)}
+                  dir="rtl"
+                  maxLength={80}
+                />
+              </div>
+
+              <div className="wa-broadcast-members">
+                <div className="wa-broadcast-members-header">
+                  <label className="wa-broadcast-label">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                    אנשי קשר
+                  </label>
+                  <span className={`wa-broadcast-counter ${validMemberCount >= 100 ? 'limit' : ''}`}>
+                    {validMemberCount} / 100
+                  </span>
+                </div>
+                <div className="wa-broadcast-members-list" ref={membersListRef}>
+                  {broadcastMembers.map((m, idx) => (
+                    <div key={idx} className="wa-broadcast-member-row">
+                      <span className="wa-member-index">{idx + 1}</span>
+                      <div className="wa-member-inputs">
+                        <input
+                          type="tel"
+                          placeholder="972501234567"
+                          value={m.phone}
+                          onChange={e => updateMember(idx, 'phone', e.target.value)}
+                          dir="ltr"
+                          className="wa-member-phone-input"
+                        />
+                        <input
+                          type="text"
+                          placeholder="שם (אופציונלי)"
+                          value={m.name}
+                          onChange={e => updateMember(idx, 'name', e.target.value)}
+                          dir="rtl"
+                          className="wa-member-name-input"
+                        />
+                      </div>
+                      {broadcastMembers.length > 1 && (
+                        <button className="wa-broadcast-remove-btn" onClick={() => removeMemberRow(idx)} title="הסר">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {broadcastMembers.length < 100 && (
+                  <button className="wa-broadcast-add-member" onClick={addMemberRow}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    הוסף מספר
+                  </button>
+                )}
+              </div>
+
+              <div className="wa-broadcast-form-actions">
+                <button className="wa-broadcast-save-btn" onClick={handleSaveBroadcast} disabled={broadcastSaving || !broadcastName.trim() || validMemberCount === 0}>
+                  {broadcastSaving ? (
+                    <><div className="wa-connect-spinner" style={{ width: 14, height: 14 }}></div> שומר...</>
+                  ) : (
+                    <>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                      {editingBroadcast ? 'עדכן רשימה' : 'צור רשימה'}
+                    </>
+                  )}
+                </button>
+                <button className="wa-broadcast-cancel-btn" onClick={closeBroadcastForm}>ביטול</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Broadcast Lists ── */}
+          {!showBroadcastForm && filteredBroadcasts.length === 0 ? (
+            <div className="wa-broadcasts-empty">
+              <div className="wa-broadcasts-empty-icon">📢</div>
+              <h3>{search ? 'לא נמצאו תוצאות' : 'אין רשימות תפוצה'}</h3>
+              <p>{search ? 'נסי לשנות את החיפוש' : 'צרי רשימת תפוצה חדשה כדי לשלוח הודעות למספרי טלפון'}</p>
+              {!search && (
+                <button className="wa-broadcasts-empty-btn" onClick={openNewBroadcast}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  צור רשימת תפוצה
+                </button>
+              )}
+            </div>
+          ) : !showBroadcastForm && (
+            <div className="wa-broadcast-cards">
+              {filteredBroadcasts.map(bl => {
+                const isExpanded = expandedBroadcast === bl.id
+                const memberCount = bl.members?.length || 0
+                return (
+                  <div key={bl.id} className={`wa-broadcast-card ${isExpanded ? 'expanded' : ''}`}>
+                    <div className="wa-broadcast-card-header" onClick={() => setExpandedBroadcast(isExpanded ? null : bl.id)}>
+                      <div className="wa-broadcast-card-icon">📢</div>
+                      <div className="wa-broadcast-card-info">
+                        <h4>{bl.name}</h4>
+                        <span className="wa-broadcast-card-meta">{memberCount} אנשי קשר</span>
+                      </div>
+                      <div className="wa-broadcast-card-actions">
+                        <button className="wa-broadcast-edit-btn" onClick={e => { e.stopPropagation(); openEditBroadcast(bl) }} title="ערוך">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button className="wa-broadcast-delete-btn" onClick={e => { e.stopPropagation(); setDeleteConfirmId(bl.id) }} title="מחק">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                        </button>
+                        <svg className={`wa-broadcast-chevron ${isExpanded ? 'open' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                      </div>
+                    </div>
+
+                    {/* Delete confirmation */}
+                    {deleteConfirmId === bl.id && (
+                      <div className="wa-broadcast-delete-confirm">
+                        <p>למחוק את רשימת התפוצה "{bl.name}"?</p>
+                        <div className="wa-broadcast-delete-confirm-btns">
+                          <button className="wa-broadcast-confirm-yes" onClick={() => handleDeleteBroadcast(bl.id)}>מחק</button>
+                          <button className="wa-broadcast-confirm-no" onClick={() => setDeleteConfirmId(null)}>ביטול</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Expanded member list */}
+                    {isExpanded && deleteConfirmId !== bl.id && (
+                      <div className="wa-broadcast-card-members">
+                        {(bl.members || []).length === 0 ? (
+                          <p className="wa-broadcast-no-members">אין אנשי קשר ברשימה</p>
+                        ) : (() => {
+                          const members = bl.members || []
+                          const LIMIT = 8
+                          const isShowingAll = showAllMembers[bl.id]
+                          const visible = isShowingAll ? members : members.slice(0, LIMIT)
+                          const remaining = members.length - LIMIT
+                          return (
+                            <>
+                              <div className="wa-broadcast-members-grid">
+                                {visible.map((m, i) => (
+                                  <div key={i} className="wa-broadcast-member-chip">
+                                    <span className="wa-member-chip-phone">{m.phone}</span>
+                                    {m.name && <span className="wa-member-chip-name">{m.name}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                              {members.length > LIMIT && (
+                                <button
+                                  className="wa-broadcast-show-more"
+                                  onClick={e => { e.stopPropagation(); setShowAllMembers(prev => ({ ...prev, [bl.id]: !prev[bl.id] })) }}
+                                >
+                                  {isShowingAll ? 'הצג פחות ▲' : `הצג עוד ${remaining} אנשי קשר ▼`}
+                                </button>
+                              )}
+                            </>
+                          )
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing }) {
+  const { user } = useAppData()
+  const [groupsSubTab, setGroupsSubTab] = useState('facebook') // 'facebook' | 'whatsapp'
   const [detailGroup, setDetailGroup] = useState(null)
   const [visibleCount, setVisibleCount] = useState(15)
   const [sortKey, setSortKey] = useState(null) // 'name' | 'members' | 'posts' | 'scheduled'
   const [sortDir, setSortDir] = useState('desc') // 'asc' | 'desc'
+  const [search, setSearch] = useState('')
+  const [viewMode, setViewMode] = useState('list') // 'list' | 'grid'
   const sentinelRef = useRef(null)
 
   // Infinite scroll
@@ -1828,8 +2364,15 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
   }
 
   const sortedGroups = useMemo(() => {
-    if (!sortKey) return groups
-    const sorted = [...groups].sort((a, b) => {
+    let list = groups
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(g => g.name?.toLowerCase().includes(q))
+    }
+    // Sort
+    if (!sortKey) return list
+    const sorted = [...list].sort((a, b) => {
       let valA, valB
       switch (sortKey) {
         case 'name': valA = a.name || ''; valB = b.name || ''; break
@@ -1845,25 +2388,66 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
       return sortDir === 'asc' ? valA - valB : valB - valA
     })
     return sorted
-  }, [groups, sortKey, sortDir])
+  }, [groups, sortKey, sortDir, search])
 
   const visibleGroups = sortedGroups.slice(0, visibleCount)
   const hasMore = sortedGroups.length > visibleCount
 
-  if (sessionRequired) return (
-    <div className="empty-state">
-      <div className="empty-icon-wrap">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-        </svg>
+  if (groupsSubTab === 'whatsapp') {
+    return (
+      <div>
+        <div className="groups-sub-tabs">
+          <button className={`groups-sub-tab ${groupsSubTab === 'facebook' ? 'active' : ''}`} onClick={() => setGroupsSubTab('facebook')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            קבוצות פייסבוק
+          </button>
+          <button className={`groups-sub-tab ${groupsSubTab === 'whatsapp' ? 'active' : ''}`} onClick={() => setGroupsSubTab('whatsapp')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            וואטסאפ
+          </button>
+        </div>
+        <WhatsAppSyncPanel user={user} navigate={navigate} />
       </div>
-      <h3>נדרש חיבור לפייסבוק</h3>
-      <p>חבר את חשבון הפייסבוק שלך מהבאנר למעלה כדי לסנכרן קבוצות</p>
+    )
+  }
+
+  if (sessionRequired) return (
+    <div>
+      <div className="groups-sub-tabs">
+        <button className={`groups-sub-tab ${groupsSubTab === 'facebook' ? 'active' : ''}`} onClick={() => setGroupsSubTab('facebook')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          קבוצות פייסבוק
+        </button>
+        <button className={`groups-sub-tab ${groupsSubTab === 'whatsapp' ? 'active' : ''}`} onClick={() => setGroupsSubTab('whatsapp')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          וואטסאפ
+        </button>
+      </div>
+      <div className="empty-state">
+        <div className="empty-icon-wrap">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+        </div>
+        <h3>נדרש חיבור לפייסבוק</h3>
+        <p>חבר את חשבון הפייסבוק שלך מהבאנר למעלה כדי לסנכרן קבוצות</p>
+      </div>
     </div>
   )
 
   if (!groups.length) return (
-    <div className="empty-state">
+    <div>
+      <div className="groups-sub-tabs">
+        <button className={`groups-sub-tab ${groupsSubTab === 'facebook' ? 'active' : ''}`} onClick={() => setGroupsSubTab('facebook')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          קבוצות פייסבוק
+        </button>
+        <button className={`groups-sub-tab ${groupsSubTab === 'whatsapp' ? 'active' : ''}`} onClick={() => setGroupsSubTab('whatsapp')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          וואטסאפ
+        </button>
+      </div>
+      <div className="empty-state">
       <div className="empty-icon-wrap">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
@@ -1872,10 +2456,57 @@ function GroupsPanel({ groups, navigate, sessionRequired, viewMode }) {
       <h3>אין קבוצות שמורות</h3>
       <p>סנכרן את הקבוצות שלך מפייסבוק באמצעות כפתור "רענן קבוצות" למעלה</p>
     </div>
+    </div>
   )
 
   return (
     <div>
+
+      {/* ═══ Sub-Tabs ═══ */}
+      <div className="groups-sub-tabs">
+        <button className={`groups-sub-tab ${groupsSubTab === 'facebook' ? 'active' : ''}`} onClick={() => setGroupsSubTab('facebook')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          קבוצות פייסבוק
+        </button>
+        <button className={`groups-sub-tab ${groupsSubTab === 'whatsapp' ? 'active' : ''}`} onClick={() => setGroupsSubTab('whatsapp')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          וואטסאפ
+        </button>
+      </div>
+
+      {/* ═══ Groups Toolbar (search, sort, view toggle, refresh) ═══ */}
+      <div className="fb-groups-toolbar">
+        <div className="fb-groups-search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="text"
+            placeholder="חפש קבוצה..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            dir="rtl"
+          />
+          {search && <button className="fb-groups-search-clear" onClick={() => setSearch('')}>✕</button>}
+        </div>
+        <select className="fb-groups-sort" value={sortKey || ''} onChange={e => { setSortKey(e.target.value || null); setSortDir('desc') }}>
+          <option value="">ללא מיון</option>
+          <option value="name">מיון לפי שם</option>
+          <option value="members">מיון לפי חברים</option>
+          <option value="posts">מיון לפי פוסטים</option>
+        </select>
+        <button className="fb-groups-view-toggle" onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} title={viewMode === 'grid' ? 'תצוגת שורות' : 'תצוגת ריבועים'}>
+          {viewMode === 'grid'
+            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          }
+        </button>
+        <button className="fb-groups-refresh" onClick={onRefresh} disabled={refreshing} title="רענן קבוצות מפייסבוק">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={refreshing ? 'spinning' : ''}>
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          </svg>
+        </button>
+      </div>
 
       {viewMode === 'list' ? (
         /* ═══ Row/List View ═══ */
@@ -2365,8 +2996,8 @@ function StatsPanel({ stats }) {
   const [refreshingAll, setRefreshingAll] = useState(false)
 
   // Cache helpers
-  const getCacheKey = useCallback((from, to) => `postit_stats_${from}_${to}`, [])
-  const getTopPostsCacheKey = useCallback((sort, from, to) => `postit_top_posts_${sort}_${from}_${to}`, [])
+  const getCacheKey = useCallback((from, to) => `possbo_stats_${from}_${to}`, [])
+  const getTopPostsCacheKey = useCallback((sort, from, to) => `possbo_top_posts_${sort}_${from}_${to}`, [])
   const getCached = useCallback((from, to) => {
     try {
       const raw = localStorage.getItem(getCacheKey(from, to))
@@ -2639,11 +3270,11 @@ function StatsPanel({ stats }) {
           <h4>🏅 פוסטים מובילים</h4>
           <div className="top-posts-actions">
             <button
-              className={`top-posts-refresh-btn ${refreshingAll ? 'spinning' : ''}`}
+              className="top-posts-refresh-btn"
               onClick={() => {
                 if (refreshingAll) return
                 setRefreshingAll(true)
-                window.dispatchEvent(new CustomEvent('postit-op-start', {
+                window.dispatchEvent(new CustomEvent('possbo-op-start', {
                   detail: { id: 'refresh-all-metrics', msg: '🔄 מרענן נתוני מעורבות מפייסבוק ואינסטגרם... ניתן להמשיך לגלוש באתר' }
                 }))
                 groupsService.refreshAllMetrics()
@@ -2658,12 +3289,12 @@ function StatsPanel({ stats }) {
                       setTopPostsCache(topPostsSort, dateRange.from, dateRange.to, res.data.posts)
                     }
                     const count = refreshRes.data?.refreshed || 0
-                    window.dispatchEvent(new CustomEvent('postit-op-done', {
+                    window.dispatchEvent(new CustomEvent('possbo-op-done', {
                       detail: { id: 'refresh-all-metrics', success: true, msg: `✅ רענון הושלם! עודכנו ${count} פרסומים` }
                     }))
                   })
                   .catch(() => {
-                    window.dispatchEvent(new CustomEvent('postit-op-done', {
+                    window.dispatchEvent(new CustomEvent('possbo-op-done', {
                       detail: { id: 'refresh-all-metrics', success: false, msg: '⚠️ שגיאה ברענון נתוני מעורבות' }
                     }))
                   })
@@ -2837,7 +3468,8 @@ function BillingPanel({ user, navigate }) {
 }
 
 function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, bootstrapping }) {
-  const { theme, setTheme } = useTheme()
+  const { theme, themeMode, setTheme } = useTheme()
+  const { cancelWaSync } = useAppData()
   const [confirmAction, setConfirmAction] = useState(null)
   // Profile
   const [editing, setEditing] = useState(false)
@@ -2863,7 +3495,17 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
   const [waSaving, setWaSaving] = useState(false)
   const [waError, setWaError] = useState(null)
   const [waEditing, setWaEditing] = useState(false)
+  const [waMsgEditing, setWaMsgEditing] = useState(false)
   const [waValidation, setWaValidation] = useState(null)
+  // WhatsApp connect modal
+  const [waConnectModal, setWaConnectModal] = useState(null) // { qrDataUrl } | { pairingCode } | null
+  const [waConnectMode, setWaConnectMode] = useState('qr') // 'qr' | 'phone'
+  const [waPhoneInput, setWaPhoneInput] = useState('')
+  const [waConnecting, setWaConnecting] = useState(false)
+  const waConnectPollRef = useRef(null)
+
+  // Clean up WA connect polling on unmount
+  useEffect(() => () => { if (waConnectPollRef.current) clearInterval(waConnectPollRef.current) }, [])
 
   // WhatsApp number validation
   const validateWaNumber = (num) => {
@@ -3053,144 +3695,340 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
     <div className="settings-page">
       {/* ═══ Profile Hero ═══ */}
       <div className="settings-hero">
-        <div className="settings-avatar-wrap">
-          <div className="settings-avatar">
-            {user?.profileImage || user?.avatarUrl
-              ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('/uploads')) return `http://localhost:8000${v}`; if (v.startsWith('uploads/')) return `http://localhost:8000/${v}`; return v })()} alt="" />
-              : <span>{user?.name?.[0] || '?'}</span>}
+        <div className="settings-hero-glow" />
+        <div className="settings-hero-content">
+          {/* Avatar — appears on RIGHT in RTL */}
+          <div className="settings-hero-avatar-side">
+            <div className="settings-avatar-wrap">
+              <div className="settings-avatar">
+                {(user?.profileImage || user?.avatarUrl) && (
+                  <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('uploads/')) return `/${v}`; return v })()} alt="" className="settings-avatar-img" onError={e => { e.target.style.display = 'none' }} />
+                )}
+                <span className="settings-avatar-letter">{user?.name?.[0] || '?'}</span>
+              </div>
+              <label className="settings-avatar-upload" title="העלה תמונה">
+                <input type="file" accept="image/*" hidden onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  try {
+                    const res = await authAPI.uploadAvatar(file)
+                    if (res.data.success) {
+                      setUser(prev => ({ ...prev, profileImage: res.data.profileImage }))
+                    }
+                  } catch { /* ignore */ }
+                }} />
+                📷
+              </label>
+            </div>
           </div>
-          <label className="settings-avatar-upload" title="העלה תמונה">
-            <input type="file" accept="image/*" hidden onChange={async (e) => {
-              const file = e.target.files?.[0]
-              if (!file) return
-              try {
-                const res = await authAPI.uploadAvatar(file)
-                if (res.data.success) {
-                  setUser(prev => ({ ...prev, profileImage: res.data.profileImage }))
-                }
-              } catch { /* ignore */ }
-            }} />
-            📷
-          </label>
+          {/* Info — RIGHT aligned in RTL */}
+          <div className="settings-hero-info">
+            <h2 className="settings-hero-name">{user?.name || 'משתמש'}</h2>
+            {user?.bio && <p className="settings-hero-bio">{user.bio}</p>}
+            <div className="settings-hero-meta">
+              <span className="settings-hero-meta-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                {user?.email || ''}
+              </span>
+              <span className="settings-hero-meta-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                חבר מאז {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' }) : ''}
+              </span>
+            </div>
+          </div>
+          {/* Pencil edit — floating bottom-left */}
+          <button className="settings-hero-pencil" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }} title="ערוך פרופיל">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          </button>
         </div>
-        <h2 className="settings-hero-name">{user?.name || 'משתמש'}</h2>
-        <p className="settings-hero-email">{user?.email || ''}</p>
+        {/* Inline edit form */}
+        {editing && (
+          <div className="settings-hero-edit-form">
+            <div className="settings-fields-grid">
+              <div className="settings-field">
+                <label>שם</label>
+                <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="השם שלך" />
+              </div>
+              <div className="settings-field">
+                <label>אימייל</label>
+                <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="email@example.com" type="email" dir="ltr" />
+              </div>
+            </div>
+            {editError && <div className="settings-msg settings-msg-error">{editError}</div>}
+            <div className="settings-field-actions">
+              <button className="settings-btn-save" onClick={handleSaveProfile} disabled={saving}>
+                {saving ? '⏳ שומר...' : 'שמור שינויים'}
+              </button>
+              <button className="settings-btn-cancel" onClick={() => setEditing(false)}>ביטול</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ═══ Sections ═══ */}
       <div className="settings-sections-wrap">
 
-        {/* ─── Basic Info Section ─── */}
-        <section className="settings-sect">
-          <div className="settings-sect-header">
-            <h3 className="settings-sect-title">מידע בסיסי</h3>
-            {!editing && (
-              <button className="settings-sect-edit" onClick={() => { setEditing(true); setEditName(user?.name || ''); setEditEmail(user?.email || '') }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-              </button>
-            )}
-          </div>
-          <div className="settings-sect-body">
-            {editing ? (
-              <>
-                <div className="settings-fields-grid">
-                  <div className="settings-field">
-                    <label>שם</label>
-                    <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="השם שלך" />
-                  </div>
-                  <div className="settings-field">
-                    <label>אימייל</label>
-                    <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="email@example.com" type="email" dir="ltr" />
-                  </div>
-                </div>
-                {editError && <div className="settings-msg settings-msg-error">{editError}</div>}
-                <div className="settings-field-actions">
-                  <button className="settings-btn-save" onClick={handleSaveProfile} disabled={saving}>
-                    {saving ? '⏳ שומר...' : 'שמור שינויים'}
-                  </button>
-                  <button className="settings-btn-cancel" onClick={() => setEditing(false)}>ביטול</button>
-                </div>
-              </>
-            ) : (
-              <div className="settings-fields-grid">
-                <div className="settings-field-display">
-                  <span className="settings-field-label">שם פרטי</span>
-                  <span className="settings-field-value">{user?.name || '—'}</span>
-                </div>
-                <div className="settings-field-display">
-                  <span className="settings-field-label">אימייל</span>
-                  <span className="settings-field-value">{user?.email || '—'}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
         {/* ─── Connections Section ─── */}
         <section className="settings-sect">
           <div className="settings-sect-header">
-            <h3 className="settings-sect-title">חיבורים</h3>
+            <h3 className="settings-sect-title">חשבונות מחוברים</h3>
+            <span className="settings-sect-subtitle">נהל את החשבונות המחוברים שלך לפלטפורמות</span>
           </div>
           <div className="settings-sect-body">
-            <div className="settings-fields-grid">
-              {/* Facebook */}
-              <div className="settings-field-display">
-                <span className="settings-field-label">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2" style={{ verticalAlign: 'middle', marginLeft: 6 }}><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                  פייסבוק
-                </span>
-                <span className={`settings-field-value ${user?.fbSessionValid ? 'value-ok' : 'value-muted'}`}>
-                  {user?.fbSessionValid ? '✓ מחובר' : '✗ לא מחובר'}
-                </span>
-                <div className="settings-field-inline-actions">
+            <div className="conn-list">
+
+              {/* ── Facebook ── */}
+              <div className={`conn-row ${user?.fbSessionValid ? 'conn-row--active' : ''}`}>
+                <div className="conn-row-icon conn-row-icon--fb">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                </div>
+                <div className="conn-row-info">
+                  <span className="conn-row-name">פייסבוק</span>
+                  <span className="conn-row-detail">{user?.fbSessionValid ? (user?.fbName || 'חשבון מחובר') : 'לא מחובר'}</span>
+                </div>
+                <div className="conn-row-actions">
                   {user?.fbSessionValid ? (
                     <>
-                      <button className="settings-link-btn" onClick={handleBootstrap} disabled={bootstrapping}>
+                      <button className="conn-btn conn-btn--outline" onClick={handleBootstrap} disabled={bootstrapping}>
                         {bootstrapping ? '⏳' : 'החלף'}
                       </button>
-                      <button className="settings-link-btn settings-link-btn-danger" onClick={handleDisconnectFB} disabled={disconnecting}>
+                      <button className="conn-btn conn-btn--ghost-danger" onClick={handleDisconnectFB} disabled={disconnecting}>
                         {disconnecting ? '⏳' : 'נתק'}
                       </button>
                     </>
                   ) : (
-                    <button className="settings-link-btn settings-link-btn-connect" onClick={handleBootstrap} disabled={bootstrapping}>
-                      {bootstrapping ? '⏳ ממתין...' : 'קשר חיבור'}
+                    <button className="conn-btn conn-btn--primary" onClick={handleBootstrap} disabled={bootstrapping}>
+                      {bootstrapping ? '⏳ ממתין...' : 'חבר'}
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* WhatsApp */}
-              <div className="settings-field-display">
-                <span className="settings-field-label">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366" style={{ verticalAlign: 'middle', marginLeft: 6 }}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                  וואטסאפ
-                </span>
-                <span className={`settings-field-value ${user?.whatsappNumber ? 'value-ok' : 'value-muted'}`}>
-                  {user?.whatsappNumber ? user.whatsappNumber : '—'}
-                </span>
-                <div className="settings-field-inline-actions">
+              {/* ── Instagram ── */}
+              <div className={`conn-row ${user?.instagramConnected ? 'conn-row--active' : ''}`}>
+                <div className="conn-row-icon conn-row-icon--ig">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                  </svg>
+                </div>
+                <div className="conn-row-info">
+                  <span className="conn-row-name">אינסטגרם</span>
+                  <span className="conn-row-detail">{user?.instagramConnected ? `@${user.instagramUsername}` : 'לא מחובר'}</span>
+                </div>
+                <div className="conn-row-actions">
+                  {user?.instagramConnected ? (
+                    <>
+                      <button className="conn-btn conn-btn--outline" onClick={async () => {
+                        // Replace = disconnect then reconnect
+                        try {
+                          await authAPI.disconnectInstagram()
+                          setUser(prev => ({ ...prev, instagramConnected: false, instagramUsername: null }))
+                          // Immediately start reconnect flow
+                          const res = await authAPI.getInstagramAuthUrl()
+                          if (res.data.authUrl) {
+                            const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+                            const handleMessage = (event) => {
+                              if (!event.data || event.data.type !== 'instagram-oauth-callback') return
+                              window.removeEventListener('message', handleMessage)
+                              if (event.data.success) {
+                                setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
+                              }
+                            }
+                            window.addEventListener('message', handleMessage)
+                            const timer = setInterval(async () => {
+                              if (popup?.closed) {
+                                clearInterval(timer)
+                                window.removeEventListener('message', handleMessage)
+                                try {
+                                  const statusRes = await authAPI.getInstagramStatus()
+                                  if (statusRes?.data?.connected) {
+                                    const updates = { instagramConnected: true, instagramUsername: statusRes.data.account?.username }
+                                    if (statusRes.data.avatarUrl) updates.avatarUrl = statusRes.data.avatarUrl
+                                    setUser(prev => ({ ...prev, ...updates }))
+                                  }
+                                } catch { /* ignore */ }
+                              }
+                            }, 500)
+                          }
+                        } catch { /* ignore */ }
+                      }}>
+                        החלף
+                      </button>
+                      <button className="conn-btn conn-btn--ghost-danger" onClick={async () => {
+                        setConfirmAction({
+                          title: 'ניתוק אינסטגרם',
+                          message: 'האם אתה בטוח שברצונך לנתק את חיבור האינסטגרם? לא תוכל לפרסם באינסטגרם עד שתתחבר מחדש.',
+                          action: async () => {
+                            try {
+                              await authAPI.disconnectInstagram()
+                              setUser(prev => ({ ...prev, instagramConnected: false, instagramUsername: null }))
+                            } catch { /* ignore */ }
+                          }
+                        })
+                      }}>
+                        נתק
+                      </button>
+                    </>
+                  ) : (
+                    <button className="conn-btn conn-btn--primary" onClick={async () => {
+                      try {
+                        const res = await authAPI.getInstagramAuthUrl()
+                        if (res.data.authUrl) {
+                          const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+                          console.log('[IG-Connect] Popup opened:', !!popup)
+                          const handleMessage = (event) => {
+                            console.log('[IG-Connect] postMessage received:', event.data)
+                            if (!event.data || event.data.type !== 'instagram-oauth-callback') return
+                            window.removeEventListener('message', handleMessage)
+                            if (event.data.success) {
+                              console.log('[IG-Connect] SUCCESS via postMessage, username:', event.data.username)
+                              setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
+                            }
+                          }
+                          window.addEventListener('message', handleMessage)
+                          const timer = setInterval(async () => {
+                            if (popup?.closed) {
+                              clearInterval(timer)
+                              window.removeEventListener('message', handleMessage)
+                              console.log('[IG-Connect] Popup closed, checking status...')
+                              try {
+                                const statusRes = await authAPI.getInstagramStatus()
+                                console.log('[IG-Connect] Status response:', statusRes?.data)
+                                if (statusRes?.data?.connected) {
+                                  const updates = { instagramConnected: true, instagramUsername: statusRes.data.account?.username }
+                                  if (statusRes.data.avatarUrl) updates.avatarUrl = statusRes.data.avatarUrl
+                                  setUser(prev => ({ ...prev, ...updates }))
+                                  console.log('[IG-Connect] User state updated!')
+                                }
+                              } catch (err) { console.error('[IG-Connect] Status check FAILED:', err.message, err.response?.status, err.response?.data) }
+                            }
+                          }, 500)
+                        }
+                      } catch (err) {
+                        console.error('[IG-Connect] Auth URL FAILED:', err)
+                        window.alert('שגיאה ביצירת קישור חיבור')
+                      }
+                    }}>
+                      חבר
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* ── WhatsApp Session (Baileys) ── */}
+              <div className={`conn-row ${user?.whatsappSessionConnected ? 'conn-row--active' : ''}`}>
+                <div className="conn-row-icon conn-row-icon--wa">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                </div>
+                <div className="conn-row-info">
+                  <span className="conn-row-name">וואטסאפ</span>
+                  <span className="conn-row-detail">{user?.whatsappSessionConnected ? (user.whatsappSessionPhone || 'מחובר') : 'לא מחובר'}</span>
+                </div>
+                <div className="conn-row-actions">
+                  {user?.whatsappSessionConnected ? (
+                    <>
+                      <button className="conn-btn conn-btn--outline" onClick={handleBootstrap} disabled={bootstrapping}>
+                        {bootstrapping ? '⏳' : 'החלף'}
+                      </button>
+                      <button className="conn-btn conn-btn--ghost-danger" disabled={disconnecting} onClick={() => {
+                        setConfirmAction({
+                          title: 'ניתוק וואטסאפ',
+                          message: 'האם אתה בטוח שברצונך לנתק את חיבור הוואטסאפ? לא תוכל לשלוח הודעות עד שתתחבר מחדש.',
+                          action: async () => {
+                            cancelWaSync()
+                            setDisconnecting(true)
+                            try {
+                              await authAPI.disconnectWhatsapp()
+                              setUser(prev => ({ ...prev, whatsappSessionConnected: false, whatsappSessionPhone: null }))
+                            } catch { /* ignore */ }
+                            finally { setDisconnecting(false) }
+                          }
+                        })
+                      }}>
+                        {disconnecting ? '⏳' : 'נתק'}
+                      </button>
+                    </>
+                  ) : (
+                    <button className="conn-btn conn-btn--primary" onClick={async () => {
+                      try {
+                        const res = await authAPI.connectWhatsapp()
+                        if (res.data.qrDataUrl) {
+                          const qrPopup = window.open('', 'whatsapp-qr', 'width=450,height=550,left=200,top=100')
+                          qrPopup.document.write(`
+                            <!DOCTYPE html><html dir="rtl"><head><title>חיבור וואטסאפ</title>
+                            <style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#111;color:#fff}
+                            img{width:280px;height:280px;border-radius:12px;margin:16px 0}h2{margin:0 0 8px;font-size:18px}p{margin:0;color:#999;font-size:14px;text-align:center;max-width:320px}
+                            .spinner{border:3px solid #333;border-top:3px solid #25D366;border-radius:50%;width:32px;height:32px;animation:spin 1s linear infinite;margin:16px}
+                            @keyframes spin{to{transform:rotate(360deg)}}</style></head><body>
+                            <h2>סרוק את קוד ה-QR</h2>
+                            <p>פתח את וואטסאפ בטלפון ← הגדרות ← מכשירים מקושרים ← קשר מכשיר</p>
+                            <img src="${res.data.qrDataUrl}" alt="QR Code" />
+                            <p>ממתין לסריקה...</p>
+                            <div class="spinner"></div>
+                            </body></html>
+                          `)
+                          const pollTimer = setInterval(async () => {
+                            if (qrPopup?.closed) { clearInterval(pollTimer); return }
+                            try {
+                              const status = await authAPI.getWhatsappStatus()
+                              if (status.data?.connected) {
+                                clearInterval(pollTimer)
+                                setUser(prev => ({
+                                  ...prev,
+                                  whatsappSessionConnected: true,
+                                  whatsappSessionPhone: status.data.phone || null,
+                                }))
+                                qrPopup.document.body.innerHTML = '<h2 style="color:#25D366">✓ מחובר בהצלחה!</h2><p>ניתן לסגור חלון זה</p>'
+                                setTimeout(() => qrPopup.close(), 2000)
+                              } else if (status.data?.qrDataUrl) {
+                                const img = qrPopup.document.querySelector('img')
+                                if (img) img.src = status.data.qrDataUrl
+                              }
+                            } catch { /* ignore */ }
+                          }, 3000)
+                        }
+                      } catch (err) {
+                        console.error('[WA-Connect] Failed:', err)
+                        window.alert('שגיאה ביצירת חיבור וואטסאפ')
+                      }
+                    }}>
+                      חבר
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* ── WhatsApp Contact Info ── */}
+              <div className={`conn-row ${user?.whatsappNumber ? 'conn-row--active' : ''}`}>
+                <div className="conn-row-icon conn-row-icon--wa-biz">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <div className="conn-row-info">
+                  <span className="conn-row-name">וואטסאפ עסקי</span>
+                  <span className="conn-row-detail">{user?.whatsappNumber || 'לא מחובר'}</span>
+                </div>
+                <div className="conn-row-actions">
                   {user?.whatsappNumber && !waEditing ? (
                     <>
-                      <button className="settings-link-btn" onClick={() => { setWaEditing(true); setWaNumber(user.whatsappNumber); setWaMessage(user.whatsappMessage || ''); setWaValidation(null) }}>
+                      <button className="conn-btn conn-btn--outline" onClick={() => { setWaEditing(true); setWaNumber(user.whatsappNumber); setWaMessage(user.whatsappMessage || ''); setWaValidation(null) }}>
                         ערוך
                       </button>
-                      <button className="settings-link-btn settings-link-btn-danger" onClick={handleRemoveWhatsapp} disabled={waSaving}>
+                      <button className="conn-btn conn-btn--ghost-danger" onClick={handleRemoveWhatsapp} disabled={waSaving}>
                         הסר
                       </button>
                     </>
                   ) : !user?.whatsappNumber && !waEditing ? (
-                    <button className="settings-link-btn settings-link-btn-connect" onClick={() => setWaEditing(true)}>
-                      קשר חיבור
+                    <button className="conn-btn conn-btn--primary" onClick={() => setWaEditing(true)}>
+                      חבר
                     </button>
                   ) : null}
                 </div>
               </div>
             </div>
 
-            {/* WhatsApp edit form */}
+            {/* WhatsApp edit form — below the list */}
             {waEditing && (
-              <div className="settings-inline-form">
+              <div className="conn-expand-form">
                 <div className="settings-fields-grid">
                   <div className="settings-field">
                     <label>מספר טלפון</label>
@@ -3227,113 +4065,32 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
               </div>
             )}
 
-            {/* WhatsApp message quick-edit */}
+            {/* WhatsApp custom message — inline display or edit */}
             {user?.whatsappNumber && !waEditing && (
-              <div className="settings-fields-grid" style={{ marginTop: 4 }}>
-                <div className="settings-field">
-                  <label>הודעה מותאמת</label>
-                  <div className="settings-field-row">
+              <div className="settings-wa-message-row">
+                <span className="settings-wa-message-label">הודעה מותאמת:</span>
+                {waMsgEditing ? (
+                  <div className="settings-wa-message-edit">
                     <input
                       value={waMessage}
                       onChange={e => setWaMessage(e.target.value)}
                       placeholder="היי, ראיתי את הפוסט שלך..."
                       dir="rtl"
+                      autoFocus
                     />
-                    <button className="settings-btn-save settings-btn-sm" onClick={handleSaveWaMessage} disabled={waSaving}>
-                      💾
+                    <button className="settings-btn-save settings-btn-sm" onClick={() => { handleSaveWaMessage(); setWaMsgEditing(false) }} disabled={waSaving}>
+                      {waSaving ? '⏳' : '💾'}
+                    </button>
+                    <button className="settings-btn-cancel settings-btn-sm" onClick={() => { setWaMsgEditing(false); setWaMessage(user?.whatsappMessage || '') }}>
+                      ✕
                     </button>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* Instagram */}
-            <div className="settings-fields-grid" style={{ marginTop: 12 }}>
-              <div className="settings-field-display">
-                <span className="settings-field-label">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#ig-settings-gradient)" style={{ verticalAlign: 'middle', marginLeft: 6 }}>
-                    <defs>
-                      <linearGradient id="ig-settings-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#FFDC80" />
-                        <stop offset="25%" stopColor="#F77737" />
-                        <stop offset="50%" stopColor="#E1306C" />
-                        <stop offset="75%" stopColor="#C13584" />
-                        <stop offset="100%" stopColor="#833AB4" />
-                      </linearGradient>
-                    </defs>
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
-                  </svg>
-                  אינסטגרם
-                </span>
-                <span className={`settings-field-value ${user?.instagramConnected ? 'value-ok' : 'value-muted'}`}>
-                  {user?.instagramConnected ? `✓ @${user.instagramUsername}` : '✗ לא מחובר'}
-                </span>
-                <div className="settings-field-inline-actions">
-                  {user?.instagramConnected ? (
-                    <button className="settings-link-btn settings-link-btn-danger" onClick={async () => {
-                      setConfirmAction({
-                        title: 'ניתוק אינסטגרם',
-                        message: 'האם אתה בטוח שברצונך לנתק את חיבור האינסטגרם? לא תוכל לפרסם באינסטגרם עד שתתחבר מחדש.',
-                        action: async () => {
-                          try {
-                            await authAPI.disconnectInstagram()
-                            setUser(prev => ({ ...prev, instagramConnected: false, instagramUsername: null }))
-                          } catch { /* ignore */ }
-                        }
-                      })
-                    }}>
-                      נתק
-                    </button>
-                  ) : (
-                    <button className="settings-link-btn settings-link-btn-connect" onClick={async () => {
-                      try {
-                        const res = await authAPI.getInstagramAuthUrl()
-                        if (res.data.authUrl) {
-                          const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
-                          console.log('[IG-Connect] Popup opened:', !!popup)
-                          const handleMessage = (event) => {
-                            console.log('[IG-Connect] postMessage received:', event.data)
-                            if (!event.data || event.data.type !== 'instagram-oauth-callback') return
-                            window.removeEventListener('message', handleMessage)
-                            if (event.data.success) {
-                              console.log('[IG-Connect] SUCCESS via postMessage, username:', event.data.username)
-                              setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
-                            }
-                          }
-                          window.addEventListener('message', handleMessage)
-                          // Poll until popup closes, then check server status
-                          const timer = setInterval(async () => {
-                            if (popup?.closed) {
-                              clearInterval(timer)
-                              window.removeEventListener('message', handleMessage)
-                              console.log('[IG-Connect] Popup closed, checking status...')
-                              try {
-                                const statusRes = await authAPI.getInstagramStatus()
-                                console.log('[IG-Connect] Status response:', statusRes?.data)
-                                if (statusRes?.data?.connected) {
-                                  setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: statusRes.data.account?.username }))
-                                  console.log('[IG-Connect] User state updated!')
-                                }
-                              } catch (err) { console.error('[IG-Connect] Status check FAILED:', err.message, err.response?.status, err.response?.data) }
-                            }
-                          }, 500)
-                        }
-                      } catch (err) {
-                        console.error('[IG-Connect] Auth URL FAILED:', err)
-                        window.alert('שגיאה ביצירת קישור חיבור')
-                      }
-                    }}>
-                      חבר חשבון
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {!user?.instagramConnected && (
-              <div className="settings-ig-notice">
-                <span className="settings-ig-notice-icon">⚠️</span>
-                <span>חיבור אינסטגרם דורש חשבון מסוג <strong>Business</strong> או <strong>Creator</strong>. חשבון אישי רגיל לא נתמך.</span>
+                ) : (
+                  <div className="settings-wa-message-display" onClick={() => setWaMsgEditing(true)}>
+                    <span className="settings-wa-message-text">{user?.whatsappMessage || 'לא הוגדרה'}</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="settings-wa-message-edit-icon"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -3397,28 +4154,48 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
           </div>
         </section>
 
-        {/* ─── Appearance Section ─── */}
+        {/* ─── Preferences Section ─── */}
         <section className="settings-sect">
           <div className="settings-sect-header">
-            <h3 className="settings-sect-title">מראה</h3>
+            <h3 className="settings-sect-title">העדפות</h3>
+            <span className="settings-sect-subtitle">התאם את חווית השימוש שלך</span>
           </div>
           <div className="settings-sect-body">
-            <div className="settings-fields-grid">
-              <div className="settings-field-display">
-                <span className="settings-field-label">ערכת נושא</span>
-                <div className="theme-toggle">
-                  <button
-                    className={`theme-toggle-btn ${theme === 'dark' ? 'active' : ''}`}
-                    onClick={() => setTheme('dark')}
-                  >
-                    🌙 כהה
-                  </button>
-                  <button
-                    className={`theme-toggle-btn ${theme === 'light' ? 'active' : ''}`}
-                    onClick={() => setTheme('light')}
-                  >
-                    ☀️ בהיר
-                  </button>
+            <div className="conn-list">
+              {/* Theme */}
+              <div className="pref-row">
+                <div className="pref-row-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                </div>
+                <div className="pref-row-info">
+                  <span className="pref-row-label">ערכת נושא</span>
+                </div>
+                <div className="pref-row-control">
+                  <div className="pref-segmented">
+                    <button className={`pref-seg-btn ${themeMode === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')}>
+                      ☀️ בהיר
+                    </button>
+                    <button className={`pref-seg-btn ${themeMode === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')}>
+                      🌙 כהה
+                    </button>
+                    <button className={`pref-seg-btn ${themeMode === 'system' ? 'active' : ''}`} onClick={() => setTheme('system')}>
+                      🖥️ לפי מערכת
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Language */}
+              <div className="pref-row">
+                <div className="pref-row-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                </div>
+                <div className="pref-row-info">
+                  <span className="pref-row-label">שפת ממשק</span>
+                </div>
+                <div className="pref-row-control">
+                  <span className="pref-row-value">עברית</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </div>
               </div>
             </div>
@@ -3438,6 +4215,128 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
       <div className="settings-privacy-link">
         <Link to="/privacy">מדיניות פרטיות ותנאי שימוש</Link>
       </div>
+
+      {/* ─── WhatsApp Connect Modal ─── */}
+      {waConnectModal !== null && (
+        <div className="confirm-overlay" onClick={() => { setWaConnectModal(null); setWaConnecting(false); setWaPhoneInput(''); if (waConnectPollRef.current) { clearInterval(waConnectPollRef.current); waConnectPollRef.current = null } }}>
+          <div className="confirm-dialog wa-connect-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="wa-connect-modal-close" onClick={() => { setWaConnectModal(null); setWaConnecting(false); setWaPhoneInput(''); if (waConnectPollRef.current) { clearInterval(waConnectPollRef.current); waConnectPollRef.current = null } }}>✕</button>
+            <div className="wa-connect-icon" style={{ marginBottom: 12 }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            </div>
+            {waConnectModal.qrDataUrl ? (
+              <>
+                <h3 className="confirm-title">סרקי את קוד ה-QR</h3>
+                <p className="confirm-message">פתחי וואטסאפ בטלפון ← הגדרות ← מכשירים מקושרים ← קשר מכשיר</p>
+                <img src={waConnectModal.qrDataUrl} alt="QR Code" className="wa-qr-image" style={{ margin: '12px auto', display: 'block' }} />
+                <div className="wa-connect-waiting">
+                  <div className="wa-connect-spinner"></div>
+                  <span>ממתינה לסריקה...</span>
+                </div>
+                <button className="wa-mode-switch" onClick={() => { setWaConnectModal({}); setWaConnecting(false); if (waConnectPollRef.current) { clearInterval(waConnectPollRef.current); waConnectPollRef.current = null } setWaConnectMode('phone') }}>
+                  📱 חיבור עם מספר טלפון במקום
+                </button>
+              </>
+            ) : waConnectModal.pairingCode ? (
+              <>
+                <h3 className="confirm-title">הזיני את הקוד בוואטסאפ</h3>
+                <p className="confirm-message">פתחי וואטסאפ ← הגדרות ← מכשירים מקושרים ← קשר מכשיר ← קישור עם מספר טלפון</p>
+                <div className="wa-pairing-code">{waConnectModal.pairingCode}</div>
+                <div className="wa-connect-waiting">
+                  <div className="wa-connect-spinner"></div>
+                  <span>ממתינה לאישור...</span>
+                </div>
+                <button className="wa-mode-switch" onClick={() => { setWaConnectModal({}); setWaConnecting(false); if (waConnectPollRef.current) { clearInterval(waConnectPollRef.current); waConnectPollRef.current = null } setWaConnectMode('qr') }}>
+                  🔲 חיבור עם QR במקום
+                </button>
+              </>
+            ) : (
+              <>
+                <h3 className="confirm-title">חיבור וואטסאפ</h3>
+                <div className="wa-connect-mode-tabs">
+                  <button className={`wa-mode-tab ${waConnectMode === 'qr' ? 'active' : ''}`} onClick={() => setWaConnectMode('qr')}>🔲 סריקת QR</button>
+                  <button className={`wa-mode-tab ${waConnectMode === 'phone' ? 'active' : ''}`} onClick={() => setWaConnectMode('phone')}>📱 מספר טלפון</button>
+                </div>
+                {waConnectMode === 'qr' ? (
+                  <button className="wa-connect-btn" disabled={waConnecting} onClick={async () => {
+                    setWaConnecting(true)
+                    try {
+                      const res = await authAPI.connectWhatsapp()
+                      if (res.data?.connected) {
+                        setUser(prev => ({ ...prev, whatsappSessionConnected: true, whatsappSessionPhone: res.data.phone || null }))
+                        setWaConnectModal(null); setWaConnecting(false)
+                        return
+                      }
+                      if (res.data?.qrDataUrl) {
+                        setWaConnectModal({ qrDataUrl: res.data.qrDataUrl })
+                        waConnectPollRef.current = setInterval(async () => {
+                          try {
+                            const status = await authAPI.getWhatsappStatus()
+                            if (status.data?.connected) {
+                              clearInterval(waConnectPollRef.current); waConnectPollRef.current = null
+                              setUser(prev => ({ ...prev, whatsappSessionConnected: true, whatsappSessionPhone: status.data.phone || null }))
+                              setWaConnectModal(null); setWaConnecting(false)
+                            } else if (status.data?.qrDataUrl) {
+                              setWaConnectModal({ qrDataUrl: status.data.qrDataUrl })
+                            }
+                          } catch { /* ignore */ }
+                        }, 3000)
+                      }
+                    } catch (err) {
+                      console.error('[WA-Connect] Failed:', err)
+                      setWaConnecting(false)
+                    }
+                  }}>
+                    {waConnecting ? <><div className="wa-connect-spinner"></div> מתחבר...</> : 'התחבר עם QR'}
+                  </button>
+                ) : (
+                  <div className="wa-phone-connect">
+                    <input
+                      type="tel"
+                      className="wa-phone-input"
+                      placeholder="מספר עם קידומת מדינה (972501234567)"
+                      value={waPhoneInput}
+                      onChange={(e) => setWaPhoneInput(e.target.value)}
+                      dir="ltr"
+                      disabled={waConnecting}
+                    />
+                    <button className="wa-connect-btn" disabled={waConnecting || waPhoneInput.replace(/\D/g, '').length < 10} onClick={async () => {
+                      const digits = waPhoneInput.replace(/\D/g, '')
+                      setWaConnecting(true)
+                      try {
+                        const res = await authAPI.connectWhatsappPhone(digits)
+                        if (res.data?.connected) {
+                          setUser(prev => ({ ...prev, whatsappSessionConnected: true, whatsappSessionPhone: res.data.phone || null }))
+                          setWaConnectModal(null); setWaConnecting(false)
+                          return
+                        }
+                        if (res.data?.pairingCode) {
+                          setWaConnectModal({ pairingCode: res.data.pairingCode })
+                          waConnectPollRef.current = setInterval(async () => {
+                            try {
+                              const status = await authAPI.getWhatsappStatus()
+                              if (status.data?.connected) {
+                                clearInterval(waConnectPollRef.current); waConnectPollRef.current = null
+                                setUser(prev => ({ ...prev, whatsappSessionConnected: true, whatsappSessionPhone: status.data.phone || null }))
+                                setWaConnectModal(null); setWaConnecting(false)
+                              }
+                            } catch { /* ignore */ }
+                          }, 3000)
+                        }
+                      } catch (err) {
+                        console.error('[WA-ConnectPhone] Failed:', err)
+                        setWaConnecting(false)
+                      }
+                    }}>
+                      {waConnecting ? <><div className="wa-connect-spinner"></div> מתחבר...</> : 'קבלי קוד חיבור'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!confirmAction}
@@ -3844,15 +4743,15 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
 
   const handleRefreshMetrics = async (pubId) => {
     setRefreshingId(pubId)
-    window.dispatchEvent(new CustomEvent('postit-op-start', { detail: { id: `refresh-${pubId}`, msg: 'מרענן מידע עבור פוסט זה...' } }))
+    window.dispatchEvent(new CustomEvent('possbo-op-start', { detail: { id: `refresh-${pubId}`, msg: 'מרענן מידע עבור פוסט זה...' } }))
     try {
       const res = await groupsService.refreshPublicationMetrics(pubId)
       if (res.data.success) {
         setPubHistory(prev => prev?.map(h => (h.id === pubId || h.originalId === pubId) ? { ...h, likes: res.data.metrics.likes, comments: res.data.metrics.comments } : h))
-        window.dispatchEvent(new CustomEvent('postit-op-done', { detail: { id: `refresh-${pubId}`, success: true, msg: `✅ מידע עודכן: ${res.data.metrics.likes} לייקים, ${res.data.metrics.comments} תגובות` } }))
+        window.dispatchEvent(new CustomEvent('possbo-op-done', { detail: { id: `refresh-${pubId}`, success: true, msg: `✅ מידע עודכן: ${res.data.metrics.likes} לייקים, ${res.data.metrics.comments} תגובות` } }))
       }
     } catch {
-      window.dispatchEvent(new CustomEvent('postit-op-done', { detail: { id: `refresh-${pubId}`, success: false, msg: '⚠️ שגיאה ברענון מידע' } }))
+      window.dispatchEvent(new CustomEvent('possbo-op-done', { detail: { id: `refresh-${pubId}`, success: false, msg: '⚠️ שגיאה ברענון מידע' } }))
     }
     setRefreshingId(null)
   }
@@ -4181,6 +5080,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                   {campaign.instagramEnabled && campaign.instagramPublishType?.includes('STORY') && <span className="detail-platform-chip">אינסטגרם סטורי</span>}
                   {campaign.instagramEnabled && campaign.instagramPublishType?.includes('REEL') && <span className="detail-platform-chip">אינסטגרם רילס</span>}
                   {campaign.instagramEnabled && !campaign.instagramPublishType && <span className="detail-platform-chip">אינסטגרם</span>}
+                  {(campaign.whatsappEnabled || pubHistory?.some(h => h.platform === 'WHATSAPP')) && <span className="detail-platform-chip">וואטסאפ</span>}
                 </span>
               </div>
               {(campaign.groupCount > 0 || campaign.groupNames?.length > 0) && (
@@ -4213,15 +5113,14 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
               )}
 
               {/* Publication History */}
-              {(campaign.publishedCount > 0 || campaign.status === 'published') && (
-                <div className="detail-history-section">
-                  <button className="detail-history-btn" onClick={loadHistory} disabled={historyLoading}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    {historyLoading ? 'טוען...' : historyOpen ? 'הסתר היסטוריית פרסומים' : 'היסטוריית פרסומים'}
-                    {!historyOpen && <span className="detail-history-count">{campaign.publishedCount || ''}</span>}
-                  </button>
+              <div className="detail-history-section">
+                <button className="detail-history-btn" onClick={loadHistory} disabled={historyLoading}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  {historyLoading ? 'טוען...' : historyOpen ? 'הסתר היסטוריית פרסומים' : 'היסטוריית פרסומים'}
+                  {!historyOpen && campaign.publishedCount > 0 && <span className="detail-history-count">{campaign.publishedCount}</span>}
+                </button>
                   {historyOpen && pubHistory && (
                     <div className="detail-history-list">
                       {pubHistory.length === 0 ? (
@@ -4246,7 +5145,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                             </span>
                           </div>
                           <div className="detail-history-card-stats">
-                            {h.igPublishType !== 'STORY' && (
+                            {h.igPublishType !== 'STORY' && h.platform !== 'WHATSAPP' && (
                               <>
                                 <span className="detail-history-stat" title="לייקים">
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
@@ -4258,13 +5157,13 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                                 </span>
                               </>
                             )}
-                            {h.postUrl && h.igPublishType !== 'STORY' && (
+                            {h.postUrl && h.igPublishType !== 'STORY' && h.platform !== 'WHATSAPP' && (
                               <a href={h.postUrl} target="_blank" rel="noopener noreferrer" className="detail-history-stat detail-history-link" title={h.platform === 'INSTAGRAM' ? 'פתח באינסטגרם' : 'פתח בפייסבוק'}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                                 {h.platform === 'INSTAGRAM' ? 'צפה באינסטגרם' : 'צפה בפוסט'}
                               </a>
                             )}
-                            {h.status === 'SUCCESS' && h.igPublishType !== 'STORY' && (
+                            {h.status === 'SUCCESS' && h.igPublishType !== 'STORY' && h.platform !== 'WHATSAPP' && (
                               <button
                                 className={`detail-history-stat detail-history-refresh ${refreshingId === (h.originalId || h.id) ? 'refreshing' : ''}`}
                                 title="רענן לייקים ותגובות"
@@ -4283,7 +5182,6 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                     </div>
                   )}
                 </div>
-              )}
             </div>
           </div>
         )}

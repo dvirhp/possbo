@@ -19,6 +19,9 @@ export function isAllowedUrl(url) {
     // Only allow HTTPS
     if (parsed.protocol !== "https:") return false;
 
+    // Reject non-default ports (SSRF prevention)
+    if (parsed.port && parsed.port !== "443") return false;
+
     // Only allow facebook.com domains
     const hostname = parsed.hostname.toLowerCase();
     if (

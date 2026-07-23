@@ -162,9 +162,9 @@ export default function EmojiPicker({ onSelect, textareaRef }) {
       if (!emPicker?.shadowRoot) return
       clearInterval(interval)
       const shadow = emPicker.shadowRoot
-      if (shadow.querySelector('#postit-rtl-fix')) return
+      if (shadow.querySelector('#possbo-rtl-fix')) return
       const style = document.createElement('style')
-      style.id = 'postit-rtl-fix'
+      style.id = 'possbo-rtl-fix'
       style.textContent = `
         :host { direction: rtl; }
         #root { direction: rtl; }

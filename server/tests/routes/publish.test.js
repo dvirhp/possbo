@@ -232,3 +232,94 @@ describe("GET /api/publish/history", () => {
     expect(res.body.posts).toEqual([]);
   });
 });
+
+describe("POST /api/publish — edge cases", () => {
+  it("should return 400 when groupUrl is empty string", async () => {
+    const res = await request(app)
+      .post("/api/publish")
+      .send({ groupUrl: "", text: "Hello" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 when text is empty string", async () => {
+    const res = await request(app)
+      .post("/api/publish")
+      .send({ groupUrl: "https://facebook.com/groups/123", text: "" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 when text is whitespace only", async () => {
+    const res = await request(app)
+      .post("/api/publish")
+      .send({ groupUrl: "https://facebook.com/groups/123", text: "   " });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("should handle publish with anonymous as string 'false'", async () => {
+    const { publishToGroup } =
+      await import("../../src/utils/facebook-automation.js");
+    vi.mocked(publishToGroup).mockResolvedValue({
+      success: true,
+      postUrl: null,
+      screenshot: null,
+    });
+
+    const res = await request(app).post("/api/publish").send({
+      groupUrl: "https://facebook.com/groups/123",
+      text: "Test post",
+      anonymous: "false",
+    });
+
+    expect(res.status).toBe(200);
+    expect(publishToGroup).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      null,
+      expect.objectContaining({ anonymous: false }),
+    );
+  });
+
+  it("should handle null location", async () => {
+    const { publishToGroup } =
+      await import("../../src/utils/facebook-automation.js");
+    vi.mocked(publishToGroup).mockResolvedValue({
+      success: true,
+      postUrl: null,
+      screenshot: null,
+    });
+
+    const res = await request(app).post("/api/publish").send({
+      groupUrl: "https://facebook.com/groups/123",
+      text: "Test",
+      location: null,
+    });
+
+    expect(res.status).toBe(200);
+    expect(publishToGroup).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      null,
+      expect.objectContaining({ location: null }),
+    );
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    const publishModule = await import("../../src/routes/publish.js");
+    const noAuthApp = express();
+    noAuthApp.use(express.json());
+    noAuthApp.use((req, _res, next) => {
+      req.user = null;
+      next();
+    });
+    noAuthApp.use("/api/publish", publishModule.default);
+
+    const res = await request(noAuthApp)
+      .post("/api/publish")
+      .send({ groupUrl: "https://facebook.com/groups/123", text: "test" });
+
+    expect(res.status).toBe(401);
+  });
+});

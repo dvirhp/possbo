@@ -23,12 +23,12 @@ export default function Templates() {
   const { user, authChecked, groups: cachedGroups } = useAppData()
   const [templates, setTemplates] = useState(() => {
     try {
-      const cached = localStorage.getItem('postit_templates')
+      const cached = localStorage.getItem('possbo_templates')
       return cached ? JSON.parse(cached) : []
     } catch { return [] }
   })
   const [loading, setLoading] = useState(() => {
-    try { return !localStorage.getItem('postit_templates') } catch { return true }
+    try { return !localStorage.getItem('possbo_templates') } catch { return true }
   })
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -58,9 +58,9 @@ export default function Templates() {
   // Reload templates when publish completes in background
   useEffect(() => {
     const handlePublishDone = () => { loadTemplates() }
-    window.addEventListener('postit-publish-done', handlePublishDone)
+    window.addEventListener('possbo-publish-done', handlePublishDone)
     return () => {
-      window.removeEventListener('postit-publish-done', handlePublishDone)
+      window.removeEventListener('possbo-publish-done', handlePublishDone)
     }
   }, [])
 
@@ -69,7 +69,7 @@ export default function Templates() {
       const res = await templatesService.getAll()
       if (res.data.success) {
         setTemplates(res.data.templates)
-        try { localStorage.setItem('postit_templates', JSON.stringify(res.data.templates)) } catch { /* ignore */ }
+        try { localStorage.setItem('possbo_templates', JSON.stringify(res.data.templates)) } catch { /* ignore */ }
       }
     } catch {
       // silent
@@ -155,7 +155,7 @@ export default function Templates() {
       <div className="tpl-content">
         {loading ? (
           <div className="tpl-loading">
-            <img src="/logo.svg" alt="" className="loader-logo-pulse" />
+            <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
             <span>טוען טמפלייטים...</span>
           </div>
         ) : templates.length === 0 ? (

@@ -250,7 +250,7 @@ export default function ScheduledCalendar() {
 
       {!authChecked ? (
         <div className="sc-loading">
-          <img src="/logo.svg" alt="" className="loader-logo-pulse" />
+          <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
           <span>טוען יומן...</span>
         </div>
       ) : selectedDate ? (

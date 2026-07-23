@@ -303,7 +303,9 @@ export default function TemplateForm() {
     try {
       const res = await authAPI.getInstagramStatus()
       if (res?.data?.connected) {
-        setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: res.data.account?.username }))
+        const updates = { instagramConnected: true, instagramUsername: res.data.account?.username }
+        if (res.data.avatarUrl) updates.avatarUrl = res.data.avatarUrl
+        setUser(prev => ({ ...prev, ...updates }))
         setInstagramEnabled(true)
       }
     } catch { /* ignore */ }
@@ -544,7 +546,7 @@ export default function TemplateForm() {
   if (!authChecked || !user) return null
   if (loading) return (
     <div className="templates-page">
-      <div className="tpl-loading"><img src="/logo.svg" alt="" className="loader-logo-pulse" /><span>טוען...</span></div>
+      <div className="tpl-loading"><img src="/logo-icon.svg" alt="" className="loader-logo-pulse" /><span>טוען...</span></div>
     </div>
   )
 

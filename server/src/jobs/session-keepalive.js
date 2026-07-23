@@ -1,30 +1,25 @@
-import { PrismaClient } from "@prisma/client";
-import { chromium } from "playwright";
+import prisma from "../config/prisma.js";
 import { decrypt, encrypt } from "../utils/encryption.js";
 import { createLogger } from "../utils/logger.js";
+import {
+  launchBrowser,
+  createBrowserContext,
+} from "../utils/browser-factory.js";
 
-const prisma = new PrismaClient();
 const log = createLogger("keep-alive");
-
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 /**
  * Check if a Facebook session (storage state) is still valid.
  * Opens a headless browser, loads cookies, visits Facebook, checks login status.
  * Returns { valid: boolean, newState?: object }
  */
-async function checkAndRefreshSession(storageState) {
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-  });
+async function checkAndRefreshSession(storageState, userId) {
+  const browser = await launchBrowser();
 
   try {
-    const context = await browser.newContext({
+    const context = await createBrowserContext(browser, {
+      userId,
       storageState,
-      viewport: { width: 1280, height: 900 },
-      userAgent: USER_AGENT,
     });
 
     const page = await context.newPage();
@@ -34,6 +29,15 @@ async function checkAndRefreshSession(storageState) {
     });
 
     // Wait a bit for page to settle
+    await page.waitForTimeout(3000);
+
+    // Scroll down and back up to simulate real user activity, then reload
+    // so Facebook refreshes session cookies before we capture them
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(1000);
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
     await page.waitForTimeout(3000);
 
     // Check if we're still logged in by looking for login cookies
@@ -85,7 +89,7 @@ export async function runSessionKeepAlive() {
       // Decrypt stored state
       const storageState = JSON.parse(decrypt(user.facebookStorageState));
 
-      const result = await checkAndRefreshSession(storageState);
+      const result = await checkAndRefreshSession(storageState, user.id);
 
       if (result.valid) {
         // Update with refreshed cookies

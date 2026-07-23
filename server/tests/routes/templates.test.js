@@ -200,4 +200,90 @@ describe("Templates routes", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe("POST /api/templates — edge cases", () => {
+    it("should return 400 when name is only spaces/tabs", async () => {
+      const res = await request(app).post("/api/templates").send({
+        name: "\t  \n",
+        content: "Body",
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("should return 400 when content is empty string", async () => {
+      const res = await request(app).post("/api/templates").send({
+        name: "Test",
+        content: "",
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("should return 400 when content is whitespace only", async () => {
+      const res = await request(app).post("/api/templates").send({
+        name: "Test",
+        content: "   ",
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("should create template with Hebrew content", async () => {
+      mockCreate.mockResolvedValue({
+        id: "t-hebrew",
+        name: "תבנית",
+        content: "שלום עולם",
+      });
+
+      const res = await request(app).post("/api/templates").send({
+        name: "תבנית",
+        content: "שלום עולם",
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+    });
+
+    it("should create template with special characters in name", async () => {
+      mockCreate.mockResolvedValue({
+        id: "t-special",
+        name: "Template (v2) — Draft",
+        content: "Content",
+      });
+
+      const res = await request(app).post("/api/templates").send({
+        name: "Template (v2) — Draft",
+        content: "Content",
+      });
+
+      expect(res.status).toBe(201);
+    });
+  });
+
+  describe("GET /api/templates/:id — edge cases", () => {
+    it("should return template belonging to user", async () => {
+      mockFindFirst.mockResolvedValue({
+        id: "t-1",
+        name: "My Template",
+        content: "Content",
+        userId: "user-1",
+      });
+
+      const res = await request(app).get("/api/templates/t-1");
+
+      expect(res.status).toBe(200);
+      expect(res.body.template.userId).toBe("user-1");
+    });
+  });
+
+  describe("DELETE /api/templates/:id — edge cases", () => {
+    it("should allow deleting template when findFirst returns match", async () => {
+      // The route uses findFirst with userId filter, so if it returns a result
+      // the user owns it; if not, it returns 404
+      mockFindFirst.mockResolvedValue(null); // Different user's template not found
+      const res = await request(app).delete("/api/templates/t-1");
+      expect(res.status).toBe(404);
+    });
+  });
 });

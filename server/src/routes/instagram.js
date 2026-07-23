@@ -21,11 +21,42 @@ router.get("/status", requireAuth, async (req, res) => {
       select: {
         id: true,
         providerUserName: true,
+        accessTokenEncrypted: true,
         tokenExpiresAt: true,
         status: true,
         createdAt: true,
       },
     });
+
+    // Backfill avatar from Instagram if user has no profile picture
+    let backfilledAvatar = null;
+    if (account?.accessTokenEncrypted) {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { profileImage: true, avatarUrl: true },
+      });
+      if (!user.profileImage && !user.avatarUrl) {
+        try {
+          const token = decrypt(account.accessTokenEncrypted);
+          const profileRes = await fetch(
+            `https://graph.instagram.com/me?fields=profile_picture_url&access_token=${token}`,
+          );
+          const profileData = await profileRes.json();
+          if (profileData.profile_picture_url) {
+            await prisma.user.update({
+              where: { id: req.user.id },
+              data: { avatarUrl: profileData.profile_picture_url },
+            });
+            backfilledAvatar = profileData.profile_picture_url;
+            log.info("Backfilled avatar from Instagram", {
+              userId: req.user.id,
+            });
+          }
+        } catch (e) {
+          log.debug("Failed to backfill avatar from Instagram", e.message);
+        }
+      }
+    }
 
     res.json({
       success: true,
@@ -39,6 +70,7 @@ router.get("/status", requireAuth, async (req, res) => {
             connectedAt: account.createdAt,
           }
         : null,
+      ...(backfilledAvatar && { avatarUrl: backfilledAvatar }),
     });
   } catch (err) {
     log.error("Failed to check Instagram status", err);
@@ -146,12 +178,13 @@ router.post("/connect", requireAuth, async (req, res) => {
     // Get Instagram username and correct graph ID (token exchange user_id may
     // lose precision for large numbers due to JS Number limitations)
     const profileRes = await fetch(
-      `https://graph.instagram.com/me?fields=id,username&access_token=${longToken}`,
+      `https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${longToken}`,
     );
     const profileData = await profileRes.json();
     const username = profileData.username || igUserId;
     // Use the string ID from /me which is always precise
     const graphUserId = profileData.id || String(igUserId);
+    const igProfilePicture = profileData.profile_picture_url || null;
 
     // Save or update connected account
     const encryptedToken = encrypt(longToken);
@@ -173,6 +206,21 @@ router.post("/connect", requireAuth, async (req, res) => {
       },
     });
 
+    // If user has no profile picture, use the Instagram one
+    if (igProfilePicture) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { profileImage: true, avatarUrl: true },
+      });
+      if (!user.profileImage && !user.avatarUrl) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { avatarUrl: igProfilePicture },
+        });
+        log.info("Set Instagram profile picture as user avatar", { userId });
+      }
+    }
+
     log.info("Instagram connected", {
       userId,
       igUserId: graphUserId,
@@ -182,6 +230,7 @@ router.post("/connect", requireAuth, async (req, res) => {
     res.json({
       success: true,
       account: { username, connectedAt: new Date() },
+      igProfilePicture,
     });
   } catch (err) {
     log.error("Instagram connect error", err);
@@ -287,11 +336,12 @@ router.get("/callback", async (req, res) => {
 
     // Get Instagram username and correct graph ID
     const profileRes = await fetch(
-      `https://graph.instagram.com/me?fields=id,username&access_token=${longToken}`,
+      `https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${longToken}`,
     );
     const profileData = await profileRes.json();
     const username = profileData.username || igUserId;
     const graphUserId = profileData.id || String(igUserId);
+    const igProfilePicture = profileData.profile_picture_url || null;
 
     // Save or update connected account
     const encryptedToken = encrypt(longToken);
@@ -312,6 +362,23 @@ router.get("/callback", async (req, res) => {
         status: "ACTIVE",
       },
     });
+
+    // If user has no profile picture, use the Instagram one
+    if (igProfilePicture) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { profileImage: true, avatarUrl: true },
+      });
+      if (!user.profileImage && !user.avatarUrl) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { avatarUrl: igProfilePicture },
+        });
+        log.info("Set Instagram profile picture as user avatar via callback", {
+          userId,
+        });
+      }
+    }
 
     log.info("Instagram connected via callback", {
       userId,

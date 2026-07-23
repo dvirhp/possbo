@@ -55,11 +55,11 @@ export default function AuthLayout({ children }) {
   // Pull-to-refresh handler
   const handlePullRefresh = useCallback(() => {
     return new Promise(resolve => {
-      const handler = () => { resolve(); window.removeEventListener('postit-pull-refresh-done', handler) }
-      window.addEventListener('postit-pull-refresh-done', handler)
-      window.dispatchEvent(new CustomEvent('postit-pull-refresh'))
+      const handler = () => { resolve(); window.removeEventListener('possbo-pull-refresh-done', handler) }
+      window.addEventListener('possbo-pull-refresh-done', handler)
+      window.dispatchEvent(new CustomEvent('possbo-pull-refresh'))
       // Auto-resolve after 3s if no one responds
-      setTimeout(() => { resolve(); window.removeEventListener('postit-pull-refresh-done', handler) }, 3000)
+      setTimeout(() => { resolve(); window.removeEventListener('possbo-pull-refresh-done', handler) }, 3000)
     })
   }, [])
 
@@ -110,7 +110,7 @@ export default function AuthLayout({ children }) {
     return (
       <div className="app-layout">
         <div className="app-main" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src="/logo.svg" alt="" className="loader-logo-pulse" />
+          <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
         </div>
       </div>
     )

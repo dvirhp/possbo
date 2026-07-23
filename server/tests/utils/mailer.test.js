@@ -58,6 +58,28 @@ describe("mailer", () => {
       const result = await sendVerificationEmail("bad@test.com", "111111");
       expect(result).toBe(false);
     });
+
+    it("sends email with from field populated", async () => {
+      await sendVerificationEmail("test@test.com", "123456");
+
+      const call = mockSendMail.mock.calls[0][0];
+      expect(call.from).toBeDefined();
+    });
+
+    it("sends HTML content (not plain text only)", async () => {
+      await sendVerificationEmail("test@test.com", "123456");
+
+      const call = mockSendMail.mock.calls[0][0];
+      expect(call.html).toBeDefined();
+      expect(call.html.length).toBeGreaterThan(0);
+    });
+
+    it("returns false on SMTP connection timeout", async () => {
+      mockSendMail.mockRejectedValueOnce(new Error("Connection timeout"));
+
+      const result = await sendVerificationEmail("test@test.com", "123456");
+      expect(result).toBe(false);
+    });
   });
 
   describe("sendPasswordResetEmail", () => {
@@ -78,6 +100,31 @@ describe("mailer", () => {
 
       const result = await sendPasswordResetEmail("fail@test.com", "000000");
       expect(result).toBe(false);
+    });
+
+    it("uses a distinct subject from verification email", async () => {
+      await sendVerificationEmail("test@test.com", "111111");
+      const verifySubject = mockSendMail.mock.calls[0][0].subject;
+
+      mockSendMail.mockClear();
+      await sendPasswordResetEmail("test@test.com", "222222");
+      const resetSubject = mockSendMail.mock.calls[0][0].subject;
+
+      expect(resetSubject).not.toBe(verifySubject);
+    });
+
+    it("includes the code in the subject", async () => {
+      await sendPasswordResetEmail("test@test.com", "999999");
+
+      const call = mockSendMail.mock.calls[0][0];
+      expect(call.subject).toContain("999999");
+    });
+
+    it("sends email with from field", async () => {
+      await sendPasswordResetEmail("test@test.com", "123456");
+
+      const call = mockSendMail.mock.calls[0][0];
+      expect(call.from).toBeDefined();
     });
   });
 });

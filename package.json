@@ -1,5 +1,5 @@
 {
-  "name": "postit-workspace",
+  "name": "possbo-workspace",
   "private": true,
   "scripts": {
     "dev": "node scripts/dev.mjs",

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://localhost:8000/api";
+const API_BASE_URL = "/api";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -90,7 +90,7 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     // ── Network error retry (up to 2 retries with backoff) ──
-    if (isNetworkError(error) && !originalRequest._networkRetry) {
+    if (isNetworkError(error) && !originalRequest._networkRetry && !originalRequest._noRetry) {
       const retryCount = originalRequest._retryCount || 0;
       if (retryCount < 2) {
         originalRequest._retryCount = retryCount + 1;

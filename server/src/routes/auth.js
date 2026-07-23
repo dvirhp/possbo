@@ -17,6 +17,11 @@ import {
   generateCode,
 } from "../utils/mailer.js";
 import { verifyTurnstile } from "../utils/turnstile.js";
+import {
+  setRefreshCookie,
+  formatUserResponse,
+  normalizeEmail,
+} from "../utils/auth-service.js";
 
 const router = express.Router();
 const log = createLogger("auth");
@@ -43,22 +48,14 @@ setInterval(
   5 * 60 * 1000,
 );
 
-const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-function setRefreshCookie(res, token) {
-  res.cookie("refreshToken", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: REFRESH_TOKEN_MAX_AGE,
-    path: "/api/auth",
-  });
-}
+// setRefreshCookie, formatUserResponse, issueTokens, normalizeEmail
+// are now imported from utils/auth-service.js
 
 // Register step 1: validate & send verification code
 router.post("/register", async (req, res) => {
   try {
-    const { email, password, name, gender, phone, captchaToken } = req.body;
+    const { email, password, name, gender, phone, idNumber, captchaToken } =
+      req.body;
 
     // Verify Turnstile CAPTCHA
     const captchaValid = await verifyTurnstile(captchaToken, req.ip);
@@ -68,6 +65,12 @@ router.post("/register", async (req, res) => {
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    if (!idNumber || !/^\d{9}$/.test(idNumber)) {
+      return res
+        .status(400)
+        .json({ error: "יש להזין תעודת זהות תקינה (9 ספרות)" });
     }
 
     if (password.length < 6) {
@@ -82,7 +85,7 @@ router.post("/register", async (req, res) => {
         .json({ error: "Password must be at most 128 characters" });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     // Check if user already exists
     const existing = await prisma.user.findUnique({
@@ -96,7 +99,7 @@ router.post("/register", async (req, res) => {
     const code = generateCode();
     pendingVerifications.set(normalizedEmail, {
       code,
-      data: { email: normalizedEmail, password, name, gender, phone },
+      data: { email: normalizedEmail, password, name, gender, phone, idNumber },
       expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
     });
 
@@ -120,7 +123,7 @@ router.post("/register", async (req, res) => {
 router.post("/verify-email", async (req, res) => {
   try {
     const { email, code } = req.body;
-    const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail || !code) {
       return res.status(400).json({ error: "חסר אימייל או קוד" });
@@ -144,7 +147,7 @@ router.post("/verify-email", async (req, res) => {
 
     // Code verified — create the user
     pendingVerifications.delete(normalizedEmail);
-    const { password, name, gender, phone } = pending.data;
+    const { password, name, gender, phone, idNumber } = pending.data;
 
     // Double-check email not taken (race condition)
     const existing = await prisma.user.findUnique({
@@ -163,6 +166,7 @@ router.post("/verify-email", async (req, res) => {
         name: name || null,
         gender: gender || null,
         phone: phone || null,
+        idNumber: idNumber || null,
       },
     });
 
@@ -176,24 +180,12 @@ router.post("/verify-email", async (req, res) => {
       data: { refreshToken: refreshTokenHash },
     });
 
-    setRefreshCookie(res, refreshToken);
+    setRefreshCookie(res, refreshToken, req);
 
     res.status(201).json({
       success: true,
       accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        profileImage: user.profileImage || null,
-        avatarUrl: null,
-        fbSessionValid: false,
-        whatsappNumber: null,
-        whatsappMessage: null,
-        notificationSettings: null,
-        createdAt: user.createdAt,
-        subscription: null,
-      },
+      user: formatUserResponse(user, { subscription: null }),
     });
   } catch (error) {
     log.error("Email verification failed", error);
@@ -205,7 +197,7 @@ router.post("/verify-email", async (req, res) => {
 router.post("/resend-code", async (req, res) => {
   try {
     const { email } = req.body;
-    const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     const pending = pendingVerifications.get(normalizedEmail);
     if (!pending) {
@@ -250,7 +242,7 @@ router.post("/login", async (req, res) => {
         .json({ error: "Password must be at most 128 characters" });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -275,7 +267,7 @@ router.post("/login", async (req, res) => {
       data: { refreshToken: refreshTokenHash, lastLoginAt: new Date() },
     });
 
-    setRefreshCookie(res, refreshToken);
+    setRefreshCookie(res, refreshToken, req);
 
     // Check subscription status
     const activeSubscription = await prisma.subscription.findFirst({
@@ -293,17 +285,7 @@ router.post("/login", async (req, res) => {
     res.json({
       success: true,
       accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        profileImage: user.profileImage,
-        avatarUrl: user.avatarUrl || null,
-        fbSessionValid: user.fbSessionValid || false,
-        whatsappNumber: user.whatsappNumber || null,
-        whatsappMessage: user.whatsappMessage || null,
-        notificationSettings: user.notificationSettings || null,
-        createdAt: user.createdAt,
+      user: formatUserResponse(user, {
         instagramConnected: !!instagramAccount,
         instagramUsername: instagramAccount?.providerUserName || null,
         subscription: activeSubscription
@@ -313,7 +295,7 @@ router.post("/login", async (req, res) => {
               endsAt: activeSubscription.endsAt,
             }
           : null,
-      },
+      }),
     });
   } catch (error) {
     log.error("Login failed", error, { email: req.body?.email });
@@ -325,7 +307,7 @@ router.post("/login", async (req, res) => {
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
-    const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail) {
       return res.status(400).json({ error: "יש להזין אימייל" });
@@ -358,7 +340,7 @@ router.post("/forgot-password", async (req, res) => {
 router.post("/reset-password", async (req, res) => {
   try {
     const { email, code, newPassword } = req.body;
-    const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail || !code || !newPassword) {
       return res.status(400).json({ error: "חסרים שדות חובה" });
@@ -455,23 +437,13 @@ router.post("/refresh", async (req, res) => {
       select: { providerUserName: true },
     });
 
-    setRefreshCookie(res, newRefreshToken);
+    setRefreshCookie(res, newRefreshToken, req);
 
     // Send response immediately — user doesn't need to wait for DB save
     res.json({
       success: true,
       accessToken: newAccessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        profileImage: user.profileImage,
-        avatarUrl: user.avatarUrl || null,
-        fbSessionValid: user.fbSessionValid || false,
-        whatsappNumber: user.whatsappNumber || null,
-        whatsappMessage: user.whatsappMessage || null,
-        notificationSettings: user.notificationSettings || null,
-        createdAt: user.createdAt,
+      user: formatUserResponse(user, {
         instagramConnected: !!instagramAccount,
         instagramUsername: instagramAccount?.providerUserName || null,
         subscription: activeSubscription
@@ -481,7 +453,7 @@ router.post("/refresh", async (req, res) => {
               endsAt: activeSubscription.endsAt,
             }
           : null,
-      },
+      }),
     });
 
     // Save new refresh token hash in background — don't block the response
@@ -641,30 +613,56 @@ router.get("/me", async (req, res) => {
   // Check Instagram connection
   const instagramAccount = await prisma.connectedAccount.findFirst({
     where: { userId: req.user.id, provider: "INSTAGRAM", status: "ACTIVE" },
-    select: { providerUserName: true, tokenExpiresAt: true },
+    select: {
+      providerUserName: true,
+      tokenExpiresAt: true,
+      accessTokenEncrypted: true,
+    },
   });
 
-  res.json({
-    id: req.user.id,
-    email: req.user.email,
-    name: req.user.name,
-    profileImage: req.user.profileImage,
-    avatarUrl: req.user.avatarUrl || null,
-    fbSessionValid,
-    whatsappNumber: req.user.whatsappNumber || null,
-    whatsappMessage: req.user.whatsappMessage || null,
-    notificationSettings: req.user.notificationSettings || null,
-    createdAt: req.user.createdAt,
-    instagramConnected: !!instagramAccount,
-    instagramUsername: instagramAccount?.providerUserName || null,
-    subscription: activeSubscription
-      ? {
-          status: activeSubscription.status,
-          planName: activeSubscription.plan?.name,
-          endsAt: activeSubscription.endsAt,
-        }
-      : null,
-  });
+  // Backfill avatar from Instagram if user has no profile picture
+  let avatarUrl = req.user.avatarUrl || null;
+  if (
+    instagramAccount &&
+    !req.user.profileImage &&
+    !req.user.avatarUrl &&
+    instagramAccount.accessTokenEncrypted
+  ) {
+    try {
+      const { decrypt } = await import("../utils/encryption.js");
+      const token = decrypt(instagramAccount.accessTokenEncrypted);
+      const profileRes = await fetch(
+        `https://graph.instagram.com/me?fields=profile_picture_url&access_token=${token}`,
+      );
+      const profileData = await profileRes.json();
+      if (profileData.profile_picture_url) {
+        await prisma.user.update({
+          where: { id: req.user.id },
+          data: { avatarUrl: profileData.profile_picture_url },
+        });
+        avatarUrl = profileData.profile_picture_url;
+      }
+    } catch {
+      /* non-critical */
+    }
+  }
+
+  res.json(
+    formatUserResponse(
+      { ...req.user, fbSessionValid, avatarUrl },
+      {
+        instagramConnected: !!instagramAccount,
+        instagramUsername: instagramAccount?.providerUserName || null,
+        subscription: activeSubscription
+          ? {
+              status: activeSubscription.status,
+              planName: activeSubscription.plan?.name,
+              endsAt: activeSubscription.endsAt,
+            }
+          : null,
+      },
+    ),
+  );
 });
 
 // Get decrypted Facebook credentials (internal use / for automation)

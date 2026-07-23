@@ -354,6 +354,11 @@
   color: #c13584;
 }
 
+.rpb-whatsapp {
+  background: rgba(37, 211, 102, 0.1);
+  color: #25d366;
+}
+
 /* Platform tag in table */
 .reports-platform-tag {
   font-size: 11px;
@@ -371,6 +376,11 @@
 .rpt-ig {
   background: linear-gradient(135deg, rgba(253, 29, 29, 0.08), rgba(131, 58, 180, 0.08));
   color: #c13584;
+}
+
+.rpt-wa {
+  background: rgba(37, 211, 102, 0.1);
+  color: #25d366;
 }
 
 /* KPI Cards */

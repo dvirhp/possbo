@@ -5,12 +5,12 @@ describe("i18n", () => {
   describe("default export (locale object)", () => {
     it("should export Hebrew locale as default", () => {
       expect(locale).toBeDefined();
-      expect(locale.appName).toBe("PostIt");
+      expect(locale.appName).toBe("Possbo");
     });
 
     it("should have login section", () => {
       expect(locale.login).toBeDefined();
-      expect(locale.login.title).toBe("PostIt");
+      expect(locale.login.title).toBe("Possbo");
     });
 
     it("should have dashboard section", () => {
@@ -36,7 +36,7 @@ describe("i18n", () => {
 
   describe("t() function", () => {
     it("should resolve dot-notation path", () => {
-      expect(t("login.title")).toBe("PostIt");
+      expect(t("login.title")).toBe("Possbo");
     });
 
     it("should return the path string when key not found", () => {
@@ -44,7 +44,7 @@ describe("i18n", () => {
     });
 
     it("should handle single-level keys", () => {
-      expect(t("appName")).toBe("PostIt");
+      expect(t("appName")).toBe("Possbo");
     });
 
     it("should handle deeply nested paths", () => {

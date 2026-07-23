@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { chromium } from "playwright";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import { encrypt, decrypt } from "./encryption.js";
 import { createLogger } from "./logger.js";
+import { launchBrowser, createBrowserContext } from "./browser-factory.js";
 
 const log = createLogger("fb-auto");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -14,11 +14,6 @@ const LEGACY_STORAGE_STATE_PATH = path.join(
   "..",
   ".facebook-storage-state.json",
 );
-
-const prisma = new PrismaClient();
-
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 // ─── Per-user storage state helpers ───────────────────────
 
@@ -103,16 +98,10 @@ async function hasFacebookLoginCookies(context) {
 // ─── Bootstrap session ────────────────────────────────────
 
 export async function bootstrapFacebookSession(userId) {
-  const browser = await chromium.launch({
-    headless: false,
-    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-  });
+  const browser = await launchBrowser({ headless: false });
 
   try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
-      userAgent: USER_AGENT,
-    });
+    const context = await createBrowserContext(browser, { userId });
     const page = await context.newPage();
     await page.goto("https://www.facebook.com/", {
       waitUntil: "domcontentloaded",
@@ -208,15 +197,11 @@ export async function bootstrapFacebookSession(userId) {
 export async function scrapeMyGroups(userId) {
   const storageState = await getStorageState(userId);
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-  });
+  const browser = await launchBrowser();
 
   try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
-      userAgent: USER_AGENT,
+    const context = await createBrowserContext(browser, {
+      userId,
       storageState,
     });
     const page = await context.newPage();
@@ -553,15 +538,11 @@ export async function captureGroupScreenshot(
   const storageState = await getStorageState(userId);
   const headless = process.env.FB_AUTOMATION_HEADLESS === "true";
 
-  const browser = await chromium.launch({
-    headless,
-    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-  });
+  const browser = await launchBrowser({ headless });
 
   try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
-      userAgent: USER_AGENT,
+    const context = await createBrowserContext(browser, {
+      userId,
       storageState,
     });
     const page = await context.newPage();
@@ -653,15 +634,11 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
     images.length > 0 ? images : imagePath ? [imagePath] : [];
   const storageState = await getStorageState(userId);
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-  });
+  const browser = await launchBrowser();
 
   try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
-      userAgent: USER_AGENT,
+    const context = await createBrowserContext(browser, {
+      userId,
       storageState,
     });
     const page = await context.newPage();
@@ -1193,15 +1170,11 @@ export async function publishToProfile(text, imagePath, options = {}) {
   const { location = "", userId } = options;
   const storageState = await getStorageState(userId);
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-  });
+  const browser = await launchBrowser();
 
   try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
-      userAgent: USER_AGENT,
+    const context = await createBrowserContext(browser, {
+      userId,
       storageState,
     });
     const page = await context.newPage();
@@ -1504,18 +1477,14 @@ export async function publishToProfile(text, imagePath, options = {}) {
 export async function scrapeGroupsMetadata(userId, groups) {
   const storageState = await getStorageState(userId);
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-  });
+  const browser = await launchBrowser();
 
   const results = [];
   const CONCURRENCY = 3; // Number of parallel tabs
 
   try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
-      userAgent: USER_AGENT,
+    const context = await createBrowserContext(browser, {
+      userId,
       storageState,
     });
 

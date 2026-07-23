@@ -88,6 +88,12 @@ import subscriptionRoutes from "./routes/subscription.js";
 import aiRoutes from "./routes/ai.js";
 import feedbackRoutes from "./routes/feedback.js";
 import instagramRoutes from "./routes/instagram.js";
+import whatsappRoutes from "./routes/whatsapp.js";
+import whatsappBotRoutes from "./routes/whatsapp-bot.js";
+import {
+  restoreWhatsAppSessions,
+  closeAllWhatsAppSessions,
+} from "./routes/whatsapp.js";
 
 // Use routes
 app.use("/api/auth/refresh", refreshLimiter);
@@ -102,10 +108,12 @@ app.use("/api/subscription", subscriptionRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/instagram", instagramRoutes);
+app.use("/api/whatsapp", whatsappRoutes);
+app.use("/webhooks/whatsapp", whatsappBotRoutes);
 
 // Basic route
 app.get("/", (req, res) => {
-  res.json({ message: "PostIt API is running", user: req.user });
+  res.json({ message: "Possbo API is running", user: req.user });
 });
 
 // Error handling middleware
@@ -124,6 +132,9 @@ app.use((err, req, res, _next) => {
 const server = app.listen(PORT, () => {
   log.info("Server started", { port: PORT, url: `http://localhost:${PORT}` });
   startScheduler();
+  restoreWhatsAppSessions().catch((err) =>
+    log.error("Failed to restore WhatsApp sessions", { error: err.message }),
+  );
 });
 
 // Start HTTPS server for Instagram OAuth callback
@@ -156,12 +167,15 @@ server.keepAliveTimeout = 360_000; // 6 minutes
 server.headersTimeout = 365_000; // must be > keepAliveTimeout
 
 // Graceful shutdown
-process.on("SIGINT", async () => {
-  log.info("Shutting down gracefully...");
+async function gracefulShutdown(signal) {
+  log.info(`${signal} received, shutting down gracefully...`);
   stopScheduler();
+  await closeAllWhatsAppSessions();
   server.close(() => {
     log.info("HTTP server closed");
   });
   await prisma.$disconnect();
   process.exit(0);
-});
+}
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));

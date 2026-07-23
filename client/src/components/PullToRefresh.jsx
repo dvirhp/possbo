@@ -57,7 +57,7 @@ export default function PullToRefresh({ onRefresh, children }) {
         <div className="ptr-indicator" style={{ height: refreshing ? THRESHOLD : pullDistance }}>
           <div className={`ptr-spinner ${refreshing ? 'ptr-spinning' : ''}`}
                style={{ opacity: Math.min(pullDistance / THRESHOLD, 1) }}>
-            <img src="/logo.svg" alt="" className="ptr-logo" />
+            <img src="/logo-icon.svg" alt="" className="ptr-logo" />
           </div>
         </div>
       )}

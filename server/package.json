@@ -1,11 +1,11 @@
 {
-  "name": "postit-server",
+  "name": "possbo-server",
   "version": "1.0.0",
-  "description": "PostIt backend with Node.js, Express, and Prisma",
+  "description": "Possbo backend with Node.js, Express, and Prisma",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/index.js",
+    "dev": "node --watch-path=src src/index.js",
     "start": "node src/index.js",
     "bootstrap-session": "node scripts/bootstrap-session.mjs",
     "prisma:generate": "prisma generate",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@prisma/client": "^5.7.1",
     "axios": "^1.6.2",
+    "baileys": "^7.0.0-rc13",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -34,6 +35,7 @@
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
     "playwright": "^1.61.0",
+    "qrcode": "^1.5.4",
     "sharp": "^0.35.3"
   },
   "devDependencies": {

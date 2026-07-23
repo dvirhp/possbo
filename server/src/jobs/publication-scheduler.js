@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import prisma from "../config/prisma.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -13,8 +13,6 @@ import { createLogger } from "../utils/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
-
-const prisma = new PrismaClient();
 const log = createLogger("pub-scheduler");
 
 // ─── Anti-Detection Configuration ─────────────────────────
@@ -725,8 +723,11 @@ export async function processPublicationJobs() {
       const group = postGroup?.group;
       const user = postGroup?.user || job.post?.user;
       const isInstagramJob = job.targetType === "INSTAGRAM";
+      const isWhatsAppJob = job.targetType === "WHATSAPP";
       const isProfileJob =
-        !isInstagramJob && (job.targetType === "PROFILE" || !group);
+        !isInstagramJob &&
+        !isWhatsAppJob &&
+        (job.targetType === "PROFILE" || !group);
 
       if (!post || !user) {
         await prisma.publicationJob.update({
@@ -757,6 +758,89 @@ export async function processPublicationJobs() {
             mediaIds: igResults.map((r) => r.mediaId),
             postUrl: igResults[0]?.postUrl || null,
           };
+        } else if (isWhatsAppJob) {
+          // ─── WhatsApp Publishing ────────────────────────
+          const { getWhatsAppSocket } = await import("../routes/whatsapp.js");
+          const sock = getWhatsAppSocket(user.id);
+          if (!sock) throw new Error("NO_WHATSAPP_SESSION");
+
+          const waTargets = post.whatsappTargets || [];
+          if (!waTargets.length) throw new Error("NO_WHATSAPP_TARGETS");
+
+          // Helper: sendMessage with timeout to avoid hanging forever
+          const sendWithTimeout = (jid, msg, timeoutMs = 30000) =>
+            Promise.race([
+              sock.sendMessage(jid, msg),
+              new Promise((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("WA_SEND_TIMEOUT")),
+                  timeoutMs,
+                ),
+              ),
+            ]);
+
+          // Get first image if available
+          const mediaPaths = (post.media || [])
+            .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+            .filter((m) => !m.igType)
+            .map((m) => path.join(uploadsDir, path.basename(m.url)));
+          const imagePath = mediaPaths[0] || null;
+
+          // Strip wa.me links from WhatsApp messages (not relevant in WA context)
+          const waContent = (post.content || "")
+            .replace(/\n*https?:\/\/wa\.me\/[^\s]*/g, "")
+            .trim();
+
+          let sent = 0;
+          let sendFailed = 0;
+          for (const target of waTargets) {
+            try {
+              let message;
+              if (imagePath) {
+                message = { image: { url: imagePath }, caption: waContent };
+              } else {
+                message = { text: waContent };
+              }
+
+              if (target.type === "broadcast") {
+                // Send to all members of the broadcast list
+                const list = await prisma.whatsAppBroadcastList.findFirst({
+                  where: { id: target.id, userId: user.id },
+                });
+                if (list?.members?.length) {
+                  for (const member of list.members) {
+                    let phone = String(member.phone).replace(/[^0-9]/g, "");
+                    if (!phone) continue;
+                    // Normalize local Israeli numbers (0xx → 972xx)
+                    if (phone.startsWith("0") && phone.length === 10) {
+                      phone = "972" + phone.slice(1);
+                    }
+                    try {
+                      await sendWithTimeout(`${phone}@s.whatsapp.net`, message);
+                      sent++;
+                    } catch {
+                      sendFailed++;
+                    }
+                    await new Promise((r) => setTimeout(r, 1000));
+                  }
+                }
+              } else {
+                // Send to group
+                await sendWithTimeout(target.id, message);
+                sent++;
+              }
+            } catch (err) {
+              log.warn("WA target send failed", {
+                target: target.id,
+                error: err.message,
+              });
+              sendFailed++;
+            }
+          }
+
+          if (sent === 0 && sendFailed > 0)
+            throw new Error("ALL_WHATSAPP_SENDS_FAILED");
+          result = { sent, failed: sendFailed };
         } else {
           // ─── Facebook Publishing ────────────────────────
           // Check if user has valid Facebook session
@@ -814,13 +898,22 @@ export async function processPublicationJobs() {
             publicationJobId: job.id,
             targetType: isInstagramJob
               ? "INSTAGRAM"
-              : isProfileJob
-                ? "PROFILE"
-                : "GROUP",
-            platform: isInstagramJob ? "INSTAGRAM" : undefined,
+              : isWhatsAppJob
+                ? "WHATSAPP"
+                : isProfileJob
+                  ? "PROFILE"
+                  : "GROUP",
+            platform: isInstagramJob
+              ? "INSTAGRAM"
+              : isWhatsAppJob
+                ? "WHATSAPP"
+                : undefined,
             publishedAt: new Date(),
             status: "SUCCESS",
             externalPostUrl: result?.postUrl || null,
+            externalPostId: isInstagramJob
+              ? result?.mediaIds?.[0] || null
+              : null,
             screenshotUrl: result?.screenshot || null,
           },
         });
@@ -828,7 +921,7 @@ export async function processPublicationJobs() {
         succeeded++;
         log.info("Post published successfully", {
           postId: post.id,
-          groupId: group?.id || "PROFILE",
+          groupId: group?.id || (isWhatsAppJob ? "WHATSAPP" : "PROFILE"),
           jobId: job.id,
           userDailyTotal: todayCount + i + 1,
         });
@@ -905,6 +998,9 @@ export async function processPublicationJobs() {
             errorMsg.includes("media processing failed") ||
             errorMsg.includes("Media file not found"));
 
+        const isWhatsAppAuthError =
+          isWhatsAppJob && errorMsg === "NO_WHATSAPP_TARGETS";
+
         if (isSessionError) {
           // Mark user's session as invalid
           await prisma.user.update({
@@ -934,7 +1030,8 @@ export async function processPublicationJobs() {
           newAttempts >= job.maxAttempts ||
           isSessionError ||
           isInstagramAuthError ||
-          isInstagramContentError
+          isInstagramContentError ||
+          isWhatsAppAuthError
         ) {
           // Max retries reached or non-retryable error — mark as failed
           await prisma.publicationJob.update({
@@ -958,10 +1055,16 @@ export async function processPublicationJobs() {
               publicationJobId: job.id,
               targetType: isInstagramJob
                 ? "INSTAGRAM"
-                : isProfileJob
-                  ? "PROFILE"
-                  : "GROUP",
-              platform: isInstagramJob ? "INSTAGRAM" : undefined,
+                : isWhatsAppJob
+                  ? "WHATSAPP"
+                  : isProfileJob
+                    ? "PROFILE"
+                    : "GROUP",
+              platform: isInstagramJob
+                ? "INSTAGRAM"
+                : isWhatsAppJob
+                  ? "WHATSAPP"
+                  : undefined,
               publishedAt: new Date(),
               status: "FAILED",
               errorMessage: errorMsg,
@@ -1134,6 +1237,7 @@ export async function generateScheduledJobs() {
       postGroup: {
         include: { post: true },
       },
+      post: true,
     },
   });
 
@@ -1146,6 +1250,12 @@ export async function generateScheduledJobs() {
   let created = 0;
 
   for (const schedule of dueSchedules) {
+    // Skip if the parent post is paused
+    const parentPost = schedule.postGroup?.post || schedule.post;
+    if (parentPost?.isPaused) {
+      continue;
+    }
+
     // Apply daily jitter to the job's actual execution time
     const jitterMs = generateDailyJitter();
     const jitteredTime = new Date(
@@ -1155,16 +1265,34 @@ export async function generateScheduledJobs() {
     // Don't schedule in the past — use now if jitter pushed it back
     const scheduledAt = jitteredTime > now ? jitteredTime : now;
 
-    await prisma.publicationJob.create({
-      data: {
-        postGroupId: schedule.postGroupId,
-        scheduledAt,
-      },
-    });
+    const isGroupSchedule = !!schedule.postGroupId;
+
+    if (isGroupSchedule) {
+      // Group-based schedule (Facebook groups) — existing behavior
+      await prisma.publicationJob.create({
+        data: {
+          postGroupId: schedule.postGroupId,
+          scheduledAt,
+        },
+      });
+    } else {
+      // Non-group schedule (Profile, Instagram, or WhatsApp)
+      await prisma.publicationJob.create({
+        data: {
+          postId: schedule.postId,
+          scheduledAt,
+          targetType: schedule.targetType || "PROFILE",
+          platform: schedule.platform || "FACEBOOK",
+          igPublishType: schedule.igPublishType || null,
+        },
+      });
+    }
     created++;
 
     log.debug("Job created with jitter", {
       scheduleId: schedule.id,
+      targetType: schedule.targetType || "GROUP",
+      igPublishType: schedule.igPublishType || null,
       originalTime: schedule.nextRunAt?.toISOString(),
       jitteredTime: scheduledAt.toISOString(),
       jitterSec: Math.round(jitterMs / 1000),

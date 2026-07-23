@@ -1,15 +1,8 @@
 import express from "express";
-import path from "path";
-import { fileURLToPath } from "url";
-import multer from "multer";
 import prisma from "../config/prisma.js";
 import { asyncHandler } from "../utils/async-handler.js";
-import {
-  imageFileFilter,
-  MAX_FILE_SIZE,
-  safeFilename,
-} from "../utils/security.js";
 import { requireAuth } from "../utils/auth-middleware.js";
+import { uploadImages } from "../utils/upload-service.js";
 
 // Safely parse a value that may be a JSON string (form-data) or already an object (JSON body)
 function safeParse(val, fallback) {
@@ -21,24 +14,6 @@ function safeParse(val, fallback) {
     return fallback;
   }
 }
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const uploadsDir = path.join(__dirname, "..", "..", "uploads", "templates");
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    import("fs").then((fs) => {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-      cb(null, uploadsDir);
-    });
-  },
-  filename: (_req, file, cb) => cb(null, safeFilename(file.mimetype)),
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: MAX_FILE_SIZE },
-  fileFilter: imageFileFilter,
-});
 
 const router = express.Router();
 
@@ -143,7 +118,7 @@ router.get(
 router.post(
   "/",
   requireAuth,
-  upload.array("images", 10),
+  uploadImages("templates"),
   asyncHandler(async (req, res) => {
     const {
       name,
@@ -247,7 +222,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  upload.array("images", 10),
+  uploadImages("templates"),
   asyncHandler(async (req, res) => {
     const existing = await prisma.postTemplate.findFirst({
       where: { id: req.params.id, userId: req.user.id },

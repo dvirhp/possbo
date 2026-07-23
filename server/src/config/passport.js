@@ -1,8 +1,6 @@
 import passport from "passport";
 import FacebookStrategy from "passport-facebook";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "./prisma.js";
 
 passport.use(
   new FacebookStrategy.Strategy(

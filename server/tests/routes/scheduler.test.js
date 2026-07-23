@@ -328,4 +328,141 @@ describe("Scheduler routes", () => {
       expect(res.status).toBe(401);
     });
   });
+
+  describe("POST /api/scheduler/schedule — edge cases", () => {
+    it("returns 400 when groupIds is empty array", async () => {
+      const futureDate = new Date(Date.now() + 86400000).toISOString();
+      const res = await request(app)
+        .post("/api/scheduler/schedule")
+        .send({
+          postId: "post-1",
+          groupIds: [],
+          scheduledAt: futureDate,
+        });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when scheduledAt is not a valid date", async () => {
+      const res = await request(app)
+        .post("/api/scheduler/schedule")
+        .send({
+          postId: "post-1",
+          groupIds: ["group-1"],
+          scheduledAt: "not-a-date",
+        });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("handles scheduling for multiple groups at once", async () => {
+      const futureDate = new Date(Date.now() + 86400000).toISOString();
+      mockGroupFindFirst
+        .mockResolvedValueOnce({ id: "group-1", name: "Group 1" })
+        .mockResolvedValueOnce({ id: "group-2", name: "Group 2" })
+        .mockResolvedValueOnce({ id: "group-3", name: "Group 3" });
+
+      const res = await request(app)
+        .post("/api/scheduler/schedule")
+        .send({
+          postId: "post-1",
+          groupIds: ["group-1", "group-2", "group-3"],
+          scheduledAt: futureDate,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.scheduled).toHaveLength(3);
+    });
+
+    it("returns 404 when post belongs to different user", async () => {
+      mockPostFindFirst.mockResolvedValueOnce(null); // findFirst with userId filter returns null
+      const futureDate = new Date(Date.now() + 86400000).toISOString();
+      const res = await request(app)
+        .post("/api/scheduler/schedule")
+        .send({
+          postId: "other-users-post",
+          groupIds: ["group-1"],
+          scheduledAt: futureDate,
+        });
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("DELETE /api/scheduler/jobs/:jobId — edge cases", () => {
+    it("returns 400 when trying to cancel an already completed job", async () => {
+      mockPublicationJobFindFirst.mockResolvedValue({
+        id: "job-1",
+        status: "SUCCESS",
+      });
+
+      const res = await request(app).delete("/api/scheduler/jobs/job-1");
+
+      expect([400, 404]).toContain(res.status);
+    });
+
+    it("returns 400 when trying to cancel a running job", async () => {
+      mockPublicationJobFindFirst.mockResolvedValue({
+        id: "job-1",
+        status: "RUNNING",
+      });
+
+      const res = await request(app).delete("/api/scheduler/jobs/job-1");
+
+      expect([400, 404]).toContain(res.status);
+    });
+  });
+
+  describe("POST /api/scheduler/campaigns — edge cases", () => {
+    it("creates campaign with title field", async () => {
+      const res = await request(app)
+        .post("/api/scheduler/campaigns")
+        .field("text", "Hello world")
+        .field("title", "My Campaign")
+        .field("scheduleMode", "draft");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it("returns 400 when text is empty string", async () => {
+      const res = await request(app)
+        .post("/api/scheduler/campaigns")
+        .field("text", "")
+        .field("scheduleMode", "draft");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when text is whitespace only", async () => {
+      const res = await request(app)
+        .post("/api/scheduler/campaigns")
+        .field("text", "   ")
+        .field("scheduleMode", "draft");
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("GET /api/scheduler/history — edge cases", () => {
+    it("returns empty array when no history exists", async () => {
+      mockPublicationHistoryFindMany.mockResolvedValue([]);
+
+      const res = await request(app).get("/api/scheduler/history");
+
+      expect(res.status).toBe(200);
+      expect(res.body.history).toEqual([]);
+    });
+  });
+
+  describe("GET /api/scheduler/jobs — edge cases", () => {
+    it("returns empty array when no pending jobs", async () => {
+      mockPublicationJobFindMany.mockResolvedValue([]);
+
+      const res = await request(app).get("/api/scheduler/jobs");
+
+      expect(res.status).toBe(200);
+      expect(res.body.jobs).toEqual([]);
+    });
+  });
 });

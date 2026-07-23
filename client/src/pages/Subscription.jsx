@@ -110,7 +110,7 @@ export default function Subscription() {
         {/* Logo & Back */}
         <div className="subscription-topbar">
           <Link to="/" className="subscription-logo">
-            <img src="/logo.svg" alt="PostIt" className="subscription-logo-img" />
+            <img src="/logo.svg" alt="Possbo" className="subscription-logo-img" />
           </Link>
           <button onClick={() => navigate(-1)} className="subscription-back-btn">←</button>
         </div>

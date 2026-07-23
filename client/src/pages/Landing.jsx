@@ -20,7 +20,7 @@ export default function Landing() {
   return (
     <div className="landing-page">
       <nav className="landing-nav">
-        <div className="nav-logo"><img src="/logo.svg" alt="PostIt" className="nav-logo-img" /> PostIt</div>
+        <div className="nav-logo"><img src="/logo.svg" alt="Possbo" className="nav-logo-img nav-logo-wordmark" /></div>
         <div className="nav-buttons">
           <button className="nav-theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'מצב בהיר' : 'מצב כהה'}>
             {theme === 'dark' ? '☀️' : '🌙'}
@@ -34,7 +34,7 @@ export default function Landing() {
         <div className="hero-content">
           <h1>פרסם בכל הקבוצות בלחיצה אחת</h1>
           <p className="hero-subtitle">
-            PostIt מאפשר לך לנהל את כל קבוצות הפייסבוק שלך, ליצור פוסטים ולפרסם אותם
+            Possbo מאפשר לך לנהל את כל קבוצות הפייסבוק שלך, ליצור פוסטים ולפרסם אותם
             במספר קבוצות במקביל, בקליק אחד.
           </p>
 
