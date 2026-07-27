@@ -56,8 +56,12 @@ async function interactiveMenu(phone, text, options) {
 }
 import { sendVerificationEmail } from "../utils/mailer.js";
 import {
-  getConversation, setConversation, clearConversation,
-  getAuthenticatedUser, storePendingOTP, verifyOTP,
+  getConversation,
+  setConversation,
+  clearConversation,
+  getAuthenticatedUser,
+  storePendingOTP,
+  verifyOTP,
 } from "../utils/whatsapp-bot-conversation.js";
 
 const router = express.Router();
@@ -123,8 +127,10 @@ router.post("/", async (req, res) => {
 function extractInput(msg) {
   if (msg.type === "text") return msg.text?.body?.trim();
   if (msg.type === "interactive") {
-    if (msg.interactive?.type === "button_reply") return msg.interactive.button_reply.id;
-    if (msg.interactive?.type === "list_reply") return msg.interactive.list_reply.id;
+    if (msg.interactive?.type === "button_reply")
+      return msg.interactive.button_reply.id;
+    if (msg.interactive?.type === "list_reply")
+      return msg.interactive.list_reply.id;
   }
   // Some Cloud API versions send button replies as type="button"
   if (msg.type === "button") return msg.button?.payload || msg.button?.text;
@@ -187,7 +193,10 @@ async function authFlow(phone, input, conv) {
 
   if (!step || step === "WELCOME") {
     setConversation(phone, { step: "AWAITING_ID" });
-    await sendText(phone, "שלום! אני פוסבוט.\n\nכדי להתחבר, שלח את מספר תעודת הזהות שלך (9 ספרות).");
+    await sendText(
+      phone,
+      "שלום! אני פוסבוט.\n\nכדי להתחבר, שלח את מספר תעודת הזהות שלך (9 ספרות).",
+    );
     return;
   }
 
@@ -201,34 +210,55 @@ async function authFlow(phone, input, conv) {
     let user;
     try {
       user = await withTimeout(
-        prisma.user.findUnique({ where: { idNumber: id }, select: { id: true, email: true, name: true } }),
+        prisma.user.findUnique({
+          where: { idNumber: id },
+          select: { id: true, email: true, name: true },
+        }),
         AUTH_DB_TIMEOUT_MS,
         "AUTH_DB_LOOKUP_TIMEOUT",
       );
     } catch (err) {
       log.error("Auth DB lookup failed", err, { phone });
-      await sendText(phone, "יש כרגע בעיה בחיבור למסד הנתונים. נסה שוב בעוד רגע.");
+      await sendText(
+        phone,
+        "יש כרגע בעיה בחיבור למסד הנתונים. נסה שוב בעוד רגע.",
+      );
       return;
     }
     if (!user) {
-      await sendText(phone, "לא נמצא חשבון עם תעודת הזהות הזו.\nיש להירשם באתר תחילה.");
+      await sendText(
+        phone,
+        "לא נמצא חשבון עם תעודת הזהות הזו.\nיש להירשם באתר תחילה.",
+      );
       return;
     }
     const code = String(Math.floor(100000 + Math.random() * 900000));
     storePendingOTP(phone, user.id, user.email, code);
     const masked = maskEmail(user.email);
     const sent = await sendVerificationEmail(user.email, code);
-    if (!sent) { await sendText(phone, "שגיאה בשליחת המייל. נסה שוב."); return; }
+    if (!sent) {
+      await sendText(phone, "שגיאה בשליחת המייל. נסה שוב.");
+      return;
+    }
     setConversation(phone, { step: "AWAITING_OTP", pendingName: user.name });
-    await sendText(phone, `שלחתי קוד אימות למייל ${masked}\n\nמה הקוד? (6 ספרות)`);
+    await sendText(
+      phone,
+      `שלחתי קוד אימות למייל ${masked}\n\nמה הקוד? (6 ספרות)`,
+    );
     return;
   }
 
   if (step === "AWAITING_OTP") {
     const code = input.replace(/\D/g, "");
-    if (code.length !== 6) { await sendText(phone, "קוד לא תקין. יש להזין 6 ספרות."); return; }
+    if (code.length !== 6) {
+      await sendText(phone, "קוד לא תקין. יש להזין 6 ספרות.");
+      return;
+    }
     const result = verifyOTP(phone, code);
-    if (!result) { await sendText(phone, "קוד שגוי או שפג תוקפו."); return; }
+    if (!result) {
+      await sendText(phone, "קוד שגוי או שפג תוקפו.");
+      return;
+    }
     setConversation(phone, { userId: result.userId, step: "MAIN_MENU" });
     await sendText(phone, `מחובר! שלום ${conv?.pendingName || ""}`);
     await mainMenu(phone);
@@ -252,15 +282,35 @@ async function mainMenu(phone) {
 // ═══════════════════════════════════════════════════════════════════════════════
 const steps = {
   MAIN_MENU: async (phone, userId, input) => {
-    if (input === "1" || input === "create_campaign" || input === "צור קמפיין") { await startCampaign(phone); return; }
-    if (input === "2" || input === "my_campaigns" || input === "הקמפיינים שלי") { await showCampaigns(phone, userId); return; }
-    if (input === "3" || input === "status" || input === "סטטוס") { await showStatus(phone, userId); return; }
+    if (
+      input === "1" ||
+      input === "create_campaign" ||
+      input === "צור קמפיין"
+    ) {
+      await startCampaign(phone);
+      return;
+    }
+    if (
+      input === "2" ||
+      input === "my_campaigns" ||
+      input === "הקמפיינים שלי"
+    ) {
+      await showCampaigns(phone, userId);
+      return;
+    }
+    if (input === "3" || input === "status" || input === "סטטוס") {
+      await showStatus(phone, userId);
+      return;
+    }
     await mainMenu(phone);
   },
 
   // ── Campaign: Name ──
   CAMP_NAME: async (phone, userId, input) => {
-    if (input.length < 2) { await sendText(phone, "שם קצר מדי. נסה שוב:"); return; }
+    if (input.length < 2) {
+      await sendText(phone, "שם קצר מדי. נסה שוב:");
+      return;
+    }
     updateDraft(phone, { title: input });
     setConversation(phone, { step: "CAMP_CONTENT" });
     await sendText(phone, "כתוב את תוכן הפוסט:");
@@ -268,27 +318,38 @@ const steps = {
 
   // ── Campaign: Content ──
   CAMP_CONTENT: async (phone, userId, input) => {
-    if (input.length < 3) { await sendText(phone, "תוכן קצר מדי. כתוב לפחות 3 תווים:"); return; }
+    if (input.length < 3) {
+      await sendText(phone, "תוכן קצר מדי. כתוב לפחות 3 תווים:");
+      return;
+    }
     updateDraft(phone, { content: input });
     setConversation(phone, { step: "CAMP_WHATSAPP" });
     // Check if user has WhatsApp connected
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { whatsappNumber: true, whatsappMessage: true } });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { whatsappNumber: true, whatsappMessage: true },
+    });
     if (user?.whatsappNumber) {
       await interactiveMenu(phone, "להוסיף קישור וואטסאפ לפוסט?", [
         { id: "wa_yes", title: "כן, הוסף וואטסאפ" },
         { id: "wa_no", title: "לא, המשך" },
       ]);
     } else {
-      await interactiveMenu(phone, "וואטסאפ לא מחובר.\nכדי להוסיף קישור וואטסאפ, חבר אותו באתר בהגדרות.", [
-        { id: "wa_no", title: "המשך בלי וואטסאפ" },
-      ]);
+      await interactiveMenu(
+        phone,
+        "וואטסאפ לא מחובר.\nכדי להוסיף קישור וואטסאפ, חבר אותו באתר בהגדרות.",
+        [{ id: "wa_no", title: "המשך בלי וואטסאפ" }],
+      );
     }
   },
 
   // ── Campaign: WhatsApp link ──
   CAMP_WHATSAPP: async (phone, userId, input) => {
     if (input === "wa_yes") {
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { whatsappNumber: true, whatsappMessage: true } });
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { whatsappNumber: true, whatsappMessage: true },
+      });
       if (user?.whatsappNumber) {
         const waLink = `https://wa.me/${user.whatsappNumber}${user.whatsappMessage ? `?text=${encodeURIComponent(user.whatsappMessage)}` : ""}`;
         const conv = getConversation(phone);
@@ -309,7 +370,10 @@ const steps = {
   // ── Campaign: Images ──
   CAMP_IMAGES: async (phone, userId, input) => {
     if (input === "img_yes") {
-      await sendText(phone, "שלח עד 12 תמונות (ביחד בהודעה אחת).\nכשסיימת שלח 'סיום'.");
+      await sendText(
+        phone,
+        "שלח עד 12 תמונות (ביחד בהודעה אחת).\nכשסיימת שלח 'סיום'.",
+      );
       setConversation(phone, { step: "CAMP_IMAGES_WAIT" });
       return;
     }
@@ -465,7 +529,11 @@ const steps = {
   },
 
   CAMP_IG_MORE: async (phone, userId, input, conv) => {
-    if (input.startsWith("ig_") && input !== "ig_more_yes" && input !== "ig_more_no") {
+    if (
+      input.startsWith("ig_") &&
+      input !== "ig_more_yes" &&
+      input !== "ig_more_no"
+    ) {
       setConversation(phone, { step: "CAMP_IG_TYPES" });
       await steps.CAMP_IG_TYPES(phone, userId, input, conv);
       return;
@@ -733,14 +801,19 @@ const steps = {
   // ── Date ──
   CAMP_DATE: async (phone, userId, input) => {
     const m = input.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-    if (!m) { await sendText(phone, "פורמט לא תקין. שלח DD/MM/YYYY:"); return; }
+    if (!m) {
+      await sendText(phone, "פורמט לא תקין. שלח DD/MM/YYYY:");
+      return;
+    }
     const [, d, mo, y] = m;
     const date = new Date(`${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`);
     if (isNaN(date.getTime()) || date < new Date(new Date().toDateString())) {
       await sendText(phone, "תאריך לא תקין או בעבר. נסה שוב:");
       return;
     }
-    updateDraft(phone, { scheduleDate: `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}` });
+    updateDraft(phone, {
+      scheduleDate: `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`,
+    });
     setConversation(phone, { step: "CAMP_TIME" });
     await sendText(phone, "שלח שעה (HH:MM):");
   },
@@ -748,19 +821,37 @@ const steps = {
   // ── Time ──
   CAMP_TIME: async (phone, userId, input) => {
     const m = input.match(/^(\d{1,2}):(\d{2})$/);
-    if (!m) { await sendText(phone, "פורמט לא תקין. שלח HH:MM:"); return; }
+    if (!m) {
+      await sendText(phone, "פורמט לא תקין. שלח HH:MM:");
+      return;
+    }
     const [, h, mi] = m;
-    if (+h > 23 || +mi > 59) { await sendText(phone, "שעה לא תקינה."); return; }
+    if (+h > 23 || +mi > 59) {
+      await sendText(phone, "שעה לא תקינה.");
+      return;
+    }
     const conv = getConversation(phone);
     const draft = conv?.draft || {};
-    const scheduledAt = new Date(`${draft.scheduleDate}T${h.padStart(2, "0")}:${mi}:00`);
-    if (scheduledAt <= new Date()) { await sendText(phone, "הזמן חייב להיות בעתיד. שלח תאריך:"); setConversation(phone, { step: "CAMP_DATE" }); return; }
-    updateDraft(phone, { scheduleTime: `${h.padStart(2, "0")}:${mi}`, scheduleMode: "scheduled" });
+    const scheduledAt = new Date(
+      `${draft.scheduleDate}T${h.padStart(2, "0")}:${mi}:00`,
+    );
+    if (scheduledAt <= new Date()) {
+      await sendText(phone, "הזמן חייב להיות בעתיד. שלח תאריך:");
+      setConversation(phone, { step: "CAMP_DATE" });
+      return;
+    }
+    updateDraft(phone, {
+      scheduleTime: `${h.padStart(2, "0")}:${mi}`,
+      scheduleMode: "scheduled",
+    });
     await createCampaign(phone, userId);
   },
 
   CAMPAIGNS_LIST: async (phone, userId, input) => {
-    if (input === "create_campaign") { await startCampaign(phone); return; }
+    if (input === "create_campaign") {
+      await startCampaign(phone);
+      return;
+    }
     await mainMenu(phone);
   },
 };
@@ -770,8 +861,14 @@ const steps = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function startCampaign(phone) {
-  setConversation(phone, { step: "CAMP_NAME", draft: { groupIds: [], groupNames: [], platforms: [], images: [] } });
-  await sendText(phone, "יצירת קמפיין חדש\n\nשלח את שם הקמפיין (רק עבורך, אינו מפורסם):");
+  setConversation(phone, {
+    step: "CAMP_NAME",
+    draft: { groupIds: [], groupNames: [], platforms: [], images: [] },
+  });
+  await sendText(
+    phone,
+    "יצירת קמפיין חדש\n\nשלח את שם הקמפיין (רק עבורך, אינו מפורסם):",
+  );
 }
 
 function updateDraft(phone, data) {
@@ -783,9 +880,9 @@ function updateDraft(phone, data) {
 function hasAnyPublishTarget(draft = {}) {
   return Boolean(
     draft.publishToProfile ||
-      draft.groupIds?.length ||
-      draft.igEnabled ||
-      draft.waEnabled,
+    draft.groupIds?.length ||
+    draft.igEnabled ||
+    draft.waEnabled,
   );
 }
 
@@ -868,16 +965,18 @@ async function askPlatform(phone, selected) {
   }
 
   setConversation(phone, { step: "CAMP_PLATFORM" });
-  await interactiveMenu(phone, selected.length > 0
-    ? "בחר פלטפורמה נוספת:"
-    : "היכן תרצה לפרסם?\n(בחר אחד, בהמשך ניתן להוסיף עוד)",
+  await interactiveMenu(
+    phone,
+    selected.length > 0
+      ? "בחר פלטפורמה נוספת:"
+      : "היכן תרצה לפרסם?\n(בחר אחד, בהמשך ניתן להוסיף עוד)",
     options,
   );
 }
 
 async function askMorePlatforms(phone, selected) {
   const allPlatforms = ["fb_profile", "fb_groups", "instagram", "whatsapp"];
-  const hasMore = allPlatforms.some(p => !selected.includes(p));
+  const hasMore = allPlatforms.some((p) => !selected.includes(p));
 
   if (!hasMore) {
     await askSchedule(phone);
@@ -909,7 +1008,12 @@ async function showFacebookGroupPicker(phone, userId) {
     where: { userId },
     include: {
       group: {
-        select: { id: true, externalGroupId: true, name: true, memberCount: true },
+        select: {
+          id: true,
+          externalGroupId: true,
+          name: true,
+          memberCount: true,
+        },
       },
     },
     orderBy: { group: { memberCount: "desc" } },
@@ -939,7 +1043,8 @@ async function showFacebookGroupPicker(phone, userId) {
       : `בחר קבוצות Facebook (${selected.length} נבחרו)`,
     items: available,
     selectedIds: new Set(selected),
-    footer: "שלח מספרים לבחירה/ביטול, למשל: 1,3,5 או 2-6.\nלחיפוש כתוב: חפש שם. כתוב תפריט לחזרה לתפריט הראשי.",
+    footer:
+      "שלח מספרים לבחירה/ביטול, למשל: 1,3,5 או 2-6.\nלחיפוש כתוב: חפש שם. כתוב תפריט לחזרה לתפריט הראשי.",
   });
   await sendText(phone, text);
   await interactiveMenu(phone, "פעולות לבחירת קבוצות:", [
@@ -960,7 +1065,8 @@ async function showInstagramTypes(phone) {
     title: `בחר סוגי פרסום ב-Instagram (${selected.length} נבחרו)`,
     items,
     selectedIds: new Set(selected),
-    footer: "שלח מספרים לבחירה/ביטול, למשל: 1,2 או 1-3.\nכתוב תפריט לחזרה לתפריט הראשי.",
+    footer:
+      "שלח מספרים לבחירה/ביטול, למשל: 1,2 או 1-3.\nכתוב תפריט לחזרה לתפריט הראשי.",
   });
   setConversation(phone, { step: "CAMP_IG_TYPES" });
   await sendText(phone, text);
@@ -1025,7 +1131,9 @@ function parseBotDate(input) {
 function nextRecurringRun(days, time, startDate) {
   const [hours, minutes] = time.split(":").map(Number);
   const now = new Date();
-  const cursor = startDate ? new Date(`${startDate}T${time}:00`) : new Date(now);
+  const cursor = startDate
+    ? new Date(`${startDate}T${time}:00`)
+    : new Date(now);
   cursor.setHours(hours, minutes, 0, 0);
   if (cursor < now) cursor.setTime(now.getTime());
   for (let offset = 0; offset <= 14; offset++) {
@@ -1064,10 +1172,15 @@ async function showWhatsAppTargets(phone, userId) {
   ];
   const conv = getConversation(phone);
   const selected = conv?.draft?.whatsappTargets || [];
-  const search = (conv?.draft?.waTargetSearch || "").trim().toLocaleLowerCase("he");
+  const search = (conv?.draft?.waTargetSearch || "")
+    .trim()
+    .toLocaleLowerCase("he");
   updateDraft(phone, { availableWaTargets: available });
   if (!available.length) {
-    await sendText(phone, "אין קבוצות או רשימות תפוצה שמורות. יש לסנכרן או ליצור אותן באתר.");
+    await sendText(
+      phone,
+      "אין קבוצות או רשימות תפוצה שמורות. יש לסנכרן או ליצור אותן באתר.",
+    );
     await askMorePlatforms(phone, conv?.draft?.platforms || []);
     return;
   }
@@ -1083,7 +1196,8 @@ async function showWhatsAppTargets(phone, userId) {
       : `בחר יעדי WhatsApp (${selected.length} נבחרו)`,
     items: filtered,
     selectedIds: new Set(selected.map((item) => item.id)),
-    footer: "שלח מספרים לבחירה/ביטול, למשל: 1,3,5 או 2-6.\nלחיפוש כתוב: חפש שם. כתוב תפריט לחזרה לתפריט הראשי.",
+    footer:
+      "שלח מספרים לבחירה/ביטול, למשל: 1,3,5 או 2-6.\nלחיפוש כתוב: חפש שם. כתוב תפריט לחזרה לתפריט הראשי.",
   });
   await sendText(phone, text);
   await interactiveMenu(phone, "פעולות לבחירת יעדים:", [
@@ -1103,7 +1217,10 @@ async function handleImage(phone, msg) {
   if (mediaId && images.length < 12) {
     images.push(mediaId);
     updateDraft(phone, { images });
-    await sendText(phone, `תמונה ${images.length} נשמרה. שלח עוד או כתוב 'סיום'.`);
+    await sendText(
+      phone,
+      `תמונה ${images.length} נשמרה. שלח עוד או כתוב 'סיום'.`,
+    );
   } else if (images.length >= 12) {
     await sendText(phone, "הגעת למקסימום 12 תמונות. כתוב 'סיום' להמשיך.");
   }
@@ -1122,7 +1239,9 @@ async function createCampaign(phone, userId) {
       data: {
         userId,
         content: draft.content || "",
-        title: draft.title || `קמפיין WA - ${new Date().toLocaleDateString("he-IL")}`,
+        title:
+          draft.title ||
+          `קמפיין WA - ${new Date().toLocaleDateString("he-IL")}`,
         status: draft.scheduleMode === "now" ? "ACTIVE" : "SCHEDULED",
         publishToProfile: draft.publishToProfile || false,
         instagramEnabled: draft.igEnabled || false,
@@ -1130,13 +1249,18 @@ async function createCampaign(phone, userId) {
         instagramPublishType: draft.igEnabled
           ? (draft.instagramPublishTypes || ["FEED"]).join(",")
           : null,
-        whatsappTargets: draft.waEnabled ? draft.whatsappTargets || [] : undefined,
-        campaignType: draft.scheduleMode === "recurring" ? "RECURRING" : "ONE_TIME",
+        whatsappTargets: draft.waEnabled
+          ? draft.whatsappTargets || []
+          : undefined,
+        campaignType:
+          draft.scheduleMode === "recurring" ? "RECURRING" : "ONE_TIME",
         recurringDays: draft.recurringDays || [],
         recurringTime: draft.recurringTime || null,
         recurringTimes: draft.recurringTime ? [draft.recurringTime] : [],
         dayTimes: draft.recurringDays?.length
-          ? Object.fromEntries(draft.recurringDays.map((day) => [day, [draft.recurringTime]]))
+          ? Object.fromEntries(
+              draft.recurringDays.map((day) => [day, [draft.recurringTime]]),
+            )
           : undefined,
         recurringStart: draft.recurringStartDate
           ? new Date(`${draft.recurringStartDate}T00:00:00`)
@@ -1203,7 +1327,9 @@ async function createCampaign(phone, userId) {
           },
         });
       }
-      await prisma.publicationJob.create({ data: { postGroupId: pg.id, scheduledAt } });
+      await prisma.publicationJob.create({
+        data: { postGroupId: pg.id, scheduledAt },
+      });
       jobCount++;
     }
 
@@ -1294,13 +1420,17 @@ async function createCampaign(phone, userId) {
     if (draft.igEnabled) platforms.push("אינסטגרם");
     if (draft.waEnabled) platforms.push("וואטסאפ");
 
-    const timeText = draft.scheduleMode === "now"
-      ? "מיידי"
-      : draft.scheduleMode === "recurring"
-        ? `חוזר ב-${draft.recurringTime}`
-        : `${draft.scheduleDate.split("-").reverse().join("/")} ${draft.scheduleTime}`;
+    const timeText =
+      draft.scheduleMode === "now"
+        ? "מיידי"
+        : draft.scheduleMode === "recurring"
+          ? `חוזר ב-${draft.recurringTime}`
+          : `${draft.scheduleDate.split("-").reverse().join("/")} ${draft.scheduleTime}`;
 
-    await sendText(phone, `הקמפיין נוצר בהצלחה!\n\nפלטפורמות: ${platforms.join(", ")}\nיעדי פרסום: ${jobCount}\nתזמון: ${timeText}`);
+    await sendText(
+      phone,
+      `הקמפיין נוצר בהצלחה!\n\nפלטפורמות: ${platforms.join(", ")}\nיעדי פרסום: ${jobCount}\nתזמון: ${timeText}`,
+    );
     await mainMenu(phone);
   } catch (err) {
     log.error("Campaign creation failed", err);
@@ -1318,15 +1448,30 @@ async function showCampaigns(phone, userId) {
     where: { userId },
     orderBy: { createdAt: "desc" },
     take: 10,
-    select: { id: true, title: true, content: true, status: true, createdAt: true, postGroups: { select: { id: true } } },
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      status: true,
+      createdAt: true,
+      postGroups: { select: { id: true } },
+    },
   });
   if (campaigns.length === 0) {
-    await interactiveMenu(phone, "אין קמפיינים עדיין.", [{ id: "create_campaign", title: "צור קמפיין" }]);
+    await interactiveMenu(phone, "אין קמפיינים עדיין.", [
+      { id: "create_campaign", title: "צור קמפיין" },
+    ]);
     setConversation(phone, { step: "CAMPAIGNS_LIST" });
     return;
   }
   setConversation(phone, { step: "CAMPAIGNS_LIST" });
-  const statusMap = { ACTIVE: "פעיל", SCHEDULED: "מתוזמן", PUBLISHED: "פורסם", PAUSED: "מושהה", DRAFT: "טיוטה" };
+  const statusMap = {
+    ACTIVE: "פעיל",
+    SCHEDULED: "מתוזמן",
+    PUBLISHED: "פורסם",
+    PAUSED: "מושהה",
+    DRAFT: "טיוטה",
+  };
   let text = "הקמפיינים שלך:\n\n";
   campaigns.forEach((c, i) => {
     const preview = (c.title || c.content || "").slice(0, 30);
@@ -1340,20 +1485,33 @@ async function showStatus(phone, userId) {
   const [active, published, pending] = await Promise.all([
     prisma.post.count({ where: { userId, status: "ACTIVE" } }),
     prisma.publicationHistory.count({ where: { userId, status: "SUCCESS" } }),
-    prisma.publicationJob.count({ where: { postGroup: { userId }, status: "PENDING", scheduledAt: { gt: new Date() } } }),
+    prisma.publicationJob.count({
+      where: {
+        postGroup: { userId },
+        status: "PENDING",
+        scheduledAt: { gt: new Date() },
+      },
+    }),
   ]);
-  await sendText(phone, `סטטוס:\n\nקמפיינים פעילים: ${active}\nפרסומים שבוצעו: ${published}\nממתינים: ${pending}`);
+  await sendText(
+    phone,
+    `סטטוס:\n\nקמפיינים פעילים: ${active}\nפרסומים שבוצעו: ${published}\nממתינים: ${pending}`,
+  );
   await mainMenu(phone);
 }
 
 function maskEmail(email) {
   if (!email) return "***";
   const [l, d] = email.split("@");
-  return l.length <= 2 ? `${l[0]}***@${d}` : `${l[0]}${l[1]}${"*".repeat(Math.min(l.length - 2, 5))}@${d}`;
+  return l.length <= 2
+    ? `${l[0]}***@${d}`
+    : `${l[0]}${l[1]}${"*".repeat(Math.min(l.length - 2, 5))}@${d}`;
 }
 
 async function downloadBotMedia(mediaId) {
-  const headers = { Authorization: `Bearer ${process.env.WA_BOT_ACCESS_TOKEN}` };
+  const headers = {
+    Authorization: `Bearer ${process.env.WA_BOT_ACCESS_TOKEN}`,
+  };
   const metadataResponse = await fetch(
     `https://graph.facebook.com/v21.0/${encodeURIComponent(mediaId)}`,
     { headers },
@@ -1362,7 +1520,9 @@ async function downloadBotMedia(mediaId) {
   const metadata = await metadataResponse.json();
   const mediaResponse = await fetch(metadata.url, { headers });
   if (!mediaResponse.ok) throw new Error("BOT_MEDIA_DOWNLOAD_FAILED");
-  const contentLength = Number(mediaResponse.headers.get("content-length") || 0);
+  const contentLength = Number(
+    mediaResponse.headers.get("content-length") || 0,
+  );
   if (contentLength > 15 * 1024 * 1024) throw new Error("BOT_MEDIA_TOO_LARGE");
   const contentType = mediaResponse.headers.get("content-type") || "image/jpeg";
   const extensions = {
@@ -1381,4 +1541,3 @@ async function downloadBotMedia(mediaId) {
 }
 
 export default router;
-
