@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { authAPI } from '../services/api'
 import OtpInput from '../components/OtpInput'
+import BrandLogo from '../components/BrandLogo'
 import '../styles/auth.css'
 
 export default function ForgotPassword() {
@@ -76,7 +77,7 @@ export default function ForgotPassword() {
       <div className="auth-card">
         <Link to="/login" className="auth-back-btn">←</Link>
         <div className="auth-header">
-          <div className="auth-logo"><img src="/logo.svg" alt="Possbo" className="auth-logo-img auth-logo-wordmark" /></div>
+          <div className="auth-logo"><BrandLogo className="auth-logo-img" /></div>
           <h2>{step === 1 ? 'שכחת סיסמה?' : 'איפוס סיסמה'}</h2>
           <p>{step === 1 ? 'הזן את האימייל שלך ונשלח לך קוד' : `הזן את הקוד שנשלח ל-${email}`}</p>
         </div>

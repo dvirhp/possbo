@@ -9,6 +9,7 @@ import {
   Menu, X, Bell, Home, Sparkles, ChevronLeft, ChevronDown, CreditCard, MessageSquareHeart
 } from 'lucide-react'
 import NotificationSettings from './NotificationSettings'
+import BrandLogo from './BrandLogo'
 import '../styles/bottom-nav.css'
 
 // Bottom nav order (RTL): תפריט | בית | [פרסום] | קמפיינים | טמפלייטים
@@ -126,7 +127,7 @@ export default function BottomNav() {
                 onClick={() => guardNavigate(() => { navigate(item.path); setDrawerOpen(false) })}
               >
                 <div className="bottom-nav-center-ring">
-                  <img src="/logo-icon.svg" alt="" width="30" height="30" />
+                  <BrandLogo decorative width="30" height="30" />
                 </div>
                 <span className="bottom-nav-label">{item.label}</span>
               </button>

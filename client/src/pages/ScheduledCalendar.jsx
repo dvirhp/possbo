@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
+import BrandLogo from '../components/BrandLogo'
 import '../styles/scheduled-calendar.css'
 
 const HEBREW_MONTHS = [
@@ -250,7 +251,7 @@ export default function ScheduledCalendar() {
 
       {!authChecked ? (
         <div className="sc-loading">
-          <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
+          <BrandLogo decorative className="loader-logo-pulse" />
           <span>טוען יומן...</span>
         </div>
       ) : selectedDate ? (

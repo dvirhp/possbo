@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 
 vi.mock("nodemailer", () => ({
   default: {
@@ -16,7 +19,12 @@ vi.mock("../../src/utils/logger.js", () => ({
   }),
 }));
 
-let sendVerificationEmail, sendPasswordResetEmail;
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const expectedLogo = readFileSync(
+  join(__dirname, "../../src/assets/logo-email-white.png"),
+);
+
+let sendVerificationEmail, sendPasswordResetEmail, sendFeedbackEmail;
 let mockSendMail;
 
 beforeEach(async () => {
@@ -29,6 +37,7 @@ beforeEach(async () => {
   const mailer = await import("../../src/utils/mailer.js");
   sendVerificationEmail = mailer.sendVerificationEmail;
   sendPasswordResetEmail = mailer.sendPasswordResetEmail;
+  sendFeedbackEmail = mailer.sendFeedbackEmail;
 });
 
 describe("mailer", () => {
@@ -72,6 +81,20 @@ describe("mailer", () => {
       const call = mockSendMail.mock.calls[0][0];
       expect(call.html).toBeDefined();
       expect(call.html.length).toBeGreaterThan(0);
+    });
+
+    it("embeds the current Possbo logo used by registration and WhatsApp bot verification", async () => {
+      await sendVerificationEmail("test@test.com", "123456");
+
+      const call = mockSendMail.mock.calls[0][0];
+      expect(call.html).toContain('src="cid:possbo-logo"');
+      expect(call.attachments).toEqual([
+        expect.objectContaining({
+          filename: "possbo-logo.png",
+          cid: "possbo-logo",
+          content: expectedLogo,
+        }),
+      ]);
     });
 
     it("returns false on SMTP connection timeout", async () => {
@@ -125,6 +148,40 @@ describe("mailer", () => {
 
       const call = mockSendMail.mock.calls[0][0];
       expect(call.from).toBeDefined();
+    });
+
+    it("embeds the current Possbo logo in password verification emails", async () => {
+      await sendPasswordResetEmail("test@test.com", "123456");
+
+      const call = mockSendMail.mock.calls[0][0];
+      expect(call.html).toContain('src="cid:possbo-logo"');
+      expect(call.attachments[0]).toEqual(
+        expect.objectContaining({
+          cid: "possbo-logo",
+          content: expectedLogo,
+        }),
+      );
+    });
+  });
+
+  describe("sendFeedbackEmail", () => {
+    it("embeds the current Possbo logo in chatbot/feedback email templates", async () => {
+      await sendFeedbackEmail({
+        userName: "Test User",
+        userEmail: "test@test.com",
+        features: [],
+        answers: {},
+        prompt: "",
+      });
+
+      const call = mockSendMail.mock.calls[0][0];
+      expect(call.html).toContain('src="cid:possbo-logo"');
+      expect(call.attachments[0]).toEqual(
+        expect.objectContaining({
+          cid: "possbo-logo",
+          content: expectedLogo,
+        }),
+      );
     });
   });
 });

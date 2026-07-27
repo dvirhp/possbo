@@ -19,7 +19,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Load the white logo PNG (for dark header; inverted via CSS in dark mode)
+// White mark for the dark header; email dark mode inverts it on the white header.
 const logoPngBuffer = readFileSync(
   join(__dirname, "../assets/logo-email-white.png"),
 );

@@ -5,6 +5,7 @@ import { useAppData } from '../context/DataProvider'
 import OAuthButtons from '../components/OAuthButtons'
 import OtpInput from '../components/OtpInput'
 import Turnstile from '../components/Turnstile'
+import BrandLogo from '../components/BrandLogo'
 import '../styles/auth.css'
 
 export default function Register() {
@@ -125,7 +126,7 @@ export default function Register() {
       ) : verificationStep ? (
         <div className="auth-card">
           <div className="auth-toprow">
-            <div className="auth-toprow-logo"><img src="/logo.svg" alt="Possbo" className="auth-logo-img" /></div>
+            <div className="auth-toprow-logo"><BrandLogo className="auth-logo-img" /></div>
             <button className="auth-back-btn" onClick={() => setVerificationStep(false)}>←</button>
           </div>
           <div className="auth-header">
@@ -153,7 +154,7 @@ export default function Register() {
       ) : (
       <div className="auth-card">
         <div className="auth-toprow">
-          <Link to="/" className="auth-toprow-logo"><img src="/logo.svg" alt="Possbo" className="auth-logo-img" /></Link>
+          <Link to="/" className="auth-toprow-logo"><BrandLogo className="auth-logo-img" /></Link>
           <Link to="/" className="auth-back-btn">←</Link>
         </div>
         <div className="auth-header">

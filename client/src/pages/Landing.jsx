@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import LandingChatBot from '../components/LandingChatBot'
+import BrandLogo from '../components/BrandLogo'
 import '../styles/landing.css'
 
 export default function Landing() {
@@ -20,7 +21,7 @@ export default function Landing() {
   return (
     <div className="landing-page">
       <nav className="landing-nav">
-        <div className="nav-logo"><img src="/logo.svg" alt="Possbo" className="nav-logo-img nav-logo-wordmark" /></div>
+        <div className="nav-logo"><BrandLogo className="nav-logo-img" /></div>
         <div className="nav-buttons">
           <button className="nav-theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'מצב בהיר' : 'מצב כהה'}>
             {theme === 'dark' ? '☀️' : '🌙'}

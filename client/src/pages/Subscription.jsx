@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { subscriptionService } from '../services/subscriptionService'
+import BrandLogo from '../components/BrandLogo'
 import '../styles/subscription.css'
 
 const PLAN = {
@@ -110,7 +111,7 @@ export default function Subscription() {
         {/* Logo & Back */}
         <div className="subscription-topbar">
           <Link to="/" className="subscription-logo">
-            <img src="/logo.svg" alt="Possbo" className="subscription-logo-img" />
+            <BrandLogo className="subscription-logo-img" />
           </Link>
           <button onClick={() => navigate(-1)} className="subscription-back-btn">←</button>
         </div>

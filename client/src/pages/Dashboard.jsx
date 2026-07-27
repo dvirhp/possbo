@@ -7,6 +7,7 @@ import { authAPI } from '../services/api'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 import DashboardOverview from '../components/DashboardOverview'
+import BrandLogo from '../components/BrandLogo'
 
 /** Normalize fancy Unicode text (Mathematical Bold/Italic/Script etc.) to plain ASCII */
 function normalizeFancyText(str) {
@@ -578,7 +579,7 @@ export default function Dashboard() {
       <aside className={`dash-sidebar ${sidebarOpen ? 'open' : 'collapsed'} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-top">
           <Link to="/dashboard" className="sidebar-logo" onClick={() => setMobileMenuOpen(false)}>
-            <img src={sidebarOpen ? "/logo.svg" : "/logo-icon.svg"} alt="Possbo" className={`sidebar-logo-img ${sidebarOpen ? 'sidebar-logo-wordmark' : ''}`} />
+            <BrandLogo className="sidebar-logo-img" />
           </Link>
         </div>
 
@@ -657,11 +658,11 @@ export default function Dashboard() {
         <div className="dash-body">
           {!authChecked ? (
             <div className="dash-loader">
-              <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
+              <BrandLogo decorative className="loader-logo-pulse" />
             </div>
           ) : !dataReady ? (
             <div className="dash-loader">
-              <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
+              <BrandLogo decorative className="loader-logo-pulse" />
             </div>
           ) : (
             <>
@@ -2000,7 +2001,7 @@ function WhatsAppSyncPanel({ user, navigate }) {
         {connectQr ? (
           <>
             <h3>סרקי את קוד ה-QR</h3>
-            <p>פתחי וואטסאפ בטלפון ← הגדרות ← מכשירים מקושרים ← קשר מכשיר</p>
+            <p>פתח את וואטסאפ בטלפון ← הגדרות ← מכשירים מקושרים ← קשר מכשיר</p>
             <img src={connectQr} alt="QR Code" className="wa-qr-image" />
             <div className="wa-connect-waiting">
               <div className="wa-connect-spinner"></div>
@@ -2012,8 +2013,8 @@ function WhatsAppSyncPanel({ user, navigate }) {
           </>
         ) : pairingCode ? (
           <>
-            <h3>הזיני את הקוד בוואטסאפ</h3>
-            <p>פתחי וואטסאפ ← הגדרות ← מכשירים מקושרים ← קשר מכשיר ← קישור עם מספר טלפון</p>
+            <h3>הזן את הקוד בוואטסאפ</h3>
+            <p>פתח את וואטסאפ ← הגדרות ← מכשירים מקושרים ← קשר מכשיר ← קישור עם מספר טלפון</p>
             <div className="wa-pairing-code">{pairingCode}</div>
             <div className="wa-connect-waiting">
               <div className="wa-connect-spinner"></div>
@@ -2025,8 +2026,8 @@ function WhatsAppSyncPanel({ user, navigate }) {
           </>
         ) : (
           <>
-            <h3>חברי את חשבון הוואטסאפ</h3>
-            <p>סנכרני קבוצות ישירות מוואטסאפ</p>
+            <h3>חבר את חשבון הוואטסאפ</h3>
+            <p>סנכרן קבוצות ישירות מוואטסאפ</p>
             <div className="wa-connect-mode-tabs">
               <button className={`wa-mode-tab ${connectMode === 'qr' ? 'active' : ''}`} onClick={() => setConnectMode('qr')}>🔲 סריקת QR</button>
               <button className={`wa-mode-tab ${connectMode === 'phone' ? 'active' : ''}`} onClick={() => setConnectMode('phone')}>📱 מספר טלפון</button>
@@ -2038,7 +2039,7 @@ function WhatsAppSyncPanel({ user, navigate }) {
                 ) : (
                   <>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                    חברי חשבון וואטסאפ
+                    חבר חשבון וואטסאפ
                   </>
                 )}
               </button>
@@ -2114,7 +2115,7 @@ function WhatsAppSyncPanel({ user, navigate }) {
           ) : filteredGroups.length === 0 ? (
             <div className="empty-state">
               <h3>{search ? 'לא נמצאו תוצאות' : 'אין קבוצות'}</h3>
-              <p>{search ? 'נסי לשנות את החיפוש' : 'לחצי על רענון כדי לסנכרן קבוצות מוואטסאפ'}</p>
+              <p>{search ? 'נסה לשנות את החיפוש' : 'לחץ על רענון כדי לסנכרן קבוצות מוואטסאפ'}</p>
             </div>
           ) : (
             <div className="wa-contacts-list">
@@ -2996,52 +2997,39 @@ function StatsPanel({ stats }) {
   const [refreshingAll, setRefreshingAll] = useState(false)
 
   // Cache helpers
-  const getCacheKey = useCallback((from, to) => `possbo_stats_${from}_${to}`, [])
-  const getTopPostsCacheKey = useCallback((sort, from, to) => `possbo_top_posts_${sort}_${from}_${to}`, [])
   const getCached = useCallback((from, to) => {
-    try {
-      const raw = localStorage.getItem(getCacheKey(from, to))
-      if (!raw) return null
-      const cached = JSON.parse(raw)
-      return cached.data || null
-    } catch { /* ignore */ }
+    void from
+    void to
     return null
-  }, [getCacheKey])
+  }, [])
   const isCacheStale = useCallback((from, to) => {
-    try {
-      const raw = localStorage.getItem(getCacheKey(from, to))
-      if (!raw) return true
-      const cached = JSON.parse(raw)
-      return Date.now() - cached.ts > 2 * 60 * 1000
-    } catch { return true }
-  }, [getCacheKey])
+    void from
+    void to
+    return true
+  }, [])
   const getTopPostsCached = useCallback((sort, from, to) => {
-    try {
-      const raw = localStorage.getItem(getTopPostsCacheKey(sort, from, to))
-      if (!raw) return null
-      const cached = JSON.parse(raw)
-      return cached.data || null
-    } catch { /* ignore */ }
+    void sort
+    void from
+    void to
     return null
-  }, [getTopPostsCacheKey])
+  }, [])
   const isTopPostsCacheStale = useCallback((sort, from, to) => {
-    try {
-      const raw = localStorage.getItem(getTopPostsCacheKey(sort, from, to))
-      if (!raw) return true
-      const cached = JSON.parse(raw)
-      return Date.now() - cached.ts > 2 * 60 * 1000
-    } catch { return true }
-  }, [getTopPostsCacheKey])
+    void sort
+    void from
+    void to
+    return true
+  }, [])
   const setCache = useCallback((from, to, data) => {
-    try {
-      localStorage.setItem(getCacheKey(from, to), JSON.stringify({ data, ts: Date.now() }))
-    } catch { /* ignore */ }
-  }, [getCacheKey])
+    void from
+    void to
+    void data
+  }, [])
   const setTopPostsCache = useCallback((sort, from, to, data) => {
-    try {
-      localStorage.setItem(getTopPostsCacheKey(sort, from, to), JSON.stringify({ data, ts: Date.now() }))
-    } catch { /* ignore */ }
-  }, [getTopPostsCacheKey])
+    void sort
+    void from
+    void to
+    void data
+  }, [])
 
   const [topPosts, setTopPosts] = useState(() => getTopPostsCached(topPostsSort, defaultRange.from, defaultRange.to) || [])
   const [topPostsLoading, setTopPostsLoading] = useState(() => !getTopPostsCached(topPostsSort, defaultRange.from, defaultRange.to))
@@ -4227,7 +4215,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
             {waConnectModal.qrDataUrl ? (
               <>
                 <h3 className="confirm-title">סרקי את קוד ה-QR</h3>
-                <p className="confirm-message">פתחי וואטסאפ בטלפון ← הגדרות ← מכשירים מקושרים ← קשר מכשיר</p>
+                <p className="confirm-message">פתח את וואטסאפ בטלפון ← הגדרות ← מכשירים מקושרים ← קשר מכשיר</p>
                 <img src={waConnectModal.qrDataUrl} alt="QR Code" className="wa-qr-image" style={{ margin: '12px auto', display: 'block' }} />
                 <div className="wa-connect-waiting">
                   <div className="wa-connect-spinner"></div>
@@ -4239,8 +4227,8 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
               </>
             ) : waConnectModal.pairingCode ? (
               <>
-                <h3 className="confirm-title">הזיני את הקוד בוואטסאפ</h3>
-                <p className="confirm-message">פתחי וואטסאפ ← הגדרות ← מכשירים מקושרים ← קשר מכשיר ← קישור עם מספר טלפון</p>
+                <h3 className="confirm-title">הזן את הקוד בוואטסאפ</h3>
+                <p className="confirm-message">פתח את וואטסאפ ← הגדרות ← מכשירים מקושרים ← קשר מכשיר ← קישור עם מספר טלפון</p>
                 <div className="wa-pairing-code">{waConnectModal.pairingCode}</div>
                 <div className="wa-connect-waiting">
                   <div className="wa-connect-spinner"></div>

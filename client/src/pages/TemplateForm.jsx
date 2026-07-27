@@ -8,6 +8,7 @@ import { groupsService } from '../services/groupsService'
 import LocationAutocomplete from '../components/LocationAutocomplete'
 import OptimalTimesHint from '../components/OptimalTimesHint'
 import EmojiPicker from '../components/EmojiPicker'
+import BrandLogo from '../components/BrandLogo'
 import { X, ChevronDown, ChevronUp, Eye } from 'lucide-react'
 import '../styles/templates.css'
 import '../styles/create-post.css'
@@ -546,7 +547,7 @@ export default function TemplateForm() {
   if (!authChecked || !user) return null
   if (loading) return (
     <div className="templates-page">
-      <div className="tpl-loading"><img src="/logo-icon.svg" alt="" className="loader-logo-pulse" /><span>טוען...</span></div>
+      <div className="tpl-loading"><BrandLogo decorative className="loader-logo-pulse" /><span>טוען...</span></div>
     </div>
   )
 

@@ -489,7 +489,11 @@
   width: 80px;
   height: 80px;
   animation: logo-breathe 1.6s ease-in-out infinite;
-  filter: drop-shadow(0 0 20px rgba(129, 140, 248, 0.5));
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.18));
+}
+
+[data-theme="dark"] .loader-logo-pulse {
+  filter: drop-shadow(0 8px 18px rgba(255, 255, 255, 0.12));
 }
 
 @keyframes logo-breathe {

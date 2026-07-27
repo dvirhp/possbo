@@ -447,31 +447,22 @@ function MiniCalendar({ campaigns, posts, jobs }) {
 }
 
 function getCachedKpis(from, to) {
-  try {
-    const raw = localStorage.getItem('possbo_kpi_cache')
-    if (!raw) return null
-    const cached = JSON.parse(raw)
-    if (cached.from === from && cached.to === to) {
-      return cached
-    }
-  } catch { /* ignore */ }
+  void from
+  void to
   return null
 }
 
 function isCacheStale(from, to) {
-  try {
-    const raw = localStorage.getItem('possbo_kpi_cache')
-    if (!raw) return true
-    const cached = JSON.parse(raw)
-    if (cached.from !== from || cached.to !== to) return true
-    return Date.now() - cached.ts > 2 * 60 * 1000
-  } catch { return true }
+  void from
+  void to
+  return true
 }
 
 function setCachedKpis(from, to, kpis, exposure) {
-  try {
-    localStorage.setItem('possbo_kpi_cache', JSON.stringify({ from, to, kpis, exposure, ts: Date.now() }))
-  } catch { /* ignore */ }
+  void from
+  void to
+  void kpis
+  void exposure
 }
 
 function getSavedDateRange() {

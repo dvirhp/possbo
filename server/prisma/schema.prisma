@@ -132,8 +132,28 @@ model User {
   usageLimits        UsageLimit[]
   dailyExposure      DailyExposure[]
   dailyStats         DailyStats[]
+  whatsappSession    WhatsAppSession?
+  botConversations   WhatsAppBotConversation[]
+  botOtps            WhatsAppBotOtp[]
 
   @@map("users")
+}
+
+model PendingRegistration {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  codeHash     String   @map("code_hash")
+  passwordHash String   @map("password_hash")
+  name         String?
+  gender       String?
+  phone        String?
+  idNumber     String?  @map("id_number")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([expiresAt])
+  @@map("pending_registrations")
 }
 
 // ─── AUTH ────────────────────────────────────────────────
@@ -259,6 +279,50 @@ model WhatsAppBroadcastList {
 
   @@index([userId])
   @@map("whatsapp_broadcast_lists")
+}
+
+model WhatsAppSession {
+  id             String   @id @default(uuid())
+  userId         String   @unique @map("user_id")
+  stateEncrypted String   @map("state_encrypted")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_sessions")
+}
+
+model WhatsAppBotConversation {
+  id        String   @id @default(uuid())
+  phone     String
+  userId    String?  @map("user_id")
+  state     Json
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([phone])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("whatsapp_bot_conversations")
+}
+
+model WhatsAppBotOtp {
+  id        String   @id @default(uuid())
+  phone     String   @unique
+  userId    String   @map("user_id")
+  email     String?
+  codeHash  String   @map("code_hash")
+  attempts  Int      @default(0)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("whatsapp_bot_otps")
 }
 
 model Group {

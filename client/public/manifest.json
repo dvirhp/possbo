@@ -5,20 +5,15 @@
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#f5f7fa",
-  "theme_color": "#667eea",
+  "background_color": "#ffffff",
+  "theme_color": "#0a0a0a",
   "dir": "rtl",
   "lang": "he",
   "icons": [
     {
-      "src": "/logo-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
-    },
-    {
-      "src": "/logo-192.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
+      "src": "/brand/possbo-mark-black.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

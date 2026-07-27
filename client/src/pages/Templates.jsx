@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { templatesService } from '../services/templatesService'
 import ConfirmDialog from '../components/ConfirmDialog'
+import BrandLogo from '../components/BrandLogo'
 import { Plus, Pencil, Trash2, Rocket, FileText, Calendar, Users, Search, LayoutGrid, List, Eye, MoreVertical, X, Clock, MapPin, UserX } from 'lucide-react'
 import '../styles/templates.css'
 
@@ -21,15 +22,8 @@ export default function Templates() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, authChecked, groups: cachedGroups } = useAppData()
-  const [templates, setTemplates] = useState(() => {
-    try {
-      const cached = localStorage.getItem('possbo_templates')
-      return cached ? JSON.parse(cached) : []
-    } catch { return [] }
-  })
-  const [loading, setLoading] = useState(() => {
-    try { return !localStorage.getItem('possbo_templates') } catch { return true }
-  })
+  const [templates, setTemplates] = useState([])
+  const [loading, setLoading] = useState(true)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState(() => window.innerWidth <= 768 ? 'grid' : 'grid')
@@ -69,7 +63,6 @@ export default function Templates() {
       const res = await templatesService.getAll()
       if (res.data.success) {
         setTemplates(res.data.templates)
-        try { localStorage.setItem('possbo_templates', JSON.stringify(res.data.templates)) } catch { /* ignore */ }
       }
     } catch {
       // silent
@@ -155,7 +148,7 @@ export default function Templates() {
       <div className="tpl-content">
         {loading ? (
           <div className="tpl-loading">
-            <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
+            <BrandLogo decorative className="loader-logo-pulse" />
             <span>טוען טמפלייטים...</span>
           </div>
         ) : templates.length === 0 ? (

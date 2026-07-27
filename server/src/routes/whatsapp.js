@@ -14,6 +14,7 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
 import { createLogger } from "../utils/logger.js";
+import { encrypt, decrypt } from "../utils/encryption.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +42,44 @@ function getUserSessionDir(userId) {
     fs.mkdirSync(dir, { recursive: true });
   }
   return dir;
+}
+
+async function restoreSessionFromDB(userId, folder) {
+  const stored = await prisma.whatsAppSession.findUnique({
+    where: { userId },
+  });
+  if (!stored?.stateEncrypted) return false;
+
+  const files = JSON.parse(decrypt(stored.stateEncrypted));
+  await fsPromises.mkdir(folder, { recursive: true });
+  await Promise.all(
+    Object.entries(files).map(([filename, base64]) =>
+      fsPromises.writeFile(
+        path.join(folder, path.basename(filename)),
+        Buffer.from(base64, "base64"),
+      ),
+    ),
+  );
+  return true;
+}
+
+async function persistSessionToDB(userId, folder) {
+  const entries = await fsPromises.readdir(folder, { withFileTypes: true });
+  const files = {};
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile())
+      .map(async (entry) => {
+        const data = await fsPromises.readFile(path.join(folder, entry.name));
+        files[entry.name] = data.toString("base64");
+      }),
+  );
+  const stateEncrypted = encrypt(JSON.stringify(files));
+  await prisma.whatsAppSession.upsert({
+    where: { userId },
+    create: { userId, stateEncrypted },
+    update: { stateEncrypted },
+  });
 }
 
 /**
@@ -87,7 +126,16 @@ async function atomicWriteFile(filePath, data) {
  * Wraps useMultiFileAuthState with atomic writes to prevent creds corruption.
  * Also creates a backup of creds.json before each save.
  */
-async function useAtomicAuthState(folder) {
+async function useAtomicAuthState(userId, folder) {
+  const localCreds = await fsPromises.stat(path.join(folder, "creds.json")).catch(() => null);
+  if (!localCreds?.size) {
+    await restoreSessionFromDB(userId, folder).catch((error) => {
+      log.warn("Failed to restore WhatsApp session from DB", {
+        userId,
+        error: error.message,
+      });
+    });
+  }
   const credsPath = path.join(folder, "creds.json");
   const backupPath = path.join(folder, "creds.backup.json");
 
@@ -118,6 +166,7 @@ async function useAtomicAuthState(folder) {
       const data = await fsPromises.readFile(credsPath, "utf-8");
       if (data && data.length > 10) {
         await atomicWriteFile(backupPath, data);
+        await persistSessionToDB(userId, folder);
       }
     } catch {
       /* ignore backup errors */
@@ -144,7 +193,7 @@ async function initSocket(userId, { isRestore = false } = {}) {
   }
 
   const sessionDir = getUserSessionDir(userId);
-  const { state, saveCreds } = await useAtomicAuthState(sessionDir);
+  const { state, saveCreds } = await useAtomicAuthState(userId, sessionDir);
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
@@ -305,6 +354,7 @@ async function initSocket(userId, { isRestore = false } = {}) {
             if (fs.existsSync(sessionDir)) {
               fs.rmSync(sessionDir, { recursive: true, force: true });
             }
+            await prisma.whatsAppSession.deleteMany({ where: { userId } });
           } catch {
             /* ignore */
           }
@@ -344,7 +394,11 @@ export async function restoreWhatsAppSessions() {
 
     for (const user of users) {
       const sessionDir = getUserSessionDir(user.id);
-      if (fs.existsSync(path.join(sessionDir, "creds.json"))) {
+      const localSessionExists = fs.existsSync(path.join(sessionDir, "creds.json"));
+      const dbSessionExists = await prisma.whatsAppSession
+        .findUnique({ where: { userId: user.id }, select: { id: true } })
+        .then(Boolean);
+      if (localSessionExists || dbSessionExists) {
         log.info("Restoring WA session", { userId: user.id });
         try {
           await initSocket(user.id, { isRestore: true });
@@ -354,6 +408,14 @@ export async function restoreWhatsAppSessions() {
             error: err.message,
           });
         }
+      } else {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            whatsappSessionConnected: false,
+            whatsappSessionPhone: null,
+          },
+        });
       }
     }
   } catch (err) {
@@ -453,8 +515,8 @@ router.post("/connect-phone", requireAuth, async (req, res) => {
 router.get("/status", requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const status = connectionStatus.get(userId);
-    const sock = activeSockets.get(userId);
+    let status = connectionStatus.get(userId);
+    let sock = activeSockets.get(userId);
 
     if (status?.status === "connected" && sock) {
       res.json({ connected: true, phone: status.phone });
@@ -465,9 +527,41 @@ router.get("/status", requireAuth, async (req, res) => {
         where: { id: userId },
         select: { whatsappSessionConnected: true, whatsappSessionPhone: true },
       });
+
+      // A DB flag alone is not proof of a live connection. Restore the
+      // encrypted session and wait briefly for Baileys to confirm it.
+      if (user?.whatsappSessionConnected && !sock) {
+        const storedSession = await prisma.whatsAppSession.findUnique({
+          where: { userId },
+          select: { id: true },
+        });
+
+        if (storedSession) {
+          await initSocket(userId, { isRestore: true });
+          for (let attempt = 0; attempt < 20; attempt++) {
+            status = connectionStatus.get(userId);
+            sock = activeSockets.get(userId);
+            if (status?.status === "connected" && sock) {
+              return res.json({ connected: true, phone: status.phone });
+            }
+            if (status?.status === "disconnected") break;
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+        }
+
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            whatsappSessionConnected: false,
+            whatsappSessionPhone: null,
+          },
+        });
+        return res.json({ connected: false, phone: null });
+      }
+
       res.json({
-        connected: user?.whatsappSessionConnected || false,
-        phone: user?.whatsappSessionPhone || null,
+        connected: false,
+        phone: null,
       });
     }
   } catch (err) {
@@ -513,6 +607,7 @@ router.post("/disconnect", requireAuth, async (req, res) => {
     // Clean up DB — remove WA groups & update user
     await prisma.$transaction([
       prisma.whatsAppContact.deleteMany({ where: { userId, isGroup: true } }),
+      prisma.whatsAppSession.deleteMany({ where: { userId } }),
       prisma.user.update({
         where: { id: userId },
         data: { whatsappSessionConnected: false, whatsappSessionPhone: null },

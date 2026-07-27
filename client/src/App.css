@@ -2,6 +2,24 @@
    Possbo — Global Styles
    ═══════════════════════════════════════════════════════════ */
 
+/* ─── Brand logo ─────────────────────────────────── */
+.brand-logo {
+  display: block;
+  object-fit: contain;
+  max-width: 100%;
+}
+
+/*
+ * Route CSS is lazy-loaded. Keep every loading logo constrained even during
+ * the short interval before the route-specific stylesheet is available.
+ */
+.brand-logo.loader-logo-pulse {
+  width: 80px;
+  height: 80px;
+  max-width: 80px;
+  max-height: 80px;
+}
+
 /* ─── Top Loader Bar ─────────────────────────────── */
 .top-loader {
   position: fixed;

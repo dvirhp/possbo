@@ -4,6 +4,7 @@ import { useAppData } from '../context/DataProvider'
 import Sidebar from './Sidebar'
 import BottomNav from './BottomNav'
 import PullToRefresh from './PullToRefresh'
+import BrandLogo from './BrandLogo'
 
 export default function AuthLayout({ children }) {
   const { user, authChecked } = useAppData()
@@ -110,7 +111,7 @@ export default function AuthLayout({ children }) {
     return (
       <div className="app-layout">
         <div className="app-main" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
+          <BrandLogo decorative className="loader-logo-pulse" />
         </div>
       </div>
     )

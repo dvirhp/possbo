@@ -4,6 +4,7 @@ import { authAPI } from '../services/api'
 import { useAppData } from '../context/DataProvider'
 import OAuthButtons from '../components/OAuthButtons'
 import Turnstile from '../components/Turnstile'
+import BrandLogo from '../components/BrandLogo'
 import '../styles/auth.css'
 
 export default function Login() {
@@ -67,7 +68,7 @@ export default function Login() {
       ) : (
       <div className="auth-card">
         <div className="auth-toprow">
-          <Link to="/" className="auth-toprow-logo"><img src="/logo.svg" alt="Possbo" className="auth-logo-img" /></Link>
+          <Link to="/" className="auth-toprow-logo"><BrandLogo className="auth-logo-img" /></Link>
           <Link to="/" className="auth-back-btn">←</Link>
         </div>
         <div className="auth-header">

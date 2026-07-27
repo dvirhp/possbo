@@ -228,8 +228,9 @@ router.post(
 // Scrape user's groups from Facebook using Playwright
 router.get(
   "/scrape-my-groups",
+  requireAuth,
   asyncHandler(async (req, res) => {
-    const groups = await scrapeMyGroups(req.user?.id);
+    const groups = await scrapeMyGroups(req.user.id);
 
     // Smart sync: compare old vs new, preserve posts for groups that still exist
     if (req.user) {
@@ -298,6 +299,31 @@ router.get(
               memberCount: g.memberCount || null,
               privacyType: g.privacyType || null,
             },
+          });
+
+          if (!prisma.group?.upsert || !prisma.userGroup?.upsert) continue;
+          const canonicalGroup = await prisma.group.upsert({
+            where: { externalGroupId: g.id },
+            update: {
+              name: g.name,
+              url: `https://www.facebook.com/groups/${g.id}`,
+              ...(g.memberCount && { memberCount: g.memberCount }),
+              ...(g.privacyType && { privacyType: g.privacyType }),
+            },
+            create: {
+              name: g.name,
+              url: `https://www.facebook.com/groups/${g.id}`,
+              externalGroupId: g.id,
+              memberCount: g.memberCount || null,
+              privacyType: g.privacyType || null,
+            },
+          });
+          await prisma.userGroup.upsert({
+            where: {
+              userId_groupId: { userId, groupId: canonicalGroup.id },
+            },
+            update: {},
+            create: { userId, groupId: canonicalGroup.id },
           });
         }
       }
