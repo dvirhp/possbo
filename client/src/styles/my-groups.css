@@ -98,7 +98,7 @@
 
 .profile-publish-btn {
   padding: 10px 18px;
-  background: linear-gradient(135deg, #6366f1, #818cf8);
+  background: var(--gradient-main);
   color: #fff;
   border: none;
   border-radius: 10px;
@@ -111,5 +111,5 @@
 }
 .profile-publish-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 16px var(--indigo-soft);
 }

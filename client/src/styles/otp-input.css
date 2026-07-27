@@ -27,14 +27,14 @@
 }
 
 .otp-circle:focus {
-  border-color: #818cf8;
-  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2);
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 3px var(--indigo-soft);
   background: var(--bg-hover, #313743);
 }
 
 .otp-circle.filled {
-  border-color: #818cf8;
-  background: rgba(129, 140, 248, 0.1);
+  border-color: var(--indigo);
+  background: var(--indigo-soft);
 }
 
 /* Light theme */
@@ -45,14 +45,14 @@
 }
 
 [data-theme="light"] .otp-circle:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
-  background: #eef0ff;
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 3px var(--indigo-soft);
+  background: #f7f7f8;
 }
 
 [data-theme="light"] .otp-circle.filled {
-  border-color: #6366f1;
-  background: rgba(99, 102, 241, 0.08);
+  border-color: var(--indigo);
+  background: var(--indigo-soft);
 }
 
 /* Responsive */

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect } f
 import { authAPI } from '../services/api'
 import { clearAccessToken } from '../services/http'
 import { groupsService } from '../services/groupsService'
+import { logClientError } from '../services/clientLogger'
 
 const DataContext = createContext(null)
 
@@ -92,7 +93,7 @@ export function DataProvider({ children }) {
       waGroupsLoadedRef.current = true
       return { groups, broadcastLists: lists }
     } catch (err) {
-      console.error('[WA] loadGroups error:', err)
+      logClientError('wa_groups_load_failed', err, { source: 'DataProvider' })
       return { groups: waGroups, broadcastLists: waBroadcastLists }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -113,7 +114,7 @@ export function DataProvider({ children }) {
       window.dispatchEvent(new CustomEvent('possbo-wa-sync-done'))
     } catch (err) {
       if (err?.code === 'ERR_CANCELED') return // intentionally aborted
-      console.error('[WA] sync error:', err)
+      logClientError('wa_groups_sync_failed', err, { source: 'DataProvider' })
       setWaError(err.userMessage || 'שגיאה בסנכרון')
     } finally {
       waSyncAbortRef.current = null
@@ -227,7 +228,6 @@ export function DataProvider({ children }) {
     // won't have a refresh token cookie, so avoid the 401 console noise
     try {
       const refreshRes = await authAPI.refresh()
-      console.log('[DataProvider] refresh response:', refreshRes?.data?.user?.instagramConnected, refreshRes?.data?.user?.instagramUsername)
       // Use user data from refresh response if available (avoids extra getMe call)
       const userData = refreshRes?.data?.user
       if (userData) {

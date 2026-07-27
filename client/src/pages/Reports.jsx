@@ -140,8 +140,8 @@ function ReportsDatePicker({ initialFrom, initialTo, onApply, onCancel, period, 
         </div>
       </div>
       <div className="drp-inputs">
-        <div className="drp-input-group"><label>מ-</label><input type="date" value={manualFrom} onChange={e => { setManualFrom(e.target.value); setRangeStart(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} /></div>
-        <div className="drp-input-group"><label>עד</label><input type="date" value={manualTo} onChange={e => { setManualTo(e.target.value); setRangeEnd(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} /></div>
+        <div className="drp-input-group"><label>מ-</label><input type="date" value={manualFrom} onChange={e => { setManualFrom(e.target.value); setRangeStart(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} aria-label="תאריך התחלה" /></div>
+        <div className="drp-input-group"><label>עד</label><input type="date" value={manualTo} onChange={e => { setManualTo(e.target.value); setRangeEnd(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} aria-label="תאריך סיום" /></div>
       </div>
       <div className="drp-presets">
         <button onClick={() => handlePreset(7)}>7 ימים</button>
@@ -693,11 +693,11 @@ export default function Reports() {
           <title>דוח Possbo - ${period === 'daily' ? 'יומי' : period === 'weekly' ? 'שבועי' : 'חודשי'}</title>
           <style>
             body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 40px; color: #222; direction: rtl; }
-            h1 { color: #6366f1; font-size: 24px; border-bottom: 2px solid #6366f1; padding-bottom: 8px; }
+            h1 { color: #0d0d0d; font-size: 24px; border-bottom: 2px solid #0d0d0d; padding-bottom: 8px; }
             h2 { color: #333; font-size: 18px; margin-top: 32px; }
             .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; }
             .kpi { border: 1px solid #ddd; border-radius: 8px; padding: 16px; text-align: center; }
-            .kpi-val { font-size: 28px; font-weight: 700; color: #6366f1; }
+            .kpi-val { font-size: 28px; font-weight: 700; color: #0d0d0d; }
             .kpi-label { font-size: 12px; color: #666; margin-top: 4px; }
             table { width: 100%; border-collapse: collapse; margin-top: 12px; }
             th { background: #f5f5f5; padding: 8px 12px; text-align: right; border-bottom: 2px solid #ddd; font-size: 12px; }
@@ -806,17 +806,17 @@ export default function Reports() {
 
         {/* KPI Cards */}
         <div className="reports-kpis">
-          <div className="reports-kpi clickable" onClick={() => stats.total > 0 && setKpiPopup('all')}>
+          <div className="reports-kpi clickable" onClick={() => stats.total > 0 && setKpiPopup('all')} role="button" tabIndex={stats.total > 0 ? 0 : -1} aria-label="פתח פירוט כל הפרסומים" onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && stats.total > 0) { e.preventDefault(); setKpiPopup('all') } }}>
             <div className="reports-kpi-icon"><FileText size={22} /></div>
             <div className="reports-kpi-val">{stats.total}</div>
             <div className="reports-kpi-label">סה"כ פרסומים</div>
           </div>
-          <div className="reports-kpi success clickable" onClick={() => stats.success > 0 && setKpiPopup('success')}>
+          <div className="reports-kpi success clickable" onClick={() => stats.success > 0 && setKpiPopup('success')} role="button" tabIndex={stats.success > 0 ? 0 : -1} aria-label="פתח פירוט פרסומים שהצליחו" onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && stats.success > 0) { e.preventDefault(); setKpiPopup('success') } }}>
             <div className="reports-kpi-icon"><CheckCircle size={22} /></div>
             <div className="reports-kpi-val">{stats.success}</div>
             <div className="reports-kpi-label">הצליחו</div>
           </div>
-          <div className="reports-kpi failed clickable" onClick={() => stats.failed > 0 && setKpiPopup('failed')}>
+          <div className="reports-kpi failed clickable" onClick={() => stats.failed > 0 && setKpiPopup('failed')} role="button" tabIndex={stats.failed > 0 ? 0 : -1} aria-label="פתח פירוט פרסומים שנכשלו" onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && stats.failed > 0) { e.preventDefault(); setKpiPopup('failed') } }}>
             <div className="reports-kpi-icon"><XCircle size={22} /></div>
             <div className="reports-kpi-val">{stats.failed}</div>
             <div className="reports-kpi-label">נכשלו</div>
@@ -826,12 +826,12 @@ export default function Reports() {
             <div className="reports-kpi-val">{stats.successRate}%</div>
             <div className="reports-kpi-label">אחוז הצלחה</div>
           </div>
-          <div className="reports-kpi clickable" onClick={() => stats.groups > 0 && setKpiPopup('groups')}>
+          <div className="reports-kpi clickable" onClick={() => stats.groups > 0 && setKpiPopup('groups')} role="button" tabIndex={stats.groups > 0 ? 0 : -1} aria-label="פתח פירוט קבוצות פעילות" onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && stats.groups > 0) { e.preventDefault(); setKpiPopup('groups') } }}>
             <div className="reports-kpi-icon"><Users size={22} /></div>
             <div className="reports-kpi-val">{stats.groups}</div>
             <div className="reports-kpi-label">קבוצות פעילות</div>
           </div>
-          <div className="reports-kpi clickable" onClick={() => stats.exposure > 0 && setKpiPopup('exposure')}>
+          <div className="reports-kpi clickable" onClick={() => stats.exposure > 0 && setKpiPopup('exposure')} role="button" tabIndex={stats.exposure > 0 ? 0 : -1} aria-label="פתח פירוט חשיפה משוערת" onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && stats.exposure > 0) { e.preventDefault(); setKpiPopup('exposure') } }}>
             <div className="reports-kpi-icon"><Eye size={22} /></div>
             <div className="reports-kpi-val">{formatNumber(stats.exposure)}</div>
             <div className="reports-kpi-label">חשיפה משוערת</div>
@@ -866,7 +866,7 @@ export default function Reports() {
                 </thead>
                 <tbody>
                   {recentActivity.map(a => (
-                    <tr key={a.id} onClick={() => openDetail(a)}>
+                    <tr key={a.id} onClick={() => openDetail(a)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(a) } }}>
                       <td className="reports-cell-campaign">{a.campaignName}</td>
                       <td className="reports-cell-group">{a.groupName}</td>
                       <td><span className={`reports-platform-tag ${a.platform === 'INSTAGRAM' ? 'rpt-ig' : a.platform === 'WHATSAPP' ? 'rpt-wa' : 'rpt-fb'}`}>{a.platform === 'INSTAGRAM' ? 'אינסטגרם' : a.platform === 'WHATSAPP' ? 'וואטסאפ' : a.targetType === 'PROFILE' ? 'פרופיל' : 'פייסבוק'}</span></td>
@@ -910,7 +910,7 @@ export default function Reports() {
                 </thead>
                 <tbody>
                   {upcoming.map(u => (
-                    <tr key={u.id} onClick={() => openScheduledDetail(u)}>
+                    <tr key={u.id} onClick={() => openScheduledDetail(u)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openScheduledDetail(u) } }}>
                       <td className="reports-cell-campaign">{u.campaignName}</td>
                       <td className="reports-cell-group">{u.groupName}</td>
                       <td><span className="reports-status scheduled">⏱ מתוזמן</span></td>
@@ -932,10 +932,10 @@ export default function Reports() {
       {/* KPI Detail Popup */}
       {kpiPopup && (
         <div className="reports-popup-overlay" onClick={() => setKpiPopup(null)}>
-          <div className="reports-popup" onClick={e => e.stopPropagation()}>
+          <div className="reports-popup" role="dialog" aria-modal="true" aria-labelledby="reports-popup-title" onClick={e => e.stopPropagation()}>
             <div className="reports-popup-header">
-              <h3>{kpiPopup === 'success' ? '✅ פרסומים שהצליחו' : kpiPopup === 'failed' ? '❌ פרסומים שנכשלו' : kpiPopup === 'all' ? '📋 כל הפרסומים' : kpiPopup === 'groups' ? '👥 קבוצות פעילות' : '👁️ פירוט חשיפה משוערת'}</h3>
-              <button className="reports-popup-close" onClick={() => setKpiPopup(null)}><X size={18} /></button>
+              <h3 id="reports-popup-title">{kpiPopup === 'success' ? '✅ פרסומים שהצליחו' : kpiPopup === 'failed' ? '❌ פרסומים שנכשלו' : kpiPopup === 'all' ? '📋 כל הפרסומים' : kpiPopup === 'groups' ? '👥 קבוצות פעילות' : '👁️ פירוט חשיפה משוערת'}</h3>
+              <button className="reports-popup-close" onClick={() => setKpiPopup(null)} aria-label="סגור פירוט דוחות"><X size={18} /></button>
             </div>
             <div className="reports-popup-body">
               {kpiPopup === 'exposure' ? (
@@ -1016,7 +1016,19 @@ export default function Reports() {
                       </thead>
                       <tbody>
                         {list.map(item => (
-                          <tr key={item.id} onClick={() => { setKpiPopup(null); openDetail(item) }}>
+                          <tr
+                            key={item.id}
+                            onClick={() => { setKpiPopup(null); openDetail(item) }}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                setKpiPopup(null)
+                                openDetail(item)
+                              }
+                            }}
+                          >
                             <td className="reports-cell-campaign">{item.campaignName}</td>
                             <td className="reports-cell-group">{item.groupName}</td>
                             {kpiPopup === 'all' && (
@@ -1047,10 +1059,10 @@ export default function Reports() {
       {/* Post Detail Popup */}
       {selectedItem && (
         <div className="reports-detail-overlay" onClick={() => setSelectedItem(null)}>
-          <div className="reports-detail-modal" onClick={e => e.stopPropagation()}>
+          <div className="reports-detail-modal" role="dialog" aria-modal="true" aria-labelledby="reports-detail-title" onClick={e => e.stopPropagation()}>
             <div className="reports-detail-header">
-              <button className="reports-popup-close" onClick={() => setSelectedItem(null)}><X size={18} /></button>
-              <h3>{selectedItem.title || selectedItem.campaignName || 'פרטי פרסום'}</h3>
+              <button className="reports-popup-close" onClick={() => setSelectedItem(null)} aria-label="סגור פרטי פרסום"><X size={18} /></button>
+              <h3 id="reports-detail-title">{selectedItem.title || selectedItem.campaignName || 'פרטי פרסום'}</h3>
             </div>
 
             {/* Images */}

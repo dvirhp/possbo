@@ -8,9 +8,9 @@
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  border: 1px solid var(--indigo, #6366f1);
+  border: 1px solid var(--indigo);
   border-radius: 10px;
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--indigo-soft);
 }
 
 .loc-autocomplete-selected-icon {

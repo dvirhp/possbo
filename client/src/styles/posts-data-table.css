@@ -1,4 +1,4 @@
-﻿/* ─── POSTS DATA TABLE ─── */
+/* ─── POSTS DATA TABLE ─── */
 
 .pdt-container {
   background: var(--bg-card);
@@ -75,8 +75,12 @@
   cursor: pointer;
   transition: background 250ms ease;
   min-height: 76px;
-  overflow: hidden;
+  overflow: visible;
   flex-wrap: nowrap;
+  position: relative;
+}
+.pdt-row-menu-open {
+  z-index: 80;
 }
 .pdt-row:last-child {
   border-bottom: none;
@@ -227,6 +231,8 @@
 /* Actions */
 .pdt-col-actions {
   position: relative;
+  overflow: visible;
+  z-index: 2;
 }
 .pdt-menu-btn {
   display: flex;
@@ -254,7 +260,7 @@
   border-radius: 12px;
   padding: 6px;
   box-shadow: 0 8px 30px rgba(0,0,0,0.3);
-  z-index: 50;
+  z-index: 120;
   min-width: 140px;
 }
 .pdt-menu-dropdown button {
@@ -540,4 +546,18 @@
   cursor: pointer;
 }
 .pdt-confirm-delete:hover { background: #DC2626; }
+
+.pdt-row.pdt-row-menu-open {
+  overflow: visible !important;
+  z-index: 500;
+}
+
+.pdt-row.pdt-row-menu-open .pdt-col-actions {
+  overflow: visible !important;
+  z-index: 501;
+}
+
+.pdt-row.pdt-row-menu-open .pdt-menu-dropdown {
+  z-index: 1000;
+}
 

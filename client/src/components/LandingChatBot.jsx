@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import '../styles/landing-chatbot.css'
 
-const AGENT_NAME = 'פוסטי'
+const AGENT_NAME = 'פוסבוט'
 
 const TOPICS = [
   {
@@ -51,6 +51,7 @@ export default function LandingChatBot() {
   const [messages, setMessages] = useState([WELCOME_MESSAGE])
   const [showTopics, setShowTopics] = useState(true)
   const panelRef = useRef(null)
+  const messagesEndRef = useRef(null)
 
   useEffect(() => {
     if (!open) return
@@ -62,6 +63,12 @@ export default function LandingChatBot() {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
+
+  useEffect(() => {
+    if (open) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, showTopics, open])
 
   const handleTopic = (topic) => {
     setMessages(prev => [
@@ -91,7 +98,7 @@ export default function LandingChatBot() {
         <div className="lcb-panel" ref={panelRef}>
           <div className="lcb-header">
             <div className="lcb-header-info">
-              <img src="/bot-avatar.svg" alt="פוסטי" className="lcb-avatar" />
+              <img src="/bot-avatar.svg" alt="פוסבוט" className="lcb-avatar" />
               <span className="lcb-title">{AGENT_NAME}, עוזר Possbo</span>
             </div>
             <button className="lcb-close" onClick={() => setOpen(false)} aria-label="סגור">✕</button>
@@ -120,6 +127,7 @@ export default function LandingChatBot() {
                 )}
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
         </div>
       )}

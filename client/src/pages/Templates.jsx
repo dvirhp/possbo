@@ -247,8 +247,8 @@ export default function Templates() {
                         <button className="tpl-list-use-btn" onClick={() => handleUseTemplate(tpl)}>
                           <Rocket size={13} /> צור קמפיין
                         </button>
-                        <button className="tpl-action-btn tpl-edit" onClick={() => navigate(`/templates/${tpl.id}/edit`)} title="ערוך"><Pencil size={13} /></button>
-                        <button className="tpl-action-btn tpl-delete" onClick={() => setDeleteConfirm(tpl)} title="מחק"><Trash2 size={13} /></button>
+                        <button className="tpl-action-btn tpl-edit" onClick={() => navigate(`/templates/${tpl.id}/edit`)} title="ערוך" aria-label={`ערוך טמפלייט ${tpl.name}`}><Pencil size={13} /></button>
+                        <button className="tpl-action-btn tpl-delete" onClick={() => setDeleteConfirm(tpl)} title="מחק" aria-label={`מחק טמפלייט ${tpl.name}`}><Trash2 size={13} /></button>
                       </div>
                     </div>
                   )
@@ -376,10 +376,10 @@ export default function Templates() {
             <div className="tpl-detail-modal" onClick={e => e.stopPropagation()}>
               {/* Header */}
               <div className="tpl-detail-header">
-                <button className="tpl-detail-close" onClick={() => setSelectedTemplate(null)}><X size={18} /></button>
+                <button className="tpl-detail-close" onClick={() => setSelectedTemplate(null)} aria-label="סגור פרטי טמפלייט"><X size={18} /></button>
                 <h3>{tpl.name}</h3>
                 <div className="tpl-detail-menu-wrap">
-                  <button className="tpl-detail-menu-btn" onClick={() => setDetailMenuOpen(!detailMenuOpen)}>
+                  <button className="tpl-detail-menu-btn" onClick={() => setDetailMenuOpen(!detailMenuOpen)} aria-label="פתח תפריט פעולות" aria-haspopup="menu" aria-expanded={detailMenuOpen}>
                     <MoreVertical size={18} />
                   </button>
                   {detailMenuOpen && (

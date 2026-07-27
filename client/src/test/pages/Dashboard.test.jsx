@@ -80,9 +80,9 @@ describe('Dashboard page', () => {
     mockAppData.dataReady = true;
   });
 
-  const renderDashboard = () => {
+  const renderDashboard = (initialEntries = ['/dashboard']) => {
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <Dashboard />
       </MemoryRouter>,
     );
@@ -111,29 +111,23 @@ describe('Dashboard page', () => {
     renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getAllByText(/קמפיין חדש/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/צור קמפיין/).length).toBeGreaterThanOrEqual(1);
     });
   });
 
-  it('should render all 5 tabs', async () => {
+  it('should render overview dashboard labels', async () => {
     renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getAllByText(/קמפיינים/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('דשבורד')).toBeInTheDocument();
       expect(screen.getAllByText(/קבוצות/).length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText(/פרסומים/).length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText(/סטטיסטיקה/).length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText(/ניהול חשבון/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/קמפיינים/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/פוסטים שפורסמו/)).toBeInTheDocument();
     });
   });
 
   it('should show empty campaigns state', async () => {
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getAllByText('קמפיינים').length).toBeGreaterThanOrEqual(1);
-    });
-    fireEvent.click(screen.getAllByText('קמפיינים')[0]);
+    renderDashboard(['/dashboard?tab=campaigns']);
 
     await waitFor(() => {
       expect(screen.getByText('אין קמפיינים')).toBeInTheDocument();
@@ -141,12 +135,7 @@ describe('Dashboard page', () => {
   });
 
   it('should switch to groups tab and show empty state', async () => {
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getAllByText(/קבוצות/).length).toBeGreaterThanOrEqual(1);
-    });
-    fireEvent.click(screen.getAllByText(/קבוצות/)[0]);
+    renderDashboard(['/dashboard?tab=groups']);
 
     await waitFor(() => {
       expect(screen.getByText('אין קבוצות שמורות')).toBeInTheDocument();
@@ -156,12 +145,7 @@ describe('Dashboard page', () => {
   it('should show groups when available', async () => {
     mockAppData.groups = [{ id: '1', name: 'קבוצת טסט', image: null }];
 
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getAllByText(/קבוצות/).length).toBeGreaterThanOrEqual(1);
-    });
-    fireEvent.click(screen.getAllByText(/קבוצות/)[0]);
+    renderDashboard(['/dashboard?tab=groups']);
 
     await waitFor(() => {
       expect(screen.getByText('קבוצת טסט')).toBeInTheDocument();
@@ -177,12 +161,7 @@ describe('Dashboard page', () => {
       publishedAt: '2026-06-21T10:00:00Z',
     }];
 
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getAllByText('פרסומים').length).toBeGreaterThanOrEqual(1);
-    });
-    fireEvent.click(screen.getAllByText('פרסומים')[0]);
+    renderDashboard(['/dashboard?tab=posts']);
 
     await waitFor(() => {
       expect(screen.getByText(/קבוצת פרסום/)).toBeInTheDocument();
@@ -227,9 +206,7 @@ describe('Dashboard page', () => {
   it('should render stats tab with labels', async () => {
     mockAppData.stats = { scheduledCount: 5, groupsCount: 3, publishedCount: 12, groupStats: [] };
 
-    renderDashboard();
-
-    fireEvent.click(screen.getAllByText('סטטיסטיקה')[0]);
+    renderDashboard(['/dashboard?tab=stats']);
 
     await waitFor(() => {
       expect(screen.getByText('קבוצות פעילות')).toBeInTheDocument();

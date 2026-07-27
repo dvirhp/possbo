@@ -69,12 +69,12 @@
   transition: 0.15s;
 }
 .drp-period-btn.active {
-  background: var(--indigo, #6366f1);
+  background: var(--indigo);
   color: #fff;
-  border-color: var(--indigo, #6366f1);
+  border-color: var(--indigo);
 }
 .drp-period-btn:hover:not(.active) {
-  border-color: var(--indigo, #6366f1);
+  border-color: var(--indigo);
   color: var(--text-primary, #e8ecf0);
 }
 
@@ -83,7 +83,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: var(--indigo, #6366f1);
+  background: var(--indigo);
   color: #fff;
   border: none;
   border-radius: 10px;
@@ -125,9 +125,9 @@
   transition: 0.2s;
 }
 .reports-period-btn.active {
-  background: var(--indigo, #6366f1);
+  background: var(--indigo);
   color: #fff;
-  border-color: var(--indigo, #6366f1);
+  border-color: var(--indigo);
 }
 .reports-period-btn:hover:not(.active) {
   border-color: var(--text-muted, #6b7684);
@@ -140,15 +140,15 @@
   gap: 6px;
   padding: 5px 12px;
   border-radius: 8px;
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  color: var(--indigo, #6366f1);
+  background: var(--indigo-soft);
+  border: 1px solid var(--indigo-soft);
+  color: var(--indigo);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: 0.15s;
 }
-.reports-custom-label:hover { background: rgba(99, 102, 241, 0.15); }
+.reports-custom-label:hover { background: var(--indigo-soft); }
 
 /* Date Range Picker Dropdown */
 .reports-drp-dropdown {
@@ -213,12 +213,12 @@
   color: var(--text-secondary, #a3adb8);
   transition: 0.1s;
 }
-.reports-drp-day:hover:not(.empty) { background: rgba(99, 102, 241, 0.15); }
+.reports-drp-day:hover:not(.empty) { background: var(--indigo-soft); }
 .reports-drp-day.empty { cursor: default; }
-.reports-drp-day.today { color: var(--indigo, #6366f1); font-weight: 700; }
-.reports-drp-day.in-range { background: rgba(99, 102, 241, 0.12); color: var(--text-primary, #e8ecf0); }
+.reports-drp-day.today { color: var(--indigo); font-weight: 700; }
+.reports-drp-day.in-range { background: var(--indigo-soft); color: var(--text-primary, #e8ecf0); }
 .reports-drp-day.range-start, .reports-drp-day.range-end {
-  background: var(--indigo, #6366f1);
+  background: var(--indigo);
   color: #fff;
   font-weight: 600;
 }
@@ -269,9 +269,9 @@
   transition: 0.15s;
 }
 .reports-drp-presets button:hover {
-  background: rgba(99, 102, 241, 0.1);
-  border-color: var(--indigo, #6366f1);
-  color: var(--indigo, #6366f1);
+  background: var(--indigo-soft);
+  border-color: var(--indigo);
+  color: var(--indigo);
 }
 
 .reports-drp-actions {
@@ -295,7 +295,7 @@
 }
 .reports-drp-cancel:hover { color: var(--text-primary, #e8ecf0); }
 .reports-drp-apply {
-  background: var(--indigo, #6366f1);
+  background: var(--indigo);
   color: #fff;
 }
 .reports-drp-apply:hover { background: var(--indigo); }
@@ -404,7 +404,7 @@
 }
 
 .reports-kpi-icon {
-  color: var(--indigo, #6366f1);
+  color: var(--indigo);
   margin-bottom: 4px;
 }
 .reports-kpi.success .reports-kpi-icon { color: var(--emerald); }
@@ -535,7 +535,7 @@
 }
 .reports-status.success { background: var(--emerald-soft); color: var(--emerald); }
 .reports-status.failed { background: var(--rose-soft); color: var(--rose); }
-.reports-status.scheduled { background: rgba(99, 102, 241, 0.1); color: var(--indigo, #6366f1); }
+.reports-status.scheduled { background: var(--indigo-soft); color: var(--indigo); }
 
 .reports-show-more {
   display: flex;
@@ -546,13 +546,13 @@
   padding: 10px;
   border: none;
   background: transparent;
-  color: var(--indigo, #6366f1);
+  color: var(--indigo);
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
   border-top: 1px solid var(--border, rgba(255,255,255,0.04));
 }
-.reports-show-more:hover { background: rgba(99, 102, 241, 0.04); }
+.reports-show-more:hover { background: var(--indigo-soft); }
 
 /* Clickable KPI */
 .reports-kpi.clickable {
@@ -755,7 +755,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   text-decoration: none;
   font-weight: 600;
   font-size: 13px;
@@ -778,14 +778,14 @@
   padding: 8px 4px;
   border: none;
   background: transparent;
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: color 0.15s;
 }
-.reports-future-toggle:hover { color: var(--indigo, #6366f1); }
+.reports-future-toggle:hover { color: var(--indigo); }
 
 .reports-future-body {
   padding: 8px 0 4px;
@@ -880,8 +880,8 @@
 .reports-future-group-list li {
   padding: 3px 8px;
   border-radius: 6px;
-  background: rgba(99, 102, 241, 0.08);
-  color: var(--indigo, #818cf8);
+  background: var(--indigo-soft);
+  color: var(--indigo);
   font-size: 11px;
   font-weight: 500;
 }

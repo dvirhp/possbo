@@ -23,6 +23,16 @@ const mockUserFindFirst = vi.fn();
 const mockUserUpdate = vi.fn();
 const mockSubscriptionFindFirst = vi.fn();
 const mockConnectedAccountFindFirst = vi.fn();
+const mockPendingRegistrationUpsert = vi.fn();
+const mockPendingRegistrationFindUnique = vi.fn();
+const mockPendingRegistrationDelete = vi.fn();
+const mockPendingRegistrationUpdate = vi.fn();
+const mockPasswordResetDeleteMany = vi.fn();
+const mockPasswordResetCreate = vi.fn();
+const mockPasswordResetFindFirst = vi.fn();
+const mockPasswordResetDelete = vi.fn();
+const mockPasswordResetUpdate = vi.fn();
+const mockTransaction = vi.fn();
 
 vi.mock("@prisma/client", () => ({
   PrismaClient: vi.fn(() => ({
@@ -38,6 +48,20 @@ vi.mock("@prisma/client", () => ({
     connectedAccount: {
       findFirst: mockConnectedAccountFindFirst,
     },
+    pendingRegistration: {
+      upsert: mockPendingRegistrationUpsert,
+      findUnique: mockPendingRegistrationFindUnique,
+      delete: mockPendingRegistrationDelete,
+      update: mockPendingRegistrationUpdate,
+    },
+    passwordResetToken: {
+      deleteMany: mockPasswordResetDeleteMany,
+      create: mockPasswordResetCreate,
+      findFirst: mockPasswordResetFindFirst,
+      delete: mockPasswordResetDelete,
+      update: mockPasswordResetUpdate,
+    },
+    $transaction: mockTransaction,
   })),
 }));
 
@@ -74,6 +98,62 @@ beforeEach(async () => {
   mockUserUpdate.mockReset().mockResolvedValue({});
   mockSubscriptionFindFirst.mockReset().mockResolvedValue(null);
   mockConnectedAccountFindFirst.mockReset().mockResolvedValue(null);
+  const pendingRegistrations = new Map();
+  const passwordResetTokens = new Map();
+  mockPendingRegistrationUpsert.mockReset().mockImplementation(async ({ where, create, update }) => {
+    const email = where.email;
+    const record = pendingRegistrations.has(email)
+      ? { ...pendingRegistrations.get(email), ...update, email }
+      : { ...create };
+    pendingRegistrations.set(email, record);
+    return record;
+  });
+  mockPendingRegistrationFindUnique.mockReset().mockImplementation(async ({ where }) => (
+    pendingRegistrations.get(where.email) || null
+  ));
+  mockPendingRegistrationDelete.mockReset().mockImplementation(async ({ where }) => {
+    const record = pendingRegistrations.get(where.email);
+    pendingRegistrations.delete(where.email);
+    return record || null;
+  });
+  mockPendingRegistrationUpdate.mockReset().mockImplementation(async ({ where, data }) => {
+    const record = { ...(pendingRegistrations.get(where.email) || {}), ...data, email: where.email };
+    pendingRegistrations.set(where.email, record);
+    return record;
+  });
+  mockPasswordResetDeleteMany.mockReset().mockImplementation(async ({ where }) => {
+    for (const [id, token] of passwordResetTokens) {
+      if (token.userId === where.userId && token.usedAt === where.usedAt) passwordResetTokens.delete(id);
+    }
+    return { count: 0 };
+  });
+  mockPasswordResetCreate.mockReset().mockImplementation(async ({ data }) => {
+    const record = { id: `reset-${passwordResetTokens.size + 1}`, usedAt: null, ...data };
+    passwordResetTokens.set(record.id, record);
+    return record;
+  });
+  mockPasswordResetFindFirst.mockReset().mockImplementation(async ({ where }) => (
+    [...passwordResetTokens.values()].find((token) =>
+      token.userId === where.userId &&
+      token.tokenHash === where.tokenHash &&
+      (token.usedAt ?? null) === where.usedAt &&
+      token.expiresAt > where.expiresAt.gt
+    ) || null
+  ));
+  mockPasswordResetDelete.mockReset().mockImplementation(async ({ where }) => {
+    const record = passwordResetTokens.get(where.id);
+    passwordResetTokens.delete(where.id);
+    return record || null;
+  });
+  mockPasswordResetUpdate.mockReset().mockImplementation(async ({ where, data }) => {
+    const record = { ...(passwordResetTokens.get(where.id) || {}), ...data };
+    passwordResetTokens.set(where.id, record);
+    return record;
+  });
+  mockTransaction.mockReset().mockImplementation(async (callback) => callback({
+    user: { create: mockUserCreate, update: mockUserUpdate },
+    pendingRegistration: { delete: mockPendingRegistrationDelete },
+  }));
 
   const authModule = await import("../../src/routes/auth.js");
 
@@ -103,6 +183,7 @@ describe("POST /api/auth/register", () => {
       email: "new@test.com",
       password: "password123",
       name: "New User",
+      idNumber: "123456789",
     });
 
     expect(res.status).toBe(200);
@@ -136,6 +217,7 @@ describe("POST /api/auth/register", () => {
     const res = await request(app).post("/api/auth/register").send({
       email: "test@test.com",
       password: "password123",
+      idNumber: "123456789",
     });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -151,6 +233,7 @@ describe("POST /api/auth/register", () => {
     const res = await request(app).post("/api/auth/register").send({
       email: "test@test.com",
       password: "password123",
+      idNumber: "123456789",
     });
     expect(res.status).toBe(409);
   });
@@ -378,6 +461,7 @@ describe("POST /api/auth/register — validation", () => {
     await request(app).post("/api/auth/register").send({
       email: "hash@test.com",
       password: "password123",
+      idNumber: "123456789",
     });
 
     expect(sendVerificationEmail).toHaveBeenCalledWith(
@@ -395,6 +479,7 @@ describe("POST /api/auth/register — validation", () => {
       name: "Full User",
       gender: "male",
       phone: "0501234567",
+      idNumber: "123456789",
     });
 
     expect(res.status).toBe(200);
@@ -422,6 +507,7 @@ describe("POST /api/auth/verify-email", () => {
       email: "verify@test.com",
       password: "password123",
       name: "Verify User",
+      idNumber: "123456789",
     });
 
     mockUserCreate.mockResolvedValue({
@@ -446,6 +532,7 @@ describe("POST /api/auth/verify-email", () => {
     await request(app).post("/api/auth/register").send({
       email: "wrongcode@test.com",
       password: "password123",
+      idNumber: "123456789",
     });
 
     const res = await request(app)
@@ -469,6 +556,7 @@ describe("POST /api/auth/resend-code", () => {
     await request(app).post("/api/auth/register").send({
       email: "resend@test.com",
       password: "password123",
+      idNumber: "123456789",
     });
 
     const res = await request(app)
@@ -622,6 +710,7 @@ describe("POST /api/auth/register — additional edge cases", () => {
     const res = await request(app).post("/api/auth/register").send({
       email: "test@test.com",
       password: "123456",
+      idNumber: "123456789",
     });
     expect(res.status).toBe(200);
   });
@@ -633,6 +722,7 @@ describe("POST /api/auth/register — additional edge cases", () => {
       .send({
         email: "test@test.com",
         password: "a".repeat(128),
+        idNumber: "123456789",
       });
     expect(res.status).toBe(200);
   });

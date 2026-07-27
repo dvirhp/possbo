@@ -4,10 +4,41 @@ import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
 import { authAPI } from '../services/api'
+import { logClientError, logClientWarning } from '../services/clientLogger'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 import DashboardOverview from '../components/DashboardOverview'
 import BrandLogo from '../components/BrandLogo'
+
+const API_HOST = 'http://localhost:8000'
+const IMAGE_EXTENSION_RE = /\.(avif|bmp|gif|jpe?g|png|svg|webp)(\?.*)?$/i
+
+function isRenderableImageUrl(value) {
+  if (typeof value !== 'string') return false
+  const url = value.trim()
+  if (!url) return false
+  if (url.startsWith('/uploads') || url.startsWith('uploads/')) return true
+  if (url.startsWith('blob:') || url.startsWith('data:image/')) return true
+  if (/^(https?:\/\/)?(wa\.me|api\.whatsapp\.com|web\.whatsapp\.com)\b/i.test(url)) return false
+  return IMAGE_EXTENSION_RE.test(url)
+}
+
+function getRenderableImages(values) {
+  return (Array.isArray(values) ? values : []).filter(isRenderableImageUrl)
+}
+
+function getCampaignImages(campaign) {
+  const images = getRenderableImages(campaign?.images)
+  if (images.length) return images
+  return getRenderableImages(campaign?.imageUrl ? [campaign.imageUrl] : [])
+}
+
+function resolveImg(url) {
+  if (!url) return ''
+  if (url.startsWith('/uploads')) return `${API_HOST}${url}`
+  if (url.startsWith('uploads/')) return `${API_HOST}/${url}`
+  return url
+}
 
 /** Normalize fancy Unicode text (Mathematical Bold/Italic/Script etc.) to plain ASCII */
 function normalizeFancyText(str) {
@@ -112,26 +143,6 @@ const TABS = [
   { id: 'account', icon: '👤', label: 'ניהול חשבון' },
 ]
 
-const NAV_ITEMS = [
-  { id: 'campaigns', icon: 'calendar', label: 'קמפיינים' },
-  { id: 'groups', icon: 'users', label: 'קבוצות' },
-  { id: 'posts', icon: 'send', label: 'פרסומים' },
-  { id: 'stats', icon: 'chart', label: 'סטטיסטיקה' },
-  { id: 'account', icon: 'account', label: 'ניהול חשבון' },
-]
-
-function NavIcon({ type }) {
-  const icons = {
-    calendar: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
-    users: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
-    send: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
-    chart: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
-    settings: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
-    account: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
-  }
-  return icons[type] || null
-}
-
 export default function Dashboard() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -165,8 +176,6 @@ export default function Dashboard() {
     }
   }, [searchParams])
   const [search, setSearch] = useState('')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [viewMode, setViewMode] = useState('list') // 'grid' | 'list'
   const [campaignSubTab, setCampaignSubTab] = useState(() => searchParams.get('subTab') || 'all') // 'all' | 'scheduled' | 'published'
 
@@ -260,17 +269,6 @@ export default function Dashboard() {
       loadStats()
     }
   }, [dateFrom, dateTo])
-
-  const handleLogout = async () => {
-    setMainConfirm({
-      title: 'התנתקות',
-      message: 'האם אתה בטוח שברצונך להתנתק?',
-      action: () => {
-        logout()
-        navigate('/')
-      }
-    })
-  }
 
   const [mainConfirm, setMainConfirm] = useState(null)
   const [sessionRequired, setSessionRequired] = useState(false)
@@ -548,14 +546,6 @@ export default function Dashboard() {
     return counts
   }, [posts])
 
-  const tabCounts = {
-    campaigns: campaigns.length,
-    groups: groups.length,
-    posts: posts.length,
-    stats: stats?.publishedCount || 0,
-    account: null,
-  }
-
   const kpiData = {
     campaigns: filteredCampaigns.length,
     scheduled: filteredCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring' || c.status === 'both').length,
@@ -572,88 +562,7 @@ export default function Dashboard() {
   return (
     <>
     <div className="dash">
-      {/* Mobile overlay */}
-      {mobileMenuOpen && <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)} />}
-
-      {/* ─── SIDEBAR ─── */}
-      <aside className={`dash-sidebar ${sidebarOpen ? 'open' : 'collapsed'} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <div className="sidebar-top">
-          <Link to="/dashboard" className="sidebar-logo" onClick={() => setMobileMenuOpen(false)}>
-            <BrandLogo className="sidebar-logo-img" />
-          </Link>
-        </div>
-
-        <nav className="sidebar-nav">
-          {sidebarOpen && <div className="sidebar-section-label">ניהול</div>}
-          {NAV_ITEMS.map(item => (
-            <button
-              key={item.id}
-              type="button"
-              className={`sidebar-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false) }}
-              title={item.label}
-            >
-              <NavIcon type={item.icon} />
-              {sidebarOpen && <span className="sidebar-item-label">{item.label}</span>}
-              {sidebarOpen && tabCounts[item.id] != null && tabCounts[item.id] > 0 && (
-                <span className="sidebar-badge">{tabCounts[item.id]}</span>
-              )}
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-bottom">
-          {sidebarOpen && user && (
-            <div className="sidebar-user">
-              <div className="sidebar-avatar">
-                {user.profileImage || user.avatarUrl
-                  ? <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('uploads/')) return `/${v}`; return v })()} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={e => { e.target.style.display = 'none' }} />
-                  : (user.name?.charAt(0) || user.email?.charAt(0) || '?')}
-              </div>
-              <div className="sidebar-user-info">
-                <span className="sidebar-user-name">{user.name || user.email}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </aside>
-
-      {/* ─── MAIN ─── */}
       <div className="dash-main">
-        {/* Top Bar */}
-        <header className="dash-topbar">
-          <div className="topbar-right">
-            <button className="topbar-toggle" onClick={() => {
-              // On mobile (<=768px) toggle mobile menu, on desktop toggle sidebar
-              if (window.innerWidth <= 768) {
-                setMobileMenuOpen(!mobileMenuOpen)
-              } else {
-                setSidebarOpen(!sidebarOpen)
-              }
-            }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
-              </svg>
-            </button>
-            <Link to="/dashboard" className="topbar-title-link">
-              <h1 className="topbar-title">דשבורד</h1>
-            </Link>
-          </div>
-          <div className="topbar-left">
-            <Link to="/scheduled" className="topbar-cta-secondary">
-              📅 <span className="topbar-cta-label">יומן תזמונים</span>
-            </Link>
-            <Link to="/create-post" className="topbar-cta">
-              <span>+</span> <span className="topbar-cta-label">קמפיין חדש</span>
-            </Link>
-            <button onClick={handleLogout} className="topbar-logout" title="התנתק">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-            </button>
-          </div>
-        </header>
-
         {/* Content */}
         <div className="dash-body">
           {!authChecked ? (
@@ -776,11 +685,12 @@ export default function Dashboard() {
                     <input
                       type="text"
                       placeholder={`חיפוש ${TABS.find(t => t.id === activeTab)?.label || ''}...`}
+                      aria-label={`חיפוש ${TABS.find(t => t.id === activeTab)?.label || ''}`}
                       value={search}
                       onChange={e => setSearch(e.target.value)}
                     />
                     {search && (
-                      <button className="search-clear" onClick={() => setSearch('')}>✕</button>
+                      <button className="search-clear" onClick={() => setSearch('')} aria-label="נקה חיפוש">✕</button>
                     )}
                   </div>
 
@@ -820,7 +730,7 @@ export default function Dashboard() {
                     )}
 
                     {activeTab === 'campaigns' && (
-                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
+                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select" aria-label="סינון לפי סטטוס">
                         <option value="all">כל הסטטוסים ({campaigns.length})</option>
                         {campaignStatusCounts['active'] && <option value="active">פעיל ({campaignStatusCounts['active']})</option>}
                         {campaignStatusCounts['published'] && <option value="published">פורסם ({campaignStatusCounts['published']})</option>}
@@ -833,7 +743,7 @@ export default function Dashboard() {
                     )}
 
                     {activeTab === 'campaigns' && (
-                      <select value={platformFilter} onChange={e => setPlatformFilter(e.target.value)} className="filter-select">
+                      <select value={platformFilter} onChange={e => setPlatformFilter(e.target.value)} className="filter-select" aria-label="סינון לפי פלטפורמה">
                         <option value="all">כל הפלטפורמות</option>
                         <option value="facebook">פייסבוק בלבד</option>
                         <option value="instagram">אינסטגרם בלבד</option>
@@ -861,6 +771,7 @@ export default function Dashboard() {
                                 value={groupFilterSearch}
                                 onChange={e => setGroupFilterSearch(e.target.value)}
                                 autoFocus
+                                aria-label="חיפוש קבוצה לסינון"
                               />
                             </div>
                             <div className="group-filter-list">
@@ -939,7 +850,7 @@ export default function Dashboard() {
                     )}
 
                     {activeTab === 'posts' && (
-                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
+                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select" aria-label="סינון פוסטים לפי סטטוס">
                         <option value="all">כל הסטטוסים ({posts.length})</option>
                         {postStatusCounts['SUCCESS'] && <option value="SUCCESS">פורסם ({postStatusCounts['SUCCESS']})</option>}
                         {postStatusCounts['FAILED'] && <option value="FAILED">נכשל ({postStatusCounts['FAILED']})</option>}
@@ -964,6 +875,7 @@ export default function Dashboard() {
                                 value={groupFilterSearch}
                                 onChange={e => setGroupFilterSearch(e.target.value)}
                                 autoFocus
+                                aria-label="חיפוש קבוצה לסינון"
                               />
                             </div>
                             <div className="group-filter-list">
@@ -991,7 +903,7 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="filter-select">
+                    <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="filter-select" aria-label="מיון">
                       {activeTab !== 'groups' && <option value="date">מיון לפי תאריך</option>}
                       <option value="name">מיון לפי שם</option>
                       {activeTab === 'groups' && <option value="members">מיון לפי חברים</option>}
@@ -1107,7 +1019,7 @@ export default function Dashboard() {
                           <div className="filter-sheet-select-panel">
                             <div className="filter-sheet-select-search">
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                              <input type="text" placeholder="חפש קבוצה..." value={sheetGroupSearch} onChange={e => setSheetGroupSearch(e.target.value)} autoFocus />
+                              <input type="text" placeholder="חפש קבוצה..." value={sheetGroupSearch} onChange={e => setSheetGroupSearch(e.target.value)} autoFocus aria-label="חיפוש קבוצה לסינון" />
                             </div>
                             <div className="filter-sheet-select-list">
                               <button className={`filter-sheet-select-item ${groupFilter === 'all' ? 'active' : ''}`} onClick={() => { setGroupFilter('all'); setSheetGroupExpand(false); setSheetGroupSearch('') }}>
@@ -1139,7 +1051,7 @@ export default function Dashboard() {
                           <div className="filter-sheet-select-panel">
                             <div className="filter-sheet-select-search">
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                              <input type="text" placeholder="חפש קבוצה..." value={sheetGroupSearch} onChange={e => setSheetGroupSearch(e.target.value)} autoFocus />
+                              <input type="text" placeholder="חפש קבוצה..." value={sheetGroupSearch} onChange={e => setSheetGroupSearch(e.target.value)} autoFocus aria-label="חיפוש קבוצה לסינון" />
                             </div>
                             <div className="filter-sheet-select-list">
                               <button className={`filter-sheet-select-item ${groupFilter === 'all' ? 'active' : ''}`} onClick={() => { setGroupFilter('all'); setSheetGroupExpand(false); setSheetGroupSearch('') }}>
@@ -1172,7 +1084,7 @@ export default function Dashboard() {
                             {campaignTemplateNames.length > 5 && (
                               <div className="filter-sheet-select-search">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                <input type="text" placeholder="חפש טמפלייט..." value={sheetTemplateSearch} onChange={e => setSheetTemplateSearch(e.target.value)} autoFocus />
+                                <input type="text" placeholder="חפש טמפלייט..." value={sheetTemplateSearch} onChange={e => setSheetTemplateSearch(e.target.value)} autoFocus aria-label="חיפוש טמפלייט לסינון" />
                               </div>
                             )}
                             <div className="filter-sheet-select-list">
@@ -1228,20 +1140,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ─── MOBILE BOTTOM NAV ─── */}
-      <nav className="dash-mobile-nav">
-        {NAV_ITEMS.map(item => (
-          <button
-            key={item.id}
-            type="button"
-            className={`mobile-nav-item ${activeTab === item.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(item.id)}
-          >
-            <NavIcon type={item.icon} />
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </nav>
     </div>
     <ConfirmDialog
       open={!!mainConfirm}
@@ -1532,12 +1430,11 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
           <span className="cl-col cl-col-actions"></span>
         </div>
         {sortedCampaigns.map(campaign => {
-          const allImages = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
-          const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url
+          const allImages = getCampaignImages(campaign)
           const thumbImages = allImages.slice(0, 4)
           const extraImgs = allImages.length - 4
           return (
-            <div key={campaign.id} className="cl-row" onClick={() => campaign.status === 'draft' ? navigate('/create-post', { state: { republish: { ...campaign, groupIds: campaign.groups?.map(g => g.id) } } }) : setDetailCampaign(campaign)}>
+            <div key={campaign.id} className={`cl-row ${menuId === campaign.id ? 'cl-row-menu-open' : ''}`} onClick={() => setDetailCampaign(campaign)}>
               {/* Post */}
               <div className="cl-col cl-col-post">
                 <div className={`cl-thumb cl-thumb-${Math.min(thumbImages.length, 4)}`}>
@@ -1593,11 +1490,17 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
               {/* Actions */}
               <div className="cl-col cl-col-actions" onClick={e => e.stopPropagation()}>
                 <div className="actions-menu-wrap" ref={menuId === campaign.id ? menuRef : undefined}>
-                  <button className="actions-dots-btn" onClick={() => setMenuId(menuId === campaign.id ? null : campaign.id)}>
+                  <button
+                    className="actions-dots-btn"
+                    onClick={(e) => { e.stopPropagation(); setMenuId(menuId === campaign.id ? null : campaign.id) }}
+                    aria-label="פתח תפריט פעולות"
+                    aria-haspopup="menu"
+                    aria-expanded={menuId === campaign.id}
+                  >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                   </button>
                   {menuId === campaign.id && (
-                    <div className="actions-dropdown">
+                    <div className="actions-dropdown" role="menu" aria-label="פעולות קמפיין">
                       {campaign.publishedCount > 0 && (
                         <button onClick={() => setDetailCampaign(campaign)}>היסטוריית פרסומים</button>
                       )}
@@ -1629,8 +1532,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
       /* ═══ Grid/Card View ═══ */
       <div className="campaigns-grid">
       {sortedCampaigns.map(campaign => {
-        const allImages = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
-        const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url
+        const allImages = getCampaignImages(campaign)
         const handleImgError = (e) => { e.target.style.display = 'none'; e.target.parentElement.classList.add('card-img-broken') }
         const cardImages = allImages.slice(0, 3)
         const extraImgs = allImages.length - 3
@@ -1664,11 +1566,17 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
               <h4 className="campaign-card-title" onClick={() => campaign.status === 'draft' ? navigate('/create-post', { state: { republish: { ...campaign, groupIds: campaign.groups?.map(g => g.id) } } }) : setDetailCampaign(campaign)}>                {campaign.title || campaign.content?.slice(0, 40) || 'קמפיין'}
               </h4>
               <div className="actions-menu-wrap" ref={menuId === campaign.id ? menuRef : undefined}>
-                <button className="actions-dots-btn" onClick={(e) => { e.stopPropagation(); setMenuId(menuId === campaign.id ? null : campaign.id) }}>
+                <button
+                  className="actions-dots-btn"
+                  onClick={(e) => { e.stopPropagation(); setMenuId(menuId === campaign.id ? null : campaign.id) }}
+                  aria-label="פתח תפריט פעולות"
+                  aria-haspopup="menu"
+                  aria-expanded={menuId === campaign.id}
+                >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                 </button>
                 {menuId === campaign.id && (
-                  <div className="actions-dropdown">
+                  <div className="actions-dropdown" role="menu" aria-label="פעולות קמפיין">
                     {campaign.status !== 'draft' && (
                       <button onClick={() => handleEdit(campaign)}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -1859,7 +1767,7 @@ function WhatsAppSyncPanel({ user, navigate }) {
         startConnectionPoll()
       }
     } catch (err) {
-      console.error('[WA-Connect] Failed:', err)
+      logClientError('wa_connect_failed', err, { source: 'Dashboard' })
       setConnecting(false)
     }
   }
@@ -1881,7 +1789,7 @@ function WhatsAppSyncPanel({ user, navigate }) {
         startConnectionPoll()
       }
     } catch (err) {
-      console.error('[WA-ConnectPhone] Failed:', err)
+      logClientError('wa_connect_phone_failed', err, { source: 'Dashboard' })
       setConnecting(false)
     }
   }
@@ -1936,7 +1844,7 @@ function WhatsAppSyncPanel({ user, navigate }) {
   const addMemberRow = () => {
     if (broadcastMembers.length >= 100) return
     setBroadcastMembers(prev => [...prev, { phone: '', name: '' }])
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       if (membersListRef.current) {
         membersListRef.current.scrollTo({ top: membersListRef.current.scrollHeight, behavior: 'smooth' })
       }
@@ -1974,7 +1882,7 @@ function WhatsAppSyncPanel({ user, navigate }) {
       }
       closeBroadcastForm()
     } catch (err) {
-      console.error('[WA] Save broadcast error:', err)
+      logClientError('wa_broadcast_save_failed', err, { source: 'Dashboard' })
     } finally {
       setBroadcastSaving(false)
     }
@@ -1986,7 +1894,7 @@ function WhatsAppSyncPanel({ user, navigate }) {
       setWaBroadcastLists(prev => prev.filter(bl => bl.id !== id))
       setDeleteConfirmId(null)
     } catch (err) {
-      console.error('[WA] Delete broadcast error:', err)
+      logClientError('wa_broadcast_delete_failed', err, { source: 'Dashboard' })
     }
   }
 
@@ -2096,8 +2004,8 @@ function WhatsAppSyncPanel({ user, navigate }) {
           <div className="wa-sync-toolbar">
             <div className="wa-sync-search">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" placeholder="חפש קבוצה..." value={search} onChange={e => setSearch(e.target.value)} dir="rtl" />
-              {search && <button className="wa-search-clear" onClick={() => setSearch('')}>✕</button>}
+              <input type="text" placeholder="חפש קבוצה..." value={search} onChange={e => setSearch(e.target.value)} dir="rtl" aria-label="חיפוש קבוצת וואטסאפ" />
+              {search && <button className="wa-search-clear" onClick={() => setSearch('')} aria-label="נקה חיפוש">✕</button>}
             </div>
             <button className="wa-sync-refresh" onClick={handleSync} disabled={syncing} title="סנכרן קבוצות מוואטסאפ">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'spinning' : ''}>
@@ -2142,8 +2050,8 @@ function WhatsAppSyncPanel({ user, navigate }) {
           <div className="wa-sync-toolbar">
             <div className="wa-sync-search">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" placeholder="חפש רשימת תפוצה..." value={search} onChange={e => setSearch(e.target.value)} dir="rtl" />
-              {search && <button className="wa-search-clear" onClick={() => setSearch('')}>✕</button>}
+              <input type="text" placeholder="חפש רשימת תפוצה..." value={search} onChange={e => setSearch(e.target.value)} dir="rtl" aria-label="חיפוש רשימת תפוצה" />
+              {search && <button className="wa-search-clear" onClick={() => setSearch('')} aria-label="נקה חיפוש">✕</button>}
             </div>
             <button className="wa-add-broadcast-btn" onClick={openNewBroadcast} title="צור רשימת תפוצה חדשה">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -2490,7 +2398,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
           />
           {search && <button className="fb-groups-search-clear" onClick={() => setSearch('')}>✕</button>}
         </div>
-        <select className="fb-groups-sort" value={sortKey || ''} onChange={e => { setSortKey(e.target.value || null); setSortDir('desc') }}>
+        <select className="fb-groups-sort" value={sortKey || ''} onChange={e => { setSortKey(e.target.value || null); setSortDir('desc') }} aria-label="מיון קבוצות">
           <option value="">ללא מיון</option>
           <option value="name">מיון לפי שם</option>
           <option value="members">מיון לפי חברים</option>
@@ -2601,8 +2509,8 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
       {/* ═══ Group Detail Modal ═══ */}
       {detailGroup && (
         <div className="modal-overlay" onClick={() => setDetailGroup(null)}>
-          <div className="modal-content group-detail-modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setDetailGroup(null)}>✕</button>
+          <div className="modal-content group-detail-modal" role="dialog" aria-modal="true" aria-label="פרטי קבוצה" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setDetailGroup(null)} aria-label="סגור פרטי קבוצה">✕</button>
             {/* Hero */}
             <div className="gd-hero">
               {detailGroup.image && <img src={detailGroup.image} alt="" className="gd-hero-img" onError={e => e.target.style.display = 'none'} />}
@@ -2714,14 +2622,14 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
     </div>
   )
 
-  const resolveImg = (url) => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url
+  const resolvePostImg = resolveImg
   const handleImgError2 = (e) => { e.target.style.display = 'none'; e.target.parentElement.classList.add('card-img-broken') }
 
   return (
     <>
     <div className={`campaigns-grid ${viewMode === 'list' ? 'campaigns-list-view' : ''}`}>
       {localPosts.map(item => {
-        const allImages = item.post?.images || item.images || []
+        const allImages = getRenderableImages(item.post?.images || item.images || [])
         const cardImages = allImages.slice(0, 3)
         const extraImgs = allImages.length - 3
         return (
@@ -2731,7 +2639,7 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
               ? <>
                   {cardImages.map((img, i) => (
                     <div key={i} className={`card-img-cell ${i === 0 ? 'card-img-main' : 'card-img-side'}`}>
-                      <img src={resolveImg(img)} alt="" onError={handleImgError2} />
+                      <img src={resolvePostImg(img)} alt="" onError={handleImgError2} />
                       {i === 2 && extraImgs > 0 && (
                         <div className="card-img-plus">+{extraImgs}</div>
                       )}
@@ -2753,11 +2661,17 @@ function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
                 {item.post?.title || item.post?.content?.slice(0, 40) || ''}
               </h4>
               <div className="actions-menu-wrap" ref={menuId === item.id ? menuRef : undefined}>
-                <button className="actions-dots-btn" onClick={(e) => { e.stopPropagation(); setMenuId(menuId === item.id ? null : item.id) }}>
+                <button
+                  className="actions-dots-btn"
+                  onClick={(e) => { e.stopPropagation(); setMenuId(menuId === item.id ? null : item.id) }}
+                  aria-label="פתח תפריט פעולות"
+                  aria-haspopup="menu"
+                  aria-expanded={menuId === item.id}
+                >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                 </button>
                 {menuId === item.id && (
-                  <div className="actions-dropdown">
+                  <div className="actions-dropdown" role="menu" aria-label="פעולות פרסום">
                     {item.postUrl && (
                       <button onClick={(e) => { e.stopPropagation(); setMenuId(null); window.open(item.postUrl, '_blank', 'noopener,noreferrer') }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -2889,17 +2803,19 @@ function StatsDateRangePicker({ initialFrom, initialTo, onApply, onCancel }) {
         <div className="drp-cal-grid">
           {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map(d => <span key={d} className="drp-weekday">{d}</span>)}
           {days.map((day, i) => (
-            <span key={i}
+            <button type="button" key={i}
               className={`drp-day ${!day ? 'empty' : ''} ${day && isInRange(day) ? 'in-range' : ''} ${day && isStart(day) ? 'range-start' : ''} ${day && isEnd(day) ? 'range-end' : ''} ${day && dayToStr(day) === toDS(today) ? 'today' : ''}`}
+              disabled={!day}
               onClick={() => day && handleDayClick(day)}
               onMouseEnter={() => { if (rangeStart && !rangeEnd && day) setHoverDate(dayToStr(day)) }}
-            >{day || ''}</span>
+              aria-label={day ? `בחר ${dayToStr(day)}` : undefined}
+            >{day || ''}</button>
           ))}
         </div>
       </div>
       <div className="drp-inputs">
-        <div className="drp-input-group"><label>מ-</label><input type="date" value={manualFrom} onChange={e => { setManualFrom(e.target.value); setRangeStart(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} /></div>
-        <div className="drp-input-group"><label>עד</label><input type="date" value={manualTo} onChange={e => { setManualTo(e.target.value); setRangeEnd(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} /></div>
+        <div className="drp-input-group"><label>מ-</label><input type="date" value={manualFrom} onChange={e => { setManualFrom(e.target.value); setRangeStart(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} aria-label="תאריך התחלה" /></div>
+        <div className="drp-input-group"><label>עד</label><input type="date" value={manualTo} onChange={e => { setManualTo(e.target.value); setRangeEnd(e.target.value) }} onKeyDown={e => e.key === 'Enter' && handleManualApply()} aria-label="תאריך סיום" /></div>
       </div>
       <div className="drp-presets">
         <button onClick={handleTodayPreset}>היום</button>
@@ -2944,15 +2860,15 @@ function BestPostingTimesChart({ hourlyData: data }) {
                 formatter={(val, name) => [val, name === 'avgLikes' ? 'ממוצע לייקים' : name === 'avgComments' ? 'ממוצע תגובות' : name]}
                 labelFormatter={(label) => `שעה ${label}`}
               />
-              <Bar dataKey="avgLikes" fill="#818cf8" radius={[4, 4, 0, 0]} name="avgLikes" background={false} />
+              <Bar dataKey="avgLikes" fill="var(--indigo)" radius={[4, 4, 0, 0]} name="avgLikes" background={false} />
               <Bar dataKey="avgComments" fill="#10B981" radius={[4, 4, 0, 0]} name="avgComments" background={false} />
             </BarChart>
           ) : (
             <AreaChart width={timesChartSize.width || 300} height={timesChartSize.height || 220} data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="timesLikesGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#818cf8" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
+                  <stop offset="0%" stopColor="var(--indigo)" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="var(--indigo)" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="timesCommentsGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#10B981" stopOpacity={0.4} />
@@ -2967,7 +2883,7 @@ function BestPostingTimesChart({ hourlyData: data }) {
                 formatter={(val, name) => [val, name === 'avgLikes' ? 'ממוצע לייקים' : name === 'avgComments' ? 'ממוצע תגובות' : name]}
                 labelFormatter={(label) => `שעה ${label}`}
               />
-              <Area type="monotone" dataKey="avgLikes" stroke="#818cf8" strokeWidth={2} fill="url(#timesLikesGrad)" name="avgLikes" activeDot={{ r: 6, fill: '#818cf8', stroke: '#fff', strokeWidth: 2 }} />
+              <Area type="monotone" dataKey="avgLikes" stroke="var(--indigo)" strokeWidth={2} fill="url(#timesLikesGrad)" name="avgLikes" activeDot={{ r: 6, fill: 'var(--indigo)', stroke: '#fff', strokeWidth: 2 }} />
               <Area type="monotone" dataKey="avgComments" stroke="#10B981" strokeWidth={2} fill="url(#timesCommentsGrad)" name="avgComments" activeDot={{ r: 6, fill: '#10B981', stroke: '#fff', strokeWidth: 2 }} />
             </AreaChart>
           )}
@@ -3178,8 +3094,8 @@ function StatsPanel({ stats }) {
                 <AreaChart width={exposureChartSize.width || 300} height={exposureChartSize.height || 220} data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="exposureGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#818cf8" stopOpacity={0.4} />
-                      <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
+                      <stop offset="0%" stopColor="var(--indigo)" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="var(--indigo)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -3189,7 +3105,7 @@ function StatsPanel({ stats }) {
                     contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
                     formatter={(val) => [formatNumber(val), 'חשיפה']}
                   />
-                  <Area type={chartData.length >= 2 ? 'monotone' : 'linear'} dataKey="exposure" stroke="#818cf8" strokeWidth={2} fill="url(#exposureGradient)" dot={{ r: 5, fill: '#818cf8', stroke: '#1e2028', strokeWidth: 2 }} activeDot={{ r: 7, fill: '#818cf8', stroke: '#fff', strokeWidth: 2 }} />
+                  <Area type={chartData.length >= 2 ? 'monotone' : 'linear'} dataKey="exposure" stroke="var(--indigo)" strokeWidth={2} fill="url(#exposureGradient)" dot={{ r: 5, fill: 'var(--indigo)', stroke: '#1e2028', strokeWidth: 2 }} activeDot={{ r: 7, fill: 'var(--indigo)', stroke: '#fff', strokeWidth: 2 }} />
                 </AreaChart>
               ) : (
                 <BarChart width={exposureChartSize.width || 300} height={exposureChartSize.height || 220} data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -3200,7 +3116,7 @@ function StatsPanel({ stats }) {
                     contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }}
                     formatter={(val) => [formatNumber(val), 'חשיפה']}
                   />
-                  <Bar dataKey="exposure" fill="#818cf8" radius={[4, 4, 0, 0]} background={false} />
+                  <Bar dataKey="exposure" fill="var(--indigo)" radius={[4, 4, 0, 0]} background={false} />
                 </BarChart>
               )}
           </div>
@@ -3695,7 +3611,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                 <span className="settings-avatar-letter">{user?.name?.[0] || '?'}</span>
               </div>
               <label className="settings-avatar-upload" title="העלה תמונה">
-                <input type="file" accept="image/*" hidden onChange={async (e) => {
+                <input type="file" accept="image/*" hidden aria-label="בחר תמונת פרופיל" onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (!file) return
                   try {
@@ -3735,11 +3651,11 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
             <div className="settings-fields-grid">
               <div className="settings-field">
                 <label>שם</label>
-                <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="השם שלך" />
+                <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="השם שלך" aria-label="השם שלך" />
               </div>
               <div className="settings-field">
                 <label>אימייל</label>
-                <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="email@example.com" type="email" dir="ltr" />
+                <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="email@example.com" type="email" dir="ltr" aria-label="כתובת אימייל" />
               </div>
             </div>
             {editError && <div className="settings-msg settings-msg-error">{editError}</div>}
@@ -3863,13 +3779,13 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                         const res = await authAPI.getInstagramAuthUrl()
                         if (res.data.authUrl) {
                           const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
-                          console.log('[IG-Connect] Popup opened:', !!popup)
+                          if (!popup) {
+                            logClientWarning('instagram_popup_blocked', 'Instagram OAuth popup could not be opened', { source: 'Dashboard' })
+                          }
                           const handleMessage = (event) => {
-                            console.log('[IG-Connect] postMessage received:', event.data)
                             if (!event.data || event.data.type !== 'instagram-oauth-callback') return
                             window.removeEventListener('message', handleMessage)
                             if (event.data.success) {
-                              console.log('[IG-Connect] SUCCESS via postMessage, username:', event.data.username)
                               setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
                             }
                           }
@@ -3878,22 +3794,19 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                             if (popup?.closed) {
                               clearInterval(timer)
                               window.removeEventListener('message', handleMessage)
-                              console.log('[IG-Connect] Popup closed, checking status...')
                               try {
                                 const statusRes = await authAPI.getInstagramStatus()
-                                console.log('[IG-Connect] Status response:', statusRes?.data)
                                 if (statusRes?.data?.connected) {
                                   const updates = { instagramConnected: true, instagramUsername: statusRes.data.account?.username }
                                   if (statusRes.data.avatarUrl) updates.avatarUrl = statusRes.data.avatarUrl
                                   setUser(prev => ({ ...prev, ...updates }))
-                                  console.log('[IG-Connect] User state updated!')
                                 }
-                              } catch (err) { console.error('[IG-Connect] Status check FAILED:', err.message, err.response?.status, err.response?.data) }
+                              } catch (err) { logClientError('instagram_status_check_failed', err, { source: 'Dashboard' }) }
                             }
                           }, 500)
                         }
                       } catch (err) {
-                        console.error('[IG-Connect] Auth URL FAILED:', err)
+                        logClientError('instagram_auth_url_failed', err, { source: 'Dashboard' })
                         window.alert('שגיאה ביצירת קישור חיבור')
                       }
                     }}>
@@ -3976,7 +3889,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                           }, 3000)
                         }
                       } catch (err) {
-                        console.error('[WA-Connect] Failed:', err)
+                        logClientError('wa_connect_failed', err, { source: 'DashboardSettings' })
                         window.alert('שגיאה ביצירת חיבור וואטסאפ')
                       }
                     }}>
@@ -4105,7 +4018,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                 {pwStep === 1 ? (
                   <div className="settings-field">
                     <label>סיסמה נוכחית</label>
-                    <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="הזן סיסמה נוכחית" dir="ltr" />
+                    <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="הזן סיסמה נוכחית" dir="ltr" aria-label="סיסמה נוכחית" />
                     <span className="settings-field-hint hint-info">לאחר אימות, ישלח קוד למייל שלך</span>
                   </div>
                 ) : (
@@ -4120,11 +4033,11 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                     <div className="settings-fields-grid">
                       <div className="settings-field">
                         <label>סיסמה חדשה</label>
-                        <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="לפחות 6 תווים" dir="ltr" />
+                        <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="לפחות 6 תווים" dir="ltr" aria-label="סיסמה חדשה" />
                       </div>
                       <div className="settings-field">
                         <label>אימות סיסמה חדשה</label>
-                        <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="הזן שוב" dir="ltr" />
+                        <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="הזן שוב" dir="ltr" aria-label="אימות סיסמה חדשה" />
                       </div>
                     </div>
                   </>
@@ -4202,6 +4115,12 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
 
       <div className="settings-privacy-link">
         <Link to="/privacy">מדיניות פרטיות ותנאי שימוש</Link>
+        <span aria-hidden="true"> | </span>
+        <Link to="/accessibility-statement">הצהרת נגישות</Link>
+        <span aria-hidden="true"> | </span>
+        <Link to="/cancellation-policy">ביטול עסקה</Link>
+        <span aria-hidden="true"> | </span>
+        <Link to="/contact">צור קשר</Link>
       </div>
 
       {/* ─── WhatsApp Connect Modal ─── */}
@@ -4209,7 +4128,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
         <div className="confirm-overlay" onClick={() => { setWaConnectModal(null); setWaConnecting(false); setWaPhoneInput(''); if (waConnectPollRef.current) { clearInterval(waConnectPollRef.current); waConnectPollRef.current = null } }}>
           <div className="confirm-dialog wa-connect-modal" onClick={(e) => e.stopPropagation()}>
             <button className="wa-connect-modal-close" onClick={() => { setWaConnectModal(null); setWaConnecting(false); setWaPhoneInput(''); if (waConnectPollRef.current) { clearInterval(waConnectPollRef.current); waConnectPollRef.current = null } }}>✕</button>
-            <div className="wa-connect-icon" style={{ marginBottom: 12 }}>
+            <div className="wa-connect-icon">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
             </div>
             {waConnectModal.qrDataUrl ? (
@@ -4241,9 +4160,16 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
             ) : (
               <>
                 <h3 className="confirm-title">חיבור וואטסאפ</h3>
+                <p className="wa-connect-subtitle">בחרו איך לחבר את החשבון. ההתחברות מאובטחת ומתבצעת מול וואטסאפ.</p>
                 <div className="wa-connect-mode-tabs">
-                  <button className={`wa-mode-tab ${waConnectMode === 'qr' ? 'active' : ''}`} onClick={() => setWaConnectMode('qr')}>🔲 סריקת QR</button>
-                  <button className={`wa-mode-tab ${waConnectMode === 'phone' ? 'active' : ''}`} onClick={() => setWaConnectMode('phone')}>📱 מספר טלפון</button>
+                  <button className={`wa-mode-tab ${waConnectMode === 'qr' ? 'active' : ''}`} onClick={() => setWaConnectMode('qr')}>
+                    <span className="wa-mode-tab-icon">▦</span>
+                    <span>סריקת QR</span>
+                  </button>
+                  <button className={`wa-mode-tab ${waConnectMode === 'phone' ? 'active' : ''}`} onClick={() => setWaConnectMode('phone')}>
+                    <span className="wa-mode-tab-icon">☎</span>
+                    <span>מספר טלפון</span>
+                  </button>
                 </div>
                 {waConnectMode === 'qr' ? (
                   <button className="wa-connect-btn" disabled={waConnecting} onClick={async () => {
@@ -4271,7 +4197,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                         }, 3000)
                       }
                     } catch (err) {
-                      console.error('[WA-Connect] Failed:', err)
+                      logClientError('wa_connect_failed', err, { source: 'DashboardSettings' })
                       setWaConnecting(false)
                     }
                   }}>
@@ -4312,7 +4238,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                           }, 3000)
                         }
                       } catch (err) {
-                        console.error('[WA-ConnectPhone] Failed:', err)
+                        logClientError('wa_connect_phone_failed', err, { source: 'DashboardSettings' })
                         setWaConnecting(false)
                       }
                     }}>
@@ -4356,8 +4282,7 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
   const [whatsappNumber, setWhatsappNumber] = useState(campaign.whatsappNumber || '')
   const [whatsappMessage, setWhatsappMessage] = useState(campaign.whatsappMessage || '')
   const [showWhatsapp, setShowWhatsapp] = useState(!!(campaign.whatsappNumber))
-  const existingEditImgs = (campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : []))
-    .map(url => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url)
+  const existingEditImgs = getCampaignImages(campaign).map(resolveImg)
   const [imagePreviews, setImagePreviews] = useState(existingEditImgs)
 
   const selectedGroupObjects = groups.filter(g => selectedGroups.includes(g.id))
@@ -4410,20 +4335,20 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content edit-campaign-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-content edit-campaign-modal" role="dialog" aria-modal="true" aria-label="עריכת קמפיין" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>עריכת קמפיין</h3>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} aria-label="סגור עריכת קמפיין">✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-body">
           <div className="form-group">
             <label>כותרת</label>
-            <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="כותרת (אופציונלי)" />
+            <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="כותרת (אופציונלי)" aria-label="כותרת קמפיין" />
           </div>
 
           <div className="form-group">
             <label>תוכן הפוסט</label>
-            <textarea value={text} onChange={e => setText(e.target.value)} rows={4} required />
+            <textarea value={text} onChange={e => setText(e.target.value)} rows={4} required aria-label="תוכן הפוסט" />
           </div>
 
           <div className="form-group">
@@ -4438,7 +4363,7 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
               ))}
               {imagePreviews.length < 10 && (
                 <label className="edit-image-add">
-                  <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden />
+                  <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden aria-label="בחר תמונות" />
                   <span>+</span>
                 </label>
               )}
@@ -4452,7 +4377,7 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
                 {visibleSelected.map(g => (
                   <span key={g.id} className="selected-group-chip">
                     {g.name}
-                    <button type="button" onClick={() => toggleGroup(g.id)}>✕</button>
+                    <button type="button" onClick={() => toggleGroup(g.id)} aria-label={`הסר את ${g.name || 'הקבוצה'} מהבחירה`}>✕</button>
                   </span>
                 ))}
                 {selectedGroupObjects.length > 4 && (
@@ -4462,11 +4387,11 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
                 )}
               </div>
             )}
-            <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." />
+            <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." aria-label="חיפוש קבוצה" />
             <div className="group-checkboxes">
               {filteredGroups.map(g => (
                 <label key={g.id} className={`group-checkbox ${selectedGroups.includes(g.id) ? 'checked' : ''}`}>
-                  <input type="checkbox" checked={selectedGroups.includes(g.id)} onChange={() => toggleGroup(g.id)} />
+                  <input type="checkbox" checked={selectedGroups.includes(g.id)} onChange={() => toggleGroup(g.id)} aria-label={`בחר את ${g.name || 'הקבוצה'}`} />
                   <span>{g.name}</span>
                 </label>
               ))}
@@ -4475,14 +4400,14 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
 
           <div className="form-row">
             <label className="checkbox-label">
-              <input type="checkbox" checked={anonymous} onChange={e => setAnonymous(e.target.checked)} />
+              <input type="checkbox" checked={anonymous} onChange={e => setAnonymous(e.target.checked)} aria-label="פרסם כאנונימי" />
               פרסום אנונימי
             </label>
           </div>
 
           <div className="form-group">
             <label>מיקום</label>
-            <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="מיקום (אופציונלי)" />
+            <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="מיקום (אופציונלי)" aria-label="מיקום" />
           </div>
 
           <div className="form-group">
@@ -4498,11 +4423,11 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
             <div className="form-row">
               <div className="form-group">
                 <label>תאריך</label>
-                <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} />
+                <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} aria-label="תאריך תזמון" />
               </div>
               <div className="form-group">
                 <label>שעה</label>
-                <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} />
+                <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} aria-label="שעת תזמון" />
               </div>
             </div>
           )}
@@ -4519,7 +4444,7 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
               </div>
               <div className="form-group">
                 <label>שעה</label>
-                <input type="time" value={recurringTime} onChange={e => setRecurringTime(e.target.value)} />
+                <input type="time" value={recurringTime} onChange={e => setRecurringTime(e.target.value)} aria-label="שעת פרסום חוזר" />
               </div>
             </>
           )}
@@ -4537,8 +4462,8 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
             </div>
             {showWhatsapp && (
               <>
-                <input type="text" value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="מספר וואטסאפ" />
-                <input type="text" value={whatsappMessage} onChange={e => setWhatsappMessage(e.target.value)} placeholder="הודעה מוכנה (אופציונלי)" style={{ marginTop: '8px' }} />
+                <input type="text" value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="מספר וואטסאפ" aria-label="מספר וואטסאפ" />
+                <input type="text" value={whatsappMessage} onChange={e => setWhatsappMessage(e.target.value)} placeholder="הודעה מוכנה (אופציונלי)" style={{ marginTop: '8px' }} aria-label="הודעת וואטסאפ מוכנה" />
               </>
             )}
           </div>
@@ -4568,7 +4493,7 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
   const [isAnonymous, setIsAnonymous] = useState(post.post?.isAnonymous || false)
   const [location, setLocation] = useState(post.post?.location || '')
   const [newImages, setNewImages] = useState([])
-  const existingImages = (post.post?.images || post.images || [])
+  const existingImages = getRenderableImages(post.post?.images || post.images || [])
     .map(url => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url)
   const [imagePreviews, setImagePreviews] = useState(existingImages)
 
@@ -4603,10 +4528,10 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content reschedule-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-content reschedule-modal" role="dialog" aria-modal="true" aria-label="הפעלה מחדש" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>הפעלה מחדש</h3>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} aria-label="סגור הפעלה מחדש">✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-body reschedule-body">
           {/* Content editing */}
@@ -4638,14 +4563,14 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
             <label className="reschedule-img-add">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
               הוסף תמונות
-              <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden />
+              <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden aria-label="בחר תמונות" />
             </label>
           </div>
 
           {/* Options */}
           <div className="form-row reschedule-options">
             <label className={`reschedule-option ${isAnonymous ? 'active' : ''}`}>
-              <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} hidden />
+              <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} hidden aria-label="פרסם כאנונימי" />
               🕶️ אנונימי
             </label>
             <div className="reschedule-location-field">
@@ -4661,11 +4586,11 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
           {/* Groups */}
           <div className="form-group">
             <label>קבוצות לפרסום</label>
-            <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." />
+            <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." aria-label="חיפוש קבוצה" />
             <div className="group-checkboxes">
               {filteredGroups.map(g => (
                 <label key={g.id} className={`group-checkbox ${selectedGroups.includes(g.id) ? 'checked' : ''}`}>
-                  <input type="checkbox" checked={selectedGroups.includes(g.id)} onChange={() => toggleGroup(g.id)} />
+                  <input type="checkbox" checked={selectedGroups.includes(g.id)} onChange={() => toggleGroup(g.id)} aria-label={`בחר את ${g.name || 'הקבוצה'}`} />
                   <span>{g.name}</span>
                 </label>
               ))}
@@ -4676,11 +4601,11 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
           <div className="form-row">
             <div className="form-group">
               <label>תאריך</label>
-              <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} required />
+              <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} required aria-label="תאריך תזמון" />
             </div>
             <div className="form-group">
               <label>שעה</label>
-              <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} required />
+              <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} required aria-label="שעת תזמון" />
             </div>
           </div>
 
@@ -4695,12 +4620,11 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
 
 // ─── Campaign Detail Modal ─────────────────────────────────
 
-const API_HOST = 'http://localhost:8000'
-
 function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, onDelete, groups, loading, onSave, initialEditing }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(!!initialEditing)
   const [lightboxIdx, setLightboxIdx] = useState(null)
+  const [brokenImageUrls, setBrokenImageUrls] = useState([])
   const [historyOpen, setHistoryOpen] = useState(false)
   const [pubHistory, setPubHistory] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -4709,8 +4633,8 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
 
   // Load publication history lazily (on button click only)
 
-  const images = campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : [])
-  const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
+  const images = getCampaignImages(campaign).filter(url => !brokenImageUrls.includes(url))
+  const imgSrc = resolveImg
 
   const STATUS_LABELS = {
     scheduled: 'מתוזמן', paused: 'מושהה', draft: 'טיוטה',
@@ -4761,8 +4685,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
   const [whatsappNumber, setWhatsappNumber] = useState(campaign.whatsappNumber || '')
   const [whatsappMessage, setWhatsappMessage] = useState(campaign.whatsappMessage || '')
   const [showWhatsapp, setShowWhatsapp] = useState(!!(campaign.whatsappNumber))
-  const existingDetailImgs = (campaign.images?.length ? campaign.images : (campaign.imageUrl ? [campaign.imageUrl] : []))
-    .map(url => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url)
+  const existingDetailImgs = getCampaignImages(campaign).map(resolveImg)
   const [imagePreviews, setImagePreviews] = useState(existingDetailImgs)
 
   const selectedGroupObjects = groups.filter(g => selectedGroups.includes(g.id))
@@ -4781,6 +4704,10 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
   const filteredGroups = (groups || []).filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
   const toggleGroup = (id) => setSelectedGroups(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id])
   const toggleDay = (day) => setRecurringDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort())
+  const markImageBroken = (url) => {
+    setBrokenImageUrls(prev => prev.includes(url) ? prev : [...prev, url])
+    setLightboxIdx(null)
+  }
 
   const handleEditSubmit = (e) => {
     e.preventDefault()
@@ -4807,15 +4734,15 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content detail-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-content detail-modal" role="dialog" aria-modal="true" aria-label="פרטי קמפיין" onClick={e => e.stopPropagation()}>
         <div className="detail-modal-header">
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} aria-label="סגור פרטי קמפיין">✕</button>
           <div className="actions-menu-wrap" ref={menuRef}>
-            <button className="actions-dots-btn" onClick={() => setMenuOpen(!menuOpen)}>
+            <button className="actions-dots-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="פתח תפריט פעולות" aria-haspopup="menu" aria-expanded={menuOpen}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
             </button>
             {menuOpen && (
-              <div className="actions-dropdown">
+              <div className="actions-dropdown" role="menu" aria-label="פעולות קמפיין">
                 <button onClick={() => { setMenuOpen(false); setEditing(!editing) }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   {editing ? 'ביטול עריכה' : 'ערוך'}
@@ -4847,7 +4774,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
               <>
                 {visibleImages.map((img, i) => (
                   <div key={i} className={`detail-grid-cell ${i === 0 ? 'detail-grid-main' : 'detail-grid-side'}`} onClick={() => setLightboxIdx(i)}>
-                    <img src={imgSrc(img)} alt="" />
+                    <img src={imgSrc(img)} alt="" onError={() => markImageBroken(img)} />
                     <span className="image-number-badge">{i + 1}</span>
                     {i === 2 && extraCount > 0 && (
                       <div className="detail-grid-plus">+{extraCount}</div>
@@ -4868,7 +4795,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
         {/* Lightbox */}
         {lightboxIdx !== null && (
           <div className="detail-lightbox" onClick={() => setLightboxIdx(null)}>
-            <img src={imgSrc(images[lightboxIdx])} alt="" onClick={e => e.stopPropagation()} />
+            <img src={imgSrc(images[lightboxIdx])} alt="" onClick={e => e.stopPropagation()} onError={() => markImageBroken(images[lightboxIdx])} />
             {images.length > 1 && (
               <>
                 <button className="lightbox-nav lightbox-prev" onClick={e => { e.stopPropagation(); setLightboxIdx(i => (i - 1 + images.length) % images.length) }}>‹</button>
@@ -4925,11 +4852,11 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
           <form onSubmit={handleEditSubmit} className="detail-edit-form">
             <div className="form-group">
               <label>כותרת</label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="כותרת (אופציונלי)" />
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="כותרת (אופציונלי)" aria-label="כותרת קמפיין" />
             </div>
             <div className="form-group">
               <label>תוכן הפוסט</label>
-              <textarea value={text} onChange={e => setText(e.target.value)} rows={4} required />
+              <textarea value={text} onChange={e => setText(e.target.value)} rows={4} required aria-label="תוכן הפוסט" />
             </div>
             <div className="form-group">
               <label>תמונות ({imagePreviews.length}/10)</label>
@@ -4943,7 +4870,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                 ))}
                 {imagePreviews.length < 10 && (
                   <label className="edit-image-add">
-                    <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden />
+                    <input type="file" accept="image/*" multiple onChange={handleImageSelect} hidden aria-label="בחר תמונות" />
                     <span>+</span>
                   </label>
                 )}
@@ -4956,7 +4883,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                   {visibleSelected.map(g => (
                     <span key={g.id} className="selected-group-chip">
                       {g.name}
-                      <button type="button" onClick={() => toggleGroup(g.id)}>✕</button>
+                      <button type="button" onClick={() => toggleGroup(g.id)} aria-label={`הסר את ${g.name || 'הקבוצה'} מהבחירה`}>✕</button>
                     </span>
                   ))}
                   {selectedGroupObjects.length > 4 && (
@@ -4966,11 +4893,11 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                   )}
                 </div>
               )}
-              <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." />
+              <input type="text" className="group-search-input" value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="🔍 חפש קבוצה..." aria-label="חיפוש קבוצה" />
               <div className="group-checkboxes">
                 {filteredGroups.map(g => (
                   <label key={g.id} className={`group-checkbox ${selectedGroups.includes(g.id) ? 'checked' : ''}`}>
-                    <input type="checkbox" checked={selectedGroups.includes(g.id)} onChange={() => toggleGroup(g.id)} />
+                    <input type="checkbox" checked={selectedGroups.includes(g.id)} onChange={() => toggleGroup(g.id)} aria-label={`בחר את ${g.name || 'הקבוצה'}`} />
                     <span>{g.name}</span>
                   </label>
                 ))}
@@ -4978,13 +4905,13 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
             </div>
             <div className="form-row">
               <label className="checkbox-label">
-                <input type="checkbox" checked={anonymous} onChange={e => setAnonymous(e.target.checked)} />
+                <input type="checkbox" checked={anonymous} onChange={e => setAnonymous(e.target.checked)} aria-label="פרסם כאנונימי" />
                 פרסום אנונימי
               </label>
             </div>
             <div className="form-group">
               <label>מיקום</label>
-              <input type="text" value={locationVal} onChange={e => setLocationVal(e.target.value)} placeholder="מיקום (אופציונלי)" />
+              <input type="text" value={locationVal} onChange={e => setLocationVal(e.target.value)} placeholder="מיקום (אופציונלי)" aria-label="מיקום" />
             </div>
             <div className="form-group">
               <label>סוג קמפיין</label>
@@ -4996,8 +4923,8 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
             </div>
             {campaignType === 'SCHEDULED' && (
               <div className="form-row">
-                <div className="form-group"><label>תאריך</label><input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} /></div>
-                <div className="form-group"><label>שעה</label><input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} /></div>
+                <div className="form-group"><label>תאריך</label><input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} aria-label="תאריך תזמון" /></div>
+                <div className="form-group"><label>שעה</label><input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} aria-label="שעת תזמון" /></div>
               </div>
             )}
             {campaignType === 'RECURRING' && (
@@ -5010,7 +4937,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                     ))}
                   </div>
                 </div>
-                <div className="form-group"><label>שעה</label><input type="time" value={recurringTime} onChange={e => setRecurringTime(e.target.value)} /></div>
+                <div className="form-group"><label>שעה</label><input type="time" value={recurringTime} onChange={e => setRecurringTime(e.target.value)} aria-label="שעת פרסום חוזר" /></div>
               </>
             )}
             <div className="form-group">
@@ -5026,8 +4953,8 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
               </div>
               {showWhatsapp && (
                 <>
-                  <input type="text" value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="מספר וואטסאפ" />
-                  <input type="text" value={whatsappMessage} onChange={e => setWhatsappMessage(e.target.value)} placeholder="הודעה מוכנה (אופציונלי)" style={{ marginTop: '8px' }} />
+                  <input type="text" value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="מספר וואטסאפ" aria-label="מספר וואטסאפ" />
+                  <input type="text" value={whatsappMessage} onChange={e => setWhatsappMessage(e.target.value)} placeholder="הודעה מוכנה (אופציונלי)" style={{ marginTop: '8px' }} aria-label="הודעת וואטסאפ מוכנה" />
                 </>
               )}
             </div>
@@ -5182,11 +5109,16 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
 
 function PostDetailModal({ item, onClose, onRestart, onDelete }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [brokenImageUrls, setBrokenImageUrls] = useState([])
   const menuRef = useRef(null)
 
-  const images = item.post?.images || item.images || []
+  const images = getRenderableImages(item.post?.images || item.images || []).filter(url => !brokenImageUrls.includes(url))
   const [imageIdx, setImageIdx] = useState(0)
-  const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
+  const imgSrc = resolveImg
+  const markImageBroken = (url) => {
+    setBrokenImageUrls(prev => prev.includes(url) ? prev : [...prev, url])
+    setImageIdx(0)
+  }
 
   useEffect(() => {
     if (!menuOpen) return
@@ -5197,15 +5129,15 @@ function PostDetailModal({ item, onClose, onRestart, onDelete }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content detail-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-content detail-modal" role="dialog" aria-modal="true" aria-label="פרטי פוסט" onClick={e => e.stopPropagation()}>
         <div className="detail-modal-header">
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} aria-label="סגור פרטי פוסט">✕</button>
           <div className="actions-menu-wrap" ref={menuRef}>
-            <button className="actions-dots-btn" onClick={() => setMenuOpen(!menuOpen)}>
+            <button className="actions-dots-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="פתח תפריט פעולות" aria-haspopup="menu" aria-expanded={menuOpen}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
             </button>
             {menuOpen && (
-              <div className="actions-dropdown">
+              <div className="actions-dropdown" role="menu" aria-label="פעולות פוסט">
                 <button onClick={onRestart}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                   הפעל מחדש
@@ -5223,7 +5155,7 @@ function PostDetailModal({ item, onClose, onRestart, onDelete }) {
         <div className="detail-images">
           {images.length > 0 ? (
             <>
-              <img src={imgSrc(images[imageIdx])} alt="" className="detail-main-image" />
+              <img src={imgSrc(images[imageIdx])} alt="" className="detail-main-image" onError={() => markImageBroken(images[imageIdx])} />
               {images.length > 1 && (
                 <div className="detail-image-nav">
                   <button onClick={() => setImageIdx(i => (i - 1 + images.length) % images.length)} className="img-nav-btn">‹</button>

@@ -72,6 +72,7 @@ router.post("/register", async (req, res) => {
     // Verify Turnstile CAPTCHA
     const captchaValid = await verifyTurnstile(captchaToken, req.ip);
     if (!captchaValid) {
+      log.warn("Registration CAPTCHA failed", { email, ip: req.ip });
       return res.status(400).json({ error: "אימות CAPTCHA נכשל — נסה שוב" });
     }
 
@@ -137,6 +138,11 @@ router.post("/register", async (req, res) => {
     if (!sent) {
       return res.status(500).json({ error: "שגיאה בשליחת המייל — נסה שוב" });
     }
+
+    log.info("Registration verification email requested", {
+      email: normalizedEmail,
+      ip: req.ip,
+    });
 
     res.json({
       success: true,
@@ -274,6 +280,7 @@ router.post("/login", async (req, res) => {
     // Verify Turnstile CAPTCHA
     const captchaValid = await verifyTurnstile(captchaToken, req.ip);
     if (!captchaValid) {
+      log.warn("Login CAPTCHA failed", { email, ip: req.ip });
       return res.status(400).json({ error: "אימות CAPTCHA נכשל — נסה שוב" });
     }
 
@@ -293,11 +300,13 @@ router.post("/login", async (req, res) => {
       where: { email: normalizedEmail },
     });
     if (!user || !user.passwordHash) {
+      log.warn("Login rejected", { email: normalizedEmail, reason: "not_found" });
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
+      log.warn("Login rejected", { userId: user.id, reason: "invalid_password" });
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
@@ -325,6 +334,12 @@ router.post("/login", async (req, res) => {
     const instagramAccount = await prisma.connectedAccount.findFirst({
       where: { userId: user.id, provider: "INSTAGRAM", status: "ACTIVE" },
       select: { providerUserName: true },
+    });
+
+    log.info("Login succeeded", {
+      userId: user.id,
+      hasSubscription: Boolean(activeSubscription),
+      instagramConnected: Boolean(instagramAccount),
     });
 
     res.json({
@@ -463,6 +478,7 @@ router.post("/refresh", async (req, res) => {
         where: { id: user.id },
         data: { refreshToken: null },
       });
+      log.warn("Refresh token reuse detected", { userId: user.id, ip: req.ip });
       return res.status(401).json({ error: "Token reuse detected" });
     }
 
@@ -748,6 +764,7 @@ router.post("/logout", async (req, res) => {
         where: { id: req.user.id },
         data: { refreshToken: null },
       });
+      log.info("Logout succeeded", { userId: req.user.id });
     }
 
     res.clearCookie("refreshToken", { path: "/api/auth" });

@@ -29,12 +29,12 @@
   height: 3px;
   z-index: 99999;
   overflow: hidden;
-  background: rgba(129, 140, 248, 0.15);
+  background: var(--indigo-soft);
 }
 .top-loader-bar {
   height: 100%;
   width: 40%;
-  background: linear-gradient(90deg, transparent, var(--indigo, #818cf8), transparent);
+  background: linear-gradient(90deg, transparent, var(--indigo), transparent);
   animation: topLoaderSlide 1.2s ease-in-out infinite;
 }
 @keyframes topLoaderSlide {

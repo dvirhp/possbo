@@ -23,6 +23,21 @@ function resolveInput(input, conv) {
   return input;
 }
 
+const MAIN_MENU_INPUTS = new Set([
+  "תפריט",
+  "תפריט ראשי",
+  "ראשי",
+  "התחלה",
+  "menu",
+  "main_menu",
+  "back",
+  "חזור",
+  "חזור לתפריט",
+  "חזור לתפריט הראשי",
+  "ביטול",
+  "cancel",
+]);
+
 async function interactiveMenu(phone, text, options) {
   if (options.length <= 3) {
     await sendButtons(phone, text, options);
@@ -49,6 +64,16 @@ const router = express.Router();
 const log = createLogger("whatsapp-bot");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "../../uploads");
+const AUTH_DB_TIMEOUT_MS = 5_000;
+
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(message)), ms),
+    ),
+  ]);
+}
 
 // ─── Webhook verification ───────────────────────────────────────────────────
 router.get("/", (req, res) => {
@@ -72,12 +97,16 @@ router.post("/", async (req, res) => {
     markAsRead(msg.id);
 
     const input = extractInput(msg);
-    log.info("Raw msg", JSON.stringify(msg));
     // Skip error webhooks (buttons not supported in sandbox)
     if (msg.errors) return;
     if (!input && msg.type !== "image") return;
 
-    log.info("Incoming", { from, type: msg.type, input: input?.slice(0, 50) });
+    log.info("Incoming WhatsApp webhook message", {
+      from,
+      type: msg.type,
+      messageId: msg.id,
+      hasInput: Boolean(input),
+    });
 
     // Handle image messages separately
     if (msg.type === "image") {
@@ -107,19 +136,18 @@ async function route(phone, input) {
   const conv = getConversation(phone);
   const userId = getAuthenticatedUser(phone);
 
+  if (userId && MAIN_MENU_INPUTS.has(input)) {
+    setConversation(phone, { step: "MAIN_MENU", draft: undefined });
+    await mainMenu(phone);
+    return;
+  }
+
   if (!userId) {
     await authFlow(phone, input, conv);
     return;
   }
 
   const step = conv?.step || "MAIN_MENU";
-
-  // Global shortcuts
-  if (input === "תפריט" || input === "menu" || input === "back") {
-    setConversation(phone, { step: "MAIN_MENU", draft: undefined });
-    await mainMenu(phone);
-    return;
-  }
   if (input === "disconnect") {
     clearConversation(phone);
     await sendText(phone, "התנתקת בהצלחה. שלח הודעה כדי להתחבר מחדש.");
@@ -128,7 +156,15 @@ async function route(phone, input) {
 
   try {
     const resolved = resolveInput(input, conv);
-    log.info(`Step: ${step}, input: ${resolved}`);
+    log.info("WhatsApp bot step resolved", {
+      phone,
+      step,
+      inputType: resolved?.startsWith("plat_") ? "platform" : "text_or_action",
+    });
+    if (resolved.startsWith("plat_") && step !== "CAMP_PLATFORM") {
+      await steps.CAMP_PLATFORM(phone, userId, resolved, conv);
+      return;
+    }
     const handler = steps[step];
     if (handler) {
       await handler(phone, userId, resolved, conv);
@@ -147,20 +183,33 @@ async function route(phone, input) {
 // ═══════════════════════════════════════════════════════════════════════════════
 async function authFlow(phone, input, conv) {
   const step = conv?.step;
+  log.info("Auth flow", { phone, step: step || "WELCOME" });
 
   if (!step || step === "WELCOME") {
     setConversation(phone, { step: "AWAITING_ID" });
-    await sendText(phone, "שלום! אני הבוט של Possbo.\n\nכדי להתחבר, שלח את מספר תעודת הזהות שלך (9 ספרות).");
+    await sendText(phone, "שלום! אני פוסבוט.\n\nכדי להתחבר, שלח את מספר תעודת הזהות שלך (9 ספרות).");
     return;
   }
 
   if (step === "AWAITING_ID") {
     const id = input.replace(/\D/g, "");
+    log.info("ID received", { phone, digitCount: id.length });
     if (id.length !== 9) {
       await sendText(phone, "מספר תעודת זהות לא תקין. יש להזין 9 ספרות.");
       return;
     }
-    const user = await prisma.user.findUnique({ where: { idNumber: id }, select: { id: true, email: true, name: true } });
+    let user;
+    try {
+      user = await withTimeout(
+        prisma.user.findUnique({ where: { idNumber: id }, select: { id: true, email: true, name: true } }),
+        AUTH_DB_TIMEOUT_MS,
+        "AUTH_DB_LOOKUP_TIMEOUT",
+      );
+    } catch (err) {
+      log.error("Auth DB lookup failed", err, { phone });
+      await sendText(phone, "יש כרגע בעיה בחיבור למסד הנתונים. נסה שוב בעוד רגע.");
+      return;
+    }
     if (!user) {
       await sendText(phone, "לא נמצא חשבון עם תעודת הזהות הזו.\nיש להירשם באתר תחילה.");
       return;
@@ -304,6 +353,14 @@ const steps = {
     const draft = conv?.draft || {};
     const selected = draft.platforms || [];
 
+    if (input === "platforms_done") {
+      if (!hasAnyPublishTarget(draft)) {
+        await askPlatform(phone, selected);
+        return;
+      }
+      await askSchedule(phone);
+      return;
+    }
     if (input === "plat_facebook") {
       setConversation(phone, { step: "CAMP_FB_TYPE" });
       await interactiveMenu(phone, "פרסום בפייסבוק:", [
@@ -319,7 +376,6 @@ const steps = {
     }
     if (input === "plat_whatsapp") {
       setConversation(phone, { step: "CAMP_WA_TARGETS" });
-      updateDraft(phone, { waTargetPage: 0 });
       await showWhatsAppTargets(phone, userId);
       return;
     }
@@ -366,25 +422,54 @@ const steps = {
   CAMP_IG_TYPES: async (phone, userId, input, conv) => {
     const draft = conv?.draft || {};
     const types = [...(draft.instagramPublishTypes || [])];
+    const igOptions = ["FEED", "STORY", "REEL"];
+
+    if (input === "ig_done") {
+      await finishInstagramSelection(phone);
+      return;
+    }
+    if (input === "ig_all") {
+      updateDraft(phone, { instagramPublishTypes: igOptions });
+      await showInstagramTypes(phone);
+      return;
+    }
+    if (input === "ig_clear") {
+      updateDraft(phone, { instagramPublishTypes: [] });
+      await showInstagramTypes(phone);
+      return;
+    }
+
     const type = input.replace("ig_", "").toUpperCase();
     if (["FEED", "STORY", "REEL"].includes(type)) {
-      if (!types.includes(type)) types.push(type);
+      const index = types.indexOf(type);
+      if (index >= 0) types.splice(index, 1);
+      else types.push(type);
       updateDraft(phone, { instagramPublishTypes: types });
-      if (types.length === 3) {
-        await finishInstagramSelection(phone);
-        return;
+      setConversation(phone, { step: "CAMP_IG_TYPES" });
+      await showInstagramTypes(phone);
+      return;
+    }
+    const selectedIndexes = parseSelectionInput(input, igOptions.length);
+    if (selectedIndexes.length) {
+      for (const index of selectedIndexes) {
+        const selectedType = igOptions[index];
+        const existing = types.indexOf(selectedType);
+        if (existing >= 0) types.splice(existing, 1);
+        else types.push(selectedType);
       }
-      setConversation(phone, { step: "CAMP_IG_MORE" });
-      await interactiveMenu(phone, `נבחרו: ${formatInstagramTypes(types)}. להוסיף סוג נוסף?`, [
-        { id: "ig_more_yes", title: "הוסף סוג נוסף" },
-        { id: "ig_more_no", title: "סיום בחירה" },
-      ]);
+      updateDraft(phone, { instagramPublishTypes: types });
+      await showInstagramTypes(phone);
       return;
     }
     await showInstagramTypes(phone);
   },
 
-  CAMP_IG_MORE: async (phone, userId, input) => {
+  CAMP_IG_MORE: async (phone, userId, input, conv) => {
+    if (input.startsWith("ig_") && input !== "ig_more_yes" && input !== "ig_more_no") {
+      setConversation(phone, { step: "CAMP_IG_TYPES" });
+      await steps.CAMP_IG_TYPES(phone, userId, input, conv);
+      return;
+    }
     if (input === "ig_more_yes") {
       setConversation(phone, { step: "CAMP_IG_TYPES" });
       await showInstagramTypes(phone);
@@ -409,15 +494,30 @@ const steps = {
         waEnabled: false,
         whatsappTargets: [],
         availableWaTargets: [],
-        waTargetPage: 0,
       });
       await sendText(phone, "פרסום ב-WhatsApp בוטל.");
       await askMorePlatforms(phone, platforms);
       return;
     }
+    if (input === "wa_targets_clear") {
+      updateDraft(phone, { whatsappTargets: [] });
+      await showWhatsAppTargets(phone, userId);
+      return;
+    }
+    if (input === "wa_targets_all") {
+      updateDraft(phone, { whatsappTargets: available });
+      await showWhatsAppTargets(phone, userId);
+      return;
+    }
     if (input === "wa_targets_search") {
       setConversation(phone, { step: "CAMP_WA_SEARCH" });
       await sendText(phone, "כתוב חלק משם הקבוצה או רשימת התפוצה:");
+      return;
+    }
+    if (input.startsWith("חפש ") || input.toLowerCase().startsWith("search ")) {
+      const search = input.replace(/^(חפש|search)\s+/i, "").trim();
+      updateDraft(phone, { waTargetSearch: search });
+      await showWhatsAppTargets(phone, userId);
       return;
     }
     if (input === "wa_targets_done") {
@@ -445,6 +545,17 @@ const steps = {
         updateDraft(phone, { whatsappTargets: targets });
       }
     }
+    const selectedIndexes = parseSelectionInput(input, available.length);
+    if (selectedIndexes.length) {
+      for (const index of selectedIndexes) {
+        const target = available[index];
+        if (!target) continue;
+        const existing = targets.findIndex((item) => item.id === target.id);
+        if (existing >= 0) targets.splice(existing, 1);
+        else targets.push(target);
+      }
+      updateDraft(phone, { whatsappTargets: targets });
+    }
     await showWhatsAppTargets(phone, userId);
   },
 
@@ -461,13 +572,14 @@ const steps = {
     const groupNames = draft.groupNames || [];
     const available = draft.availableGroups || [];
 
-    if (input === "groups_next") {
-      updateDraft(phone, { fbGroupPage: (draft.fbGroupPage || 0) + 1 });
+    if (input === "groups_clear") {
+      updateDraft(phone, { groupIds: [], groupNames: [] });
       await showFacebookGroupPicker(phone, userId);
       return;
     }
-    if (input === "groups_prev") {
-      updateDraft(phone, { fbGroupPage: Math.max(0, (draft.fbGroupPage || 0) - 1) });
+    if (input.startsWith("חפש ") || input.toLowerCase().startsWith("search ")) {
+      const search = input.replace(/^(חפש|search)\s+/i, "").trim();
+      updateDraft(phone, { fbGroupSearch: search });
       await showFacebookGroupPicker(phone, userId);
       return;
     }
@@ -490,53 +602,42 @@ const steps = {
     }
 
     if (input === "groups_done") {
-      if (!draft.platforms?.includes("fb_groups")) {
-        const platforms = draft.platforms || [];
-        platforms.push("fb_groups");
-        updateDraft(phone, { platforms });
+      if (!groupIds.length) {
+        await showFacebookGroupPicker(phone, userId);
+        return;
       }
-      await askMorePlatforms(phone, draft.platforms || []);
+      const platforms = [...(draft.platforms || [])];
+      if (!platforms.includes("fb_groups")) {
+        platforms.push("fb_groups");
+      }
+      updateDraft(phone, { platforms });
+      await askMorePlatforms(phone, platforms);
       return;
     }
 
     if (input === "groups_all") {
-      const all = await prisma.userGroup.findMany({
-        where: { userId },
-        include: { group: { select: { id: true, name: true } } },
-      });
       updateDraft(phone, {
-        groupIds: all.map(g => g.group.externalGroupId || g.group.id),
-        groupNames: all.map(g => g.group.name),
+        groupIds: available.map((group) => group.id),
+        groupNames: available.map((group) => group.name),
       });
-      await sendText(phone, `נבחרו כל ${all.length} הקבוצות!`);
-      if (!draft.platforms?.includes("fb_groups")) {
-        const platforms = draft.platforms || [];
-        platforms.push("fb_groups");
-        updateDraft(phone, { platforms });
-      }
-      await askMorePlatforms(phone, getConversation(phone)?.draft?.platforms || []);
+      await showFacebookGroupPicker(phone, userId);
       return;
     }
 
-    // Number selection
-    const num = parseInt(input);
-    if (num >= 1 && num <= available.length) {
-      const g = available[num - 1];
-      if (!groupIds.includes(g.id)) {
-        groupIds.push(g.id);
-        groupNames.push(g.name);
-        updateDraft(phone, { groupIds, groupNames });
+    const selectedIndexes = parseSelectionInput(input, available.length);
+    if (selectedIndexes.length) {
+      for (const index of selectedIndexes) {
+        const group = available[index];
+        const existing = groupIds.indexOf(group.id);
+        if (existing >= 0) {
+          groupIds.splice(existing, 1);
+          groupNames.splice(existing, 1);
+        } else {
+          groupIds.push(group.id);
+          groupNames.push(group.name);
+        }
       }
-      await sendText(phone, `נוספה: ${g.name}\nסה"כ ${groupIds.length} קבוצות`);
-      await interactiveMenu(phone, "להוסיף עוד קבוצה?", [
-        { id: "groups_more", title: "הוסף עוד" },
-        { id: "groups_done", title: "סיום בחירה" },
-        { id: "groups_all", title: "בחר הכל" },
-      ]);
-      return;
-    }
-
-    if (input === "groups_more") {
+      updateDraft(phone, { groupIds, groupNames });
       await showFacebookGroupPicker(phone, userId);
       return;
     }
@@ -552,12 +653,7 @@ const steps = {
       return;
     }
     if (input === "more_no") {
-      setConversation(phone, { step: "CAMP_SCHEDULE" });
-      await interactiveMenu(phone, "מתי לפרסם?", [
-        { id: "sched_now", title: "עכשיו" },
-        { id: "sched_later", title: "תזמון לתאריך" },
-        { id: "sched_recurring", title: "פרסום חוזר" },
-      ]);
+      await askSchedule(phone);
       return;
     }
   },
@@ -684,6 +780,53 @@ function updateDraft(phone, data) {
   setConversation(phone, { draft });
 }
 
+function hasAnyPublishTarget(draft = {}) {
+  return Boolean(
+    draft.publishToProfile ||
+      draft.groupIds?.length ||
+      draft.igEnabled ||
+      draft.waEnabled,
+  );
+}
+
+function parseSelectionInput(input, max) {
+  const selected = new Set();
+  const parts = String(input || "")
+    .split(/[,\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const part of parts) {
+    const range = part.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      const min = Math.min(start, end);
+      const maxValue = Math.max(start, end);
+      for (let value = min; value <= maxValue; value++) {
+        if (value >= 1 && value <= max) selected.add(value - 1);
+      }
+      continue;
+    }
+
+    const value = Number(part);
+    if (Number.isInteger(value) && value >= 1 && value <= max) {
+      selected.add(value - 1);
+    }
+  }
+
+  return [...selected];
+}
+
+async function askSchedule(phone) {
+  setConversation(phone, { step: "CAMP_SCHEDULE" });
+  await interactiveMenu(phone, "מתי לפרסם?", [
+    { id: "sched_now", title: "עכשיו" },
+    { id: "sched_later", title: "תזמון לתאריך" },
+    { id: "sched_recurring", title: "פרסום חוזר" },
+  ]);
+}
+
 async function showPreview(phone) {
   const conv = getConversation(phone);
   const draft = conv?.draft || {};
@@ -714,20 +857,21 @@ async function askPlatform(phone, selected) {
   }
 
   if (remaining.length === 0) {
-    setConversation(phone, { step: "CAMP_SCHEDULE" });
-    await interactiveMenu(phone, "כל הפלטפורמות נבחרו! מתי לפרסם?", [
-      { id: "sched_now", title: "עכשיו" },
-      { id: "sched_later", title: "תזמון לתאריך" },
-      { id: "sched_recurring", title: "פרסום חוזר" },
-    ]);
+    await askSchedule(phone);
     return;
+  }
+
+  const draft = getConversation(phone)?.draft || {};
+  const options = [...remaining];
+  if (hasAnyPublishTarget(draft)) {
+    options.push({ id: "platforms_done", title: "סיום בחירה" });
   }
 
   setConversation(phone, { step: "CAMP_PLATFORM" });
   await interactiveMenu(phone, selected.length > 0
     ? "בחר פלטפורמה נוספת:"
     : "היכן תרצה לפרסם?\n(בחר אחד, בהמשך ניתן להוסיף עוד)",
-    remaining.slice(0, 3),
+    options,
   );
 }
 
@@ -736,12 +880,7 @@ async function askMorePlatforms(phone, selected) {
   const hasMore = allPlatforms.some(p => !selected.includes(p));
 
   if (!hasMore) {
-    setConversation(phone, { step: "CAMP_SCHEDULE" });
-    await interactiveMenu(phone, "מתי לפרסם?", [
-      { id: "sched_now", title: "עכשיו" },
-      { id: "sched_later", title: "תזמון לתאריך" },
-      { id: "sched_recurring", title: "פרסום חוזר" },
-    ]);
+    await askSchedule(phone);
     return;
   }
 
@@ -752,11 +891,20 @@ async function askMorePlatforms(phone, selected) {
   ]);
 }
 
+function buildNumberedSelectionText({ title, items, selectedIds, footer }) {
+  const lines = [title, ""];
+  items.forEach((item, index) => {
+    const checked = selectedIds.has(item.id) ? "✓ " : "";
+    const suffix = item.description ? ` - ${item.description}` : "";
+    lines.push(`${index + 1}. ${checked}${item.name}${suffix}`);
+  });
+  lines.push("", footer);
+  return lines.join("\n").slice(0, 3900);
+}
+
 async function showFacebookGroupPicker(phone, userId) {
   const conv = getConversation(phone);
   const draft = conv?.draft || {};
-  const page = draft.fbGroupPage || 0;
-  const pageSize = 7;
   const all = await prisma.userGroup.findMany({
     where: { userId },
     include: {
@@ -771,38 +919,56 @@ async function showFacebookGroupPicker(phone, userId) {
     await askMorePlatforms(phone, draft.platforms || []);
     return;
   }
-  const available = all.map(({ group }) => ({
+  const allGroups = all.map(({ group }) => ({
     id: group.externalGroupId || group.id,
     name: group.name,
     memberCount: group.memberCount,
-  }));
-  updateDraft(phone, { availableGroups: available });
-  const selected = draft.groupIds || [];
-  const start = page * pageSize;
-  const rows = available.slice(start, start + pageSize).map((group) => ({
-    id: `fb_group_${group.id}`,
-    title: `${selected.includes(group.id) ? "✓ " : ""}${group.name}`,
     description: group.memberCount ? `${group.memberCount} חברים` : undefined,
   }));
-  if (page > 0) rows.push({ id: "groups_prev", title: "הקודם" });
-  if (start + pageSize < available.length) {
-    rows.push({ id: "groups_next", title: "הבא" });
-  }
-  rows.push({
-    id: "groups_done",
-    title: `סיום (${selected.length} נבחרו)`,
+  const search = (draft.fbGroupSearch || "").trim().toLocaleLowerCase("he");
+  const available = search
+    ? allGroups.filter((group) =>
+        group.name.toLocaleLowerCase("he").includes(search),
+      )
+    : allGroups;
+  updateDraft(phone, { availableGroups: available });
+  const selected = draft.groupIds || [];
+  const text = buildNumberedSelectionText({
+    title: search
+      ? `קבוצות Facebook עבור "${draft.fbGroupSearch}" (${selected.length} נבחרו)`
+      : `בחר קבוצות Facebook (${selected.length} נבחרו)`,
+    items: available,
+    selectedIds: new Set(selected),
+    footer: "שלח מספרים לבחירה/ביטול, למשל: 1,3,5 או 2-6.\nלחיפוש כתוב: חפש שם. כתוב תפריט לחזרה לתפריט הראשי.",
   });
-  await interactiveMenu(phone, "בחר קבוצות Facebook. לחיצה נוספת מבטלת בחירה.", rows);
+  await sendText(phone, text);
+  await interactiveMenu(phone, "פעולות לבחירת קבוצות:", [
+    { id: "groups_done", title: `סיום (${selected.length})` },
+    { id: "groups_all", title: "בחר הכל" },
+    { id: "groups_clear", title: "נקה" },
+  ]);
 }
 
 async function showInstagramTypes(phone) {
   const selected = getConversation(phone)?.draft?.instagramPublishTypes || [];
-  const options = [
-    { id: "ig_feed", type: "FEED", title: "פוסט" },
-    { id: "ig_story", type: "STORY", title: "סטורי" },
-    { id: "ig_reel", type: "REEL", title: "ריל" },
-  ].filter((option) => !selected.includes(option.type));
-  await interactiveMenu(phone, "בחר סוג פרסום ב-Instagram:", options);
+  const items = [
+    { id: "FEED", name: "פוסט" },
+    { id: "STORY", name: "סטורי" },
+    { id: "REEL", name: "ריל" },
+  ];
+  const text = buildNumberedSelectionText({
+    title: `בחר סוגי פרסום ב-Instagram (${selected.length} נבחרו)`,
+    items,
+    selectedIds: new Set(selected),
+    footer: "שלח מספרים לבחירה/ביטול, למשל: 1,2 או 1-3.\nכתוב תפריט לחזרה לתפריט הראשי.",
+  });
+  setConversation(phone, { step: "CAMP_IG_TYPES" });
+  await sendText(phone, text);
+  await interactiveMenu(phone, "פעולות לבחירת Instagram:", [
+    { id: "ig_done", title: `סיום (${selected.length})` },
+    { id: "ig_all", title: "בחר הכל" },
+    { id: "ig_clear", title: "נקה" },
+  ]);
 }
 
 function formatInstagramTypes(types) {
@@ -887,11 +1053,13 @@ async function showWhatsAppTargets(phone, userId) {
       id: group.waId,
       type: "group",
       name: group.name || "קבוצת WhatsApp",
+      description: "קבוצה",
     })),
     ...broadcasts.map((list) => ({
       id: `broadcast_${list.id}`,
       type: "broadcast",
       name: list.name,
+      description: "רשימת תפוצה",
     })),
   ];
   const conv = getConversation(phone);
@@ -908,24 +1076,21 @@ async function showWhatsAppTargets(phone, userId) {
         target.name.toLocaleLowerCase("he").includes(search),
       )
     : available;
-  const rows = filtered.slice(0, 7).map((target) => ({
-    id: `wa_target_${target.id}`,
-    title: `${selected.some((item) => item.id === target.id) ? "✓ " : ""}${target.name}`,
-    description: target.type === "group" ? "קבוצה" : "רשימת תפוצה",
-  }));
-  rows.push({ id: "wa_targets_search", title: "חיפוש קבוצה" });
-  rows.push({
-    id: "wa_targets_done",
-    title: `סיום (${selected.length} נבחרו)`,
+  updateDraft(phone, { availableWaTargets: filtered });
+  const text = buildNumberedSelectionText({
+    title: search
+      ? `יעדי WhatsApp עבור "${conv?.draft?.waTargetSearch || ""}" (${selected.length} נבחרו)`
+      : `בחר יעדי WhatsApp (${selected.length} נבחרו)`,
+    items: filtered,
+    selectedIds: new Set(selected.map((item) => item.id)),
+    footer: "שלח מספרים לבחירה/ביטול, למשל: 1,3,5 או 2-6.\nלחיפוש כתוב: חפש שם. כתוב תפריט לחזרה לתפריט הראשי.",
   });
-  rows.push({ id: "wa_targets_cancel", title: "ביטול WhatsApp" });
-  await interactiveMenu(
-    phone,
-    search
-      ? `תוצאות עבור "${conv.draft.waTargetSearch}" (${filtered.length}). ניתן לבחור כמה יעדים.`
-      : `בחר יעד או לחץ על חיפוש. קיימים ${available.length} יעדים שמורים.`,
-    rows,
-  );
+  await sendText(phone, text);
+  await interactiveMenu(phone, "פעולות לבחירת יעדים:", [
+    { id: "wa_targets_done", title: `סיום (${selected.length})` },
+    { id: "wa_targets_all", title: "בחר הכל" },
+    { id: "wa_targets_clear", title: "נקה" },
+  ]);
 }
 
 async function handleImage(phone, msg) {

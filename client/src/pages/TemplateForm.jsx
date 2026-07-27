@@ -578,6 +578,7 @@ export default function TemplateForm() {
                 type="text"
                 className="tpl-input"
                 placeholder="לדוגמה: פרסום יומי לקבוצות נדל״ן"
+                aria-label="שם הטמפלייט"
                 value={name}
                 onChange={e => setName(e.target.value)}
               />
@@ -590,6 +591,7 @@ export default function TemplateForm() {
                 type="text"
                 className="tpl-input"
                 placeholder="כותרת פנימית (לא מתפרסמת)"
+                aria-label="כותרת קמפיין"
                 value={campaignTitle}
                 onChange={e => setCampaignTitle(e.target.value)}
               />
@@ -608,6 +610,7 @@ export default function TemplateForm() {
                 ref={contentTextareaRef}
                 className="tpl-textarea"
                 placeholder="מה ברצונך לשתף?"
+                aria-label="תוכן הפוסט"
                 rows={6}
                 value={content}
                 onChange={e => setContent(e.target.value)}
@@ -724,13 +727,13 @@ export default function TemplateForm() {
               {existingImages.map((url, i) => (
                 <div key={`ex-${i}`} className="tpl-img-preview">
                   <img src={url} alt="" />
-                  <button className="tpl-img-remove" onClick={() => removeExistingImage(i)}>✕</button>
+                  <button className="tpl-img-remove" onClick={() => removeExistingImage(i)} aria-label={`הסר תמונה ${i + 1}`}>✕</button>
                 </div>
               ))}
               {newImagePreviews.map((url, i) => (
                 <div key={`new-${i}`} className="tpl-img-preview">
                   <img src={url} alt="" />
-                  <button className="tpl-img-remove" onClick={() => removeNewImage(i)}>✕</button>
+                  <button className="tpl-img-remove" onClick={() => removeNewImage(i)} aria-label={`הסר תמונה ${i + 1}`}>✕</button>
                 </div>
               ))}
               {existingImages.length + newImages.length < 10 && (
@@ -748,6 +751,7 @@ export default function TemplateForm() {
                 accept="image/*,video/mp4,video/quicktime,video/webm"
                 multiple
                 onChange={handleImageSelect}
+                aria-label="בחר תמונות או סרטונים"
                 style={{ display: 'none' }}
               />
             </div>
@@ -777,7 +781,7 @@ export default function TemplateForm() {
                         <div key={g.id} className="tpl-selected-chip">
                           {g.pictureUrl ? <img src={g.pictureUrl} alt="" className="tpl-chip-avatar" /> : <span className="tpl-chip-avatar tpl-chip-avatar-fallback">{g.name?.[0]}</span>}
                           <span className="tpl-chip-name">{g.name}</span>
-                          <button type="button" className="tpl-chip-remove" onClick={() => toggleGroup(g.id)}><X size={12} /></button>
+                          <button type="button" className="tpl-chip-remove" onClick={() => toggleGroup(g.id)} aria-label={`הסר את ${g.name || 'הקבוצה'} מהבחירה`}><X size={12} /></button>
                         </div>
                       ))}
                       {selectedGroups.length > 5 && !showAllSelectedGroups && (
@@ -816,14 +820,14 @@ export default function TemplateForm() {
                     {showGroupsPicker && (
                       <>
                         <div className="tpl-groups-toolbar">
-                          <input type="text" className="tpl-group-search" placeholder="חפש קבוצה..." value={groupSearch} onChange={e => setGroupSearch(e.target.value)} />
+                          <input type="text" className="tpl-group-search" placeholder="חפש קבוצה..." value={groupSearch} onChange={e => setGroupSearch(e.target.value)} aria-label="חיפוש קבוצה" />
                           <button type="button" className="tpl-groups-toggle" onClick={selectAllGroups}>בחר הכל</button>
                           <button type="button" className="tpl-groups-toggle" onClick={deselectAll}>נקה</button>
                         </div>
                         <div className="tpl-groups-list">
                           {filteredGroups.map(g => (
                             <label key={g.id} className={`tpl-group-item ${selectedGroupIds.includes(g.id) ? 'selected' : ''}`}>
-                              <input type="checkbox" checked={selectedGroupIds.includes(g.id)} onChange={() => toggleGroup(g.id)} />
+                              <input type="checkbox" checked={selectedGroupIds.includes(g.id)} onChange={() => toggleGroup(g.id)} aria-label={`בחר את ${g.name || 'הקבוצה'}`} />
                               <span className="tpl-group-name">{g.name}</span>
                               {g.memberCount > 0 && <span className="tpl-group-members">{formatNumber(g.memberCount)} חברים</span>}
                             </label>
@@ -838,7 +842,7 @@ export default function TemplateForm() {
               {/* Profile */}
               <div className="tpl-platform-section" style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.06))', paddingTop: 14, marginTop: 14 }}>
                 <label className="tpl-toggle-row">
-                  <input type="checkbox" checked={publishToProfile} onChange={(e) => setPublishToProfile(e.target.checked)} />
+                  <input type="checkbox" checked={publishToProfile} onChange={(e) => setPublishToProfile(e.target.checked)} aria-label="פרסם גם בפרופיל" />
                   <span>👤 פרסום לפרופיל אישי</span>
                 </label>
               </div>
@@ -928,21 +932,21 @@ export default function TemplateForm() {
                       </div>
                       <div className="cp-ig-media-choices">
                         <label className={`cp-ig-media-choice ${storyMediaMode === 'first' ? 'active' : ''}`}>
-                          <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'first'} onChange={() => setStoryMediaMode('first')} />
+                          <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'first'} onChange={() => setStoryMediaMode('first')} aria-label="בחר תמונה ראשונה לסטורי" />
                           <div className="cp-ig-media-choice-content">
                             <span className="cp-ig-media-choice-title">📸 פרסם רק את הראשונה</span>
                             <span className="cp-ig-media-choice-desc">סטורי אחד עם התמונה הראשונה</span>
                           </div>
                         </label>
                         <label className={`cp-ig-media-choice ${storyMediaMode === 'all' ? 'active' : ''}`}>
-                          <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'all'} onChange={() => setStoryMediaMode('all')} />
+                          <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'all'} onChange={() => setStoryMediaMode('all')} aria-label="בחר את כל התמונות לסטורי" />
                           <div className="cp-ig-media-choice-content">
                             <span className="cp-ig-media-choice-title">📚 פרסם סטורי לכל תמונה</span>
                             <span className="cp-ig-media-choice-desc">{allImagePreviews.length} סטוריז נפרדים</span>
                           </div>
                         </label>
                         <label className={`cp-ig-media-choice ${storyMediaMode === 'pick' ? 'active' : ''}`}>
-                          <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'pick'} onChange={() => setStoryMediaMode('pick')} />
+                          <input type="radio" name="tplStoryMedia" checked={storyMediaMode === 'pick'} onChange={() => setStoryMediaMode('pick')} aria-label="בחר תמונה ידנית לסטורי" />
                           <div className="cp-ig-media-choice-content">
                             <span className="cp-ig-media-choice-title">🎯 בחר תמונה ספציפית</span>
                             <span className="cp-ig-media-choice-desc">בחרי איזו תמונה תופיע בסטורי</span>
@@ -1096,7 +1100,7 @@ export default function TemplateForm() {
                         <div className="schedule-field schedule-field-time-wrap">
                           <label>שעה</label>
                           <div className="time-input-wrapper" onClick={(e) => { if (!scheduleDate) { e.preventDefault(); e.currentTarget.classList.add('show-tooltip'); setTimeout(() => e.currentTarget.classList.remove('show-tooltip'), 2000) } }}>
-                            <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} disabled={!scheduleDate} className={!scheduleDate ? 'disabled-input' : ''} />
+                            <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} disabled={!scheduleDate} className={!scheduleDate ? 'disabled-input' : ''} aria-label="שעת תזמון" />
                             <span className="time-tooltip">נא לבחור תאריך קודם</span>
                           </div>
                         </div>
@@ -1139,8 +1143,8 @@ export default function TemplateForm() {
                                   <div className="day-times-slots">
                                     {times.map((time,ti) => (
                                       <div key={ti} className="time-slot">
-                                        <input type="time" value={time} onChange={(e) => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
-                                        {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                        <input type="time" value={time} onChange={(e) => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} aria-label={`שעה ${ti + 1} ליום ${DAY_NAMES[dayIdx]}`} />
+                                        {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }} aria-label={`הסר שעה ${ti + 1} מיום ${DAY_NAMES[dayIdx]}`}>✕</button>}
                                       </div>
                                     ))}
                                     {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
@@ -1189,7 +1193,7 @@ export default function TemplateForm() {
                         </div>
                         <div className="schedule-field schedule-field-time-wrap">
                           <label>שעה</label>
-                          <input type="time" value={profileScheduleTime} onChange={(e) => setProfileScheduleTime(e.target.value)} disabled={!profileScheduleDate} className={!profileScheduleDate ? 'disabled-input' : ''} />
+                          <input type="time" value={profileScheduleTime} onChange={(e) => setProfileScheduleTime(e.target.value)} disabled={!profileScheduleDate} className={!profileScheduleDate ? 'disabled-input' : ''} aria-label="שעת תזמון לפרופיל" />
                         </div>
                       </div>
                       {profileScheduleDate && profileScheduleTime && (
@@ -1230,8 +1234,8 @@ export default function TemplateForm() {
                                   <div className="day-times-slots">
                                     {times.map((time,ti) => (
                                       <div key={ti} className="time-slot">
-                                        <input type="time" value={time} onChange={(e) => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
-                                        {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                        <input type="time" value={time} onChange={(e) => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} aria-label={`שעה ${ti + 1} לפרופיל ביום ${DAY_NAMES[dayIdx]}`} />
+                                        {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }} aria-label={`הסר שעה ${ti + 1} מפרופיל ביום ${DAY_NAMES[dayIdx]}`}>✕</button>}
                                       </div>
                                     ))}
                                     {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
@@ -1282,7 +1286,7 @@ export default function TemplateForm() {
                         </div>
                         <div className="schedule-field schedule-field-time-wrap">
                           <label>שעה</label>
-                          <input type="time" value={igScheduleTime} onChange={(e) => setIgScheduleTime(e.target.value)} disabled={!igScheduleDate} className={!igScheduleDate ? 'disabled-input' : ''} />
+                          <input type="time" value={igScheduleTime} onChange={(e) => setIgScheduleTime(e.target.value)} disabled={!igScheduleDate} className={!igScheduleDate ? 'disabled-input' : ''} aria-label="שעת תזמון לאינסטגרם" />
                         </div>
                       </div>
                       {igScheduleDate && igScheduleTime && (
@@ -1323,8 +1327,8 @@ export default function TemplateForm() {
                                   <div className="day-times-slots">
                                     {times.map((time,ti) => (
                                       <div key={ti} className="time-slot">
-                                        <input type="time" value={time} onChange={(e) => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
-                                        {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                        <input type="time" value={time} onChange={(e) => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} aria-label={`שעה ${ti + 1} לאינסטגרם ביום ${DAY_NAMES[dayIdx]}`} />
+                                        {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }} aria-label={`הסר שעה ${ti + 1} מאינסטגרם ביום ${DAY_NAMES[dayIdx]}`}>✕</button>}
                                       </div>
                                     ))}
                                     {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setIgDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
@@ -1348,7 +1352,7 @@ export default function TemplateForm() {
           {error && (
             <div className="tpl-save-error">
               <span>⚠️ {error}</span>
-              <button type="button" className="tpl-save-error-close" onClick={() => setError(null)}>✕</button>
+              <button type="button" className="tpl-save-error-close" onClick={() => setError(null)} aria-label="סגור הודעת שגיאה">✕</button>
             </div>
           )}
 

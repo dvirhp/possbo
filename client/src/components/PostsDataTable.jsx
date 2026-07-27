@@ -1,12 +1,32 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Clock3, CheckCircle2, CircleAlert, FileEdit, MoreVertical, Image, Calendar } from 'lucide-react'
 import { groupsService } from '../services/groupsService'
 
+const API_HOST = 'http://localhost:8000'
+const IMAGE_EXTENSION_RE = /\.(avif|bmp|gif|jpe?g|png|svg|webp)(\?.*)?$/i
+
+function isRenderableImageUrl(value) {
+  if (typeof value !== 'string') return false
+  const url = value.trim()
+  if (!url) return false
+  if (url.startsWith('/uploads') || url.startsWith('uploads/')) return true
+  if (url.startsWith('blob:') || url.startsWith('data:image/')) return true
+  if (/^(https?:\/\/)?(wa\.me|api\.whatsapp\.com|web\.whatsapp\.com)\b/i.test(url)) return false
+  return IMAGE_EXTENSION_RE.test(url)
+}
+
+function resolveImg(url) {
+  if (!url) return ''
+  if (url.startsWith('/uploads')) return `${API_HOST}${url}`
+  if (url.startsWith('uploads/')) return `${API_HOST}/${url}`
+  return url
+}
+
 const STATUS_CONFIG = {
   active: { label: 'פעיל', color: '#60A5FA', bg: 'rgba(59,130,246,0.15)', border: '#3B82F6', Icon: CheckCircle2 },
   scheduled: { label: 'מתוזמן', color: '#60A5FA', bg: 'rgba(59,130,246,0.15)', border: '#3B82F6', Icon: Clock3 },
-  recurring: { label: 'חוזר', color: '#A78BFA', bg: 'rgba(139,92,246,0.15)', border: '#8B5CF6', Icon: Clock3 },
+  recurring: { label: 'חוזר', color: '#c5c5d2', bg: 'rgba(13,13,13,0.08)', border: '#2f2f2f', Icon: Clock3 },
   both: { label: 'חד-פעמי + חוזר', color: '#34D399', bg: 'rgba(52,211,153,0.15)', border: '#10B981', Icon: Calendar },
   draft: { label: 'טיוטה', color: '#E5E7EB', bg: '#374151', border: '#374151', Icon: FileEdit },
   published: { label: 'פורסם', color: '#4ADE80', bg: 'rgba(34,197,94,0.15)', border: '#22C55E', Icon: CheckCircle2 },
@@ -18,7 +38,7 @@ const STATUS_CONFIG = {
 const BORDER_COLORS = {
   active: '#3B82F6',
   scheduled: '#3B82F6',
-  recurring: '#8B5CF6',
+  recurring: '#2f2f2f',
   both: '#10B981',
   draft: '#64748B',
   published: '#22C55E',
@@ -47,6 +67,18 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+
+  useEffect(() => {
+    if (!menuOpen && !confirmDelete) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(null)
+        setConfirmDelete(null)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [menuOpen, confirmDelete])
 
   const handleRowClick = (campaign) => {
     if (onViewCampaign) {
@@ -117,7 +149,7 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
           const StatusIcon = statusConf.Icon
           const title = campaign.title || campaign.content?.substring(0, 40) || 'ללא כותרת'
           const subtitle = campaign.content?.substring(0, 60) || ''
-          const image = campaign.imageUrl || null
+          const image = isRenderableImageUrl(campaign.imageUrl) ? campaign.imageUrl : null
           const groupCount = campaign.groupCount || campaign.groups?.length || 0
           const groups = campaign.groups || []
           const nextRun = formatDate(campaign.createdAt)
@@ -125,13 +157,13 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
           return (
             <div
               key={campaign.id}
-              className="pdt-row"
+              className={`pdt-row ${menuOpen === campaign.id ? 'pdt-row-menu-open' : ''}`}
               onClick={() => handleRowClick(campaign)}
             >
               {/* Post column */}
               <div className="pdt-col pdt-col-post">
                 <div className="pdt-thumb">
-                  {image ? <img src={image.startsWith('http') ? image : `http://localhost:8000${image}`} alt="" onError={e => e.target.style.display='none'} /> : <div className="pdt-thumb-placeholder"><Image size={20} /></div>}
+                  {image ? <img src={resolveImg(image)} alt="" onError={e => e.target.style.display='none'} /> : <div className="pdt-thumb-placeholder"><Image size={20} /></div>}
                 </div>
                 <div className="pdt-post-info">
                   <span className="pdt-post-title">{title}</span>
@@ -176,14 +208,20 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
 
               {/* Actions */}
               <div className="pdt-col pdt-col-actions" onClick={e => e.stopPropagation()}>
-                <button className="pdt-menu-btn" onClick={() => setMenuOpen(menuOpen === campaign.id ? null : campaign.id)}>
+                <button
+                  className="pdt-menu-btn"
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === campaign.id ? null : campaign.id) }}
+                  aria-label={`פתח תפריט פעולות עבור ${title}`}
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen === campaign.id}
+                >
                   <MoreVertical size={18} />
                 </button>
                 {menuOpen === campaign.id && (
-                  <div className="pdt-menu-dropdown">
-                    <button onClick={() => handleEdit(campaign)}>ערוך</button>
-                    <button onClick={() => handleDuplicate(campaign)}>שכפל</button>
-                    <button onClick={() => handleDelete(campaign)}>מחק</button>
+                  <div className="pdt-menu-dropdown" role="menu" aria-label={`פעולות עבור ${title}`}>
+                    <button role="menuitem" onClick={() => handleEdit(campaign)}>ערוך</button>
+                    <button role="menuitem" onClick={() => handleDuplicate(campaign)}>שכפל</button>
+                    <button role="menuitem" onClick={() => handleDelete(campaign)}>מחק</button>
                   </div>
                 )}
               </div>
@@ -193,9 +231,16 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
       </div>
       {confirmDelete && (
         <div className="pdt-confirm-overlay" onClick={() => setConfirmDelete(null)}>
-          <div className="pdt-confirm-dialog" onClick={e => e.stopPropagation()}>
-            <h4>מחיקת קמפיין</h4>
-            <p>האם אתה בטוח שברצונך למחוק את הקמפיין? פעולה זו לא ניתנת לביטול.</p>
+          <div
+            className="pdt-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pdt-confirm-title"
+            aria-describedby="pdt-confirm-message"
+            onClick={e => e.stopPropagation()}
+          >
+            <h4 id="pdt-confirm-title">מחיקת קמפיין</h4>
+            <p id="pdt-confirm-message">האם אתה בטוח שברצונך למחוק את הקמפיין? פעולה זו לא ניתנת לביטול.</p>
             <div className="pdt-confirm-actions">
               <button className="pdt-confirm-cancel" onClick={() => setConfirmDelete(null)}>ביטול</button>
               <button className="pdt-confirm-delete" onClick={confirmDeleteAction}>מחק</button>

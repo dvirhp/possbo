@@ -212,23 +212,26 @@ function DateRangePicker({ initialFrom, initialTo, onApply, onCancel }) {
       {/* Calendar */}
       <div className="drp-calendar">
         <div className="drp-cal-nav">
-          <button onClick={() => setCalMonth(new Date(year, month - 1, 1))}><ChevronRight size={14} /></button>
+          <button onClick={() => setCalMonth(new Date(year, month - 1, 1))} aria-label="החודש הקודם"><ChevronRight size={14} /></button>
           <span>{monthName}</span>
-          <button onClick={() => setCalMonth(new Date(year, month + 1, 1))}><ChevronLeft size={14} /></button>
+          <button onClick={() => setCalMonth(new Date(year, month + 1, 1))} aria-label="החודש הבא"><ChevronLeft size={14} /></button>
         </div>
         <div className="drp-cal-grid">
           {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map(d => (
             <span key={d} className="drp-weekday">{d}</span>
           ))}
           {days.map((day, i) => (
-            <span
+            <button
+              type="button"
               key={i}
               className={`drp-day ${!day ? 'empty' : ''} ${day && isInRange(day) ? 'in-range' : ''} ${day && isStart(day) ? 'range-start' : ''} ${day && isEnd(day) ? 'range-end' : ''} ${day && dayToStr(day) === toDateStr(today) ? 'today' : ''}`}
+              disabled={!day}
               onClick={() => day && handleDayClick(day)}
               onMouseEnter={() => handleDayHover(day)}
+              aria-label={day ? `בחר ${dayToStr(day)}` : undefined}
             >
               {day || ''}
-            </span>
+            </button>
           ))}
         </div>
       </div>
@@ -237,11 +240,11 @@ function DateRangePicker({ initialFrom, initialTo, onApply, onCancel }) {
       <div className="drp-inputs">
         <div className="drp-input-group">
           <label>מ-</label>
-          <input type="date" value={manualFrom} onChange={e => { setManualFrom(e.target.value); setRangeStart(e.target.value) }} onKeyDown={handleKeyDown} />
+          <input type="date" value={manualFrom} onChange={e => { setManualFrom(e.target.value); setRangeStart(e.target.value) }} onKeyDown={handleKeyDown} aria-label="תאריך התחלה" />
         </div>
         <div className="drp-input-group">
           <label>עד</label>
-          <input type="date" value={manualTo} onChange={e => { setManualTo(e.target.value); setRangeEnd(e.target.value) }} onKeyDown={handleKeyDown} />
+          <input type="date" value={manualTo} onChange={e => { setManualTo(e.target.value); setRangeEnd(e.target.value) }} onKeyDown={handleKeyDown} aria-label="תאריך סיום" />
         </div>
       </div>
 
@@ -388,21 +391,24 @@ function MiniCalendar({ campaigns, posts, jobs }) {
         <Link to="/scheduled" className="ov2-card-link">צפה ביומן המלא</Link>
       </div>
       <div className="ov2-calendar-nav">
-        <button onClick={prevMonth}><ChevronRight size={16} /></button>
+        <button onClick={prevMonth} aria-label="החודש הקודם"><ChevronRight size={16} /></button>
         <span className="ov2-calendar-month">{monthName}</span>
-        <button onClick={nextMonth}><ChevronLeft size={16} /></button>
+        <button onClick={nextMonth} aria-label="החודש הבא"><ChevronLeft size={16} /></button>
       </div>
       <div className="ov2-calendar-grid">
         {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map(d => (
           <span key={d} className="ov2-calendar-weekday">{d}</span>
         ))}
         {days.map((day, i) => (
-          <span
+          <button
+            type="button"
             key={i}
             className={`ov2-calendar-day ${day ? '' : 'empty'} ${day && isToday(day) ? 'today' : ''} ${day && dayItemsMap[day] ? 'has-items' : ''}`}
+            disabled={!day}
             onMouseEnter={(e) => handleDayEnter(day, e)}
             onMouseLeave={handleDayLeave}
             onClick={(e) => handleDayClick(day, e)}
+            aria-label={day ? `יום ${day}${dayItemsMap[day] ? `, ${dayItemsMap[day].scheduled.length + dayItemsMap[day].published.length} פריטים` : ''}` : undefined}
           >
             {day || ''}
             {day && dayItemsMap[day] && (
@@ -411,7 +417,7 @@ function MiniCalendar({ campaigns, posts, jobs }) {
                 {dayItemsMap[day].published.length > 0 && <span className="dot published" />}
               </span>
             )}
-          </span>
+          </button>
         ))}
       </div>
       <div className="ov2-calendar-legend">
@@ -567,18 +573,40 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
   useEffect(() => {
     const el = campaignsCardRef.current
     if (!el) return
+
+    const getResponsiveCampaignLimit = () => {
+      const width = window.innerWidth
+      if (width <= 480) return 3
+      if (width <= 768) return 4
+      if (width <= 1100) return 6
+      return 8
+    }
+
     const ROW_HEIGHT = 76 // min-height of pdt-row
     const HEADER_HEIGHT = 56 // pdt-header height
     const CARD_HEADER_HEIGHT = 60 // ov2-upcoming-header height
+    const updateVisibleCount = (height) => {
+      const available = height - CARD_HEADER_HEIGHT - HEADER_HEIGHT
+      const heightBasedCount = Math.max(3, Math.floor(available / ROW_HEIGHT))
+      setVisibleCampaignCount(Math.min(heightBasedCount, getResponsiveCampaignLimit()))
+    }
+
+    updateVisibleCount(el.getBoundingClientRect().height)
+
     const observer = new ResizeObserver(entries => {
       for (const entry of entries) {
-        const available = entry.contentRect.height - CARD_HEADER_HEIGHT - HEADER_HEIGHT
-        const count = Math.max(3, Math.floor(available / ROW_HEIGHT))
-        setVisibleCampaignCount(count)
+        updateVisibleCount(entry.contentRect.height)
       }
     })
+    const handleResize = () => updateVisibleCount(el.getBoundingClientRect().height)
+
     observer.observe(el)
-    return () => observer.disconnect()
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', handleResize)
+    }
   }, [])
 
   // Filter posts by date range
@@ -831,21 +859,21 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
                   <AreaChart width={engChartSize.width || 300} height={engChartSize.height || 160} data={fillDateRange(exposure.data, dateRange.from, dateRange.to).map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="engGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#818cf8" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#818cf8" stopOpacity={0} />
+                        <stop offset="0%" stopColor="var(--indigo)" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="var(--indigo)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} domain={[0, 'auto']} width={35} />
                     <Tooltip cursor={false} contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }} formatter={(val) => [formatNumber(val), 'חשיפה']} />
-                    <Area type="monotone" dataKey="value" stroke="#6366F1" strokeWidth={2} fill="url(#engGrad)" dot={false} activeDot={{ r: 7, fill: '#6366F1', stroke: '#fff', strokeWidth: 2 }} />
+                    <Area type="monotone" dataKey="value" stroke="var(--indigo)" strokeWidth={2} fill="url(#engGrad)" dot={false} activeDot={{ r: 7, fill: 'var(--indigo)', stroke: '#fff', strokeWidth: 2 }} />
                   </AreaChart>
                 ) : (
                   <BarChart width={engChartSize.width || 300} height={engChartSize.height || 160} data={fillDateRange(exposure.data, dateRange.from, dateRange.to).map(d => ({ date: new Date(d.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }), value: d.exposure }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                     <XAxis dataKey="date" tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: '#6b7684', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} width={35} />
                     <Tooltip cursor={false} contentStyle={{ background: '#1e2028', border: '1px solid #2a2f3a', borderRadius: 8, color: '#e2e8f0' }} formatter={(val) => [formatNumber(val), 'חשיפה']} />
-                    <Bar dataKey="value" fill="#818cf8" radius={[4, 4, 0, 0]} background={false} />
+                    <Bar dataKey="value" fill="var(--indigo)" radius={[4, 4, 0, 0]} background={false} />
                   </BarChart>
                 )
             ) : (

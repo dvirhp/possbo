@@ -72,6 +72,7 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
       {/* Logo */}
       <div className="sidebar-logo" onClick={() => guardNavigate(() => { navigate('/dashboard?tab=overview'); onTabChange?.('dashboard') })}>
         <BrandLogo className="sidebar-logo-img" />
+        <span className="sidebar-logo-wordmark">ossbo</span>
       </div>
 
       {/* Main Navigation */}

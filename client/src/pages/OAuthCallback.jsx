@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { logClientWarning } from '../services/clientLogger'
 
 export default function OAuthCallback() {
   const [params] = useSearchParams()
@@ -35,7 +36,6 @@ export default function OAuthCallback() {
       const success = params.get('success') === 'true'
       const username = params.get('username')
       const error = params.get('error')
-      console.log('[OAuthCallback] Instagram:', { success, username, error, hasOpener: !!window.opener })
 
       if (window.opener) {
         window.opener.postMessage({
@@ -44,10 +44,12 @@ export default function OAuthCallback() {
           username,
           error,
         }, window.location.origin)
-        console.log('[OAuthCallback] postMessage sent to opener, origin:', window.location.origin)
         setStatus(success ? 'הצלחה! סוגר חלון...' : 'שגיאה: ' + (error || 'unknown'))
         setTimeout(() => window.close(), 500)
       } else {
+        logClientWarning('instagram_oauth_callback_without_opener', success ? 'OAuth callback opened without opener after success' : 'OAuth callback opened without opener after error', {
+          source: 'OAuthCallback',
+        })
         // No opener — close this window or redirect
         if (success) {
           setStatus('Instagram חובר בהצלחה! ניתן לסגור חלון זה.')
@@ -92,7 +94,7 @@ export default function OAuthCallback() {
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#16181d', color: '#e8ecf0', flexDirection: 'column', gap: '1rem' }}>
-      <div className="spinner" style={{ width: 40, height: 40, border: '3px solid #333', borderTopColor: '#6c5ce7', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <div className="spinner" style={{ width: 40, height: 40, border: '3px solid #333', borderTopColor: 'var(--indigo)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
       <p>{status}</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>

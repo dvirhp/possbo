@@ -4,8 +4,10 @@ import { asyncHandler } from "../utils/async-handler.js";
 import { requireAuth } from "../utils/auth-middleware.js";
 import { triggerImmediateProcess } from "../jobs/index.js";
 import { uploadFields } from "../utils/upload-service.js";
+import { createLogger } from "../utils/logger.js";
 
 const router = express.Router();
+const log = createLogger("campaigns");
 
 const campaignUpload = uploadFields("", [
   { name: "images", maxCount: 10 },
@@ -709,6 +711,20 @@ router.post(
       }
     }
 
+    log.info("Campaign created", {
+      userId,
+      postId: post.id,
+      status: post.status,
+      scheduleMode: scheduleMode || "draft",
+      campaignType: post.campaignType,
+      groupsCount: Array.isArray(groupIds) ? groupIds.length : 0,
+      imagesCount: req.files?.images?.length || 0,
+      instagramEnabled: Boolean(instagramEnabled),
+      whatsappEnabled: Boolean(whatsappEnabled),
+      publishToProfile: Boolean(publishToProfile),
+      scheduledJobsCount: results.length,
+    });
+
     res.json({
       success: true,
       postId: post.id,
@@ -1248,6 +1264,12 @@ router.patch(
       }
     }
 
+    log.info("Campaign pause toggled", {
+      userId: req.user.id,
+      postId,
+      isPaused: updated.isPaused,
+    });
+
     res.json({
       success: true,
       isPaused: updated.isPaused,
@@ -1444,6 +1466,15 @@ router.put(
       }
     }
 
+    log.info("Campaign updated", {
+      userId,
+      postId,
+      updatedFields: Object.keys(updateData),
+      groupsCount: Array.isArray(groupIds) ? groupIds.length : undefined,
+      replacedImagesCount: globalFiles?.length || 0,
+      scheduleMode: scheduleMode || null,
+    });
+
     res.json({ success: true, message: "הקמפיין עודכן בהצלחה" });
   }),
 );
@@ -1463,6 +1494,8 @@ router.delete(
 
     // Cascade delete handles postGroups, schedules, jobs
     await prisma.post.delete({ where: { id: postId } });
+
+    log.info("Campaign deleted", { userId: req.user.id, postId });
 
     res.json({ success: true, message: "הקמפיין נמחק" });
   }),
@@ -1519,6 +1552,14 @@ router.post(
         data: { postId: newPost.id, groupId: pg.groupId, userId },
       });
     }
+
+    log.info("Campaign duplicated", {
+      userId,
+      originalPostId: postId,
+      newPostId: newPost.id,
+      groupsCount: original.postGroups.length,
+      mediaCount: original.media.length,
+    });
 
     res.json({
       success: true,
