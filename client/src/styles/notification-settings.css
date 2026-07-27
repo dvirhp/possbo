@@ -88,7 +88,7 @@
 }
 
 .notif-master-icon { color: var(--text-muted, #6b7684); }
-.notif-master-icon.active { color: var(--indigo, #6366f1); }
+.notif-master-icon.active { color: var(--indigo); }
 
 .notif-master-label {
   display: block;
@@ -109,21 +109,31 @@
   position: relative;
   width: 44px;
   height: 24px;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 12px;
   background: var(--bg-elevated, #2a2f3a);
   cursor: pointer;
-  transition: background 0.25s;
+  transition: background 0.25s, border-color 0.25s, box-shadow 0.25s;
   flex-shrink: 0;
 }
-.notif-toggle-switch.on { background: var(--indigo, #6366f1); }
+.notif-toggle-switch:hover {
+  border-color: var(--border-hover, rgba(255,255,255,0.24));
+}
+.notif-toggle-switch:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 3px;
+}
+.notif-toggle-switch.on {
+  background: var(--indigo);
+  border-color: var(--indigo);
+}
 
 .notif-toggle-switch.small { width: 36px; height: 20px; border-radius: 10px; }
 
 .notif-toggle-knob {
   position: absolute;
-  top: 3px;
-  left: 3px;
+  top: 2px;
+  left: 2px;
   width: 18px;
   height: 18px;
   border-radius: 50%;
@@ -135,6 +145,22 @@
 .notif-toggle-switch.on .notif-toggle-knob { transform: translateX(20px); }
 .notif-toggle-switch.small .notif-toggle-knob { width: 14px; height: 14px; }
 .notif-toggle-switch.small.on .notif-toggle-knob { transform: translateX(16px); }
+
+[data-theme="dark"] .notif-toggle-switch:not(.on) {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .notif-toggle-switch:not(.on):hover {
+  background: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+[data-theme="dark"] .notif-toggle-switch:not(.on) .notif-toggle-knob {
+  background: #f8fafc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
+}
 
 /* Groups */
 .notif-group {
@@ -175,14 +201,14 @@
 
 .notif-opt-icon.success { color: var(--emerald); }
 .notif-opt-icon.failed { color: var(--rose); }
-.notif-opt-icon.schedule { color: var(--indigo, #6366f1); }
+.notif-opt-icon.schedule { color: var(--indigo); }
 
 /* Save button */
 .notif-save-btn {
   width: 100%;
   padding: 12px;
   margin-top: 8px;
-  background: var(--indigo, #6366f1);
+  background: var(--indigo);
   color: #fff;
   border: none;
   border-radius: 10px;

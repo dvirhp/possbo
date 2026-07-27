@@ -5,7 +5,7 @@ import { useAppData } from '../context/DataProvider'
 import { groupsService } from '../services/groupsService'
 import '../styles/chatbot.css'
 
-const AGENT_NAME = 'פוסטי'
+const AGENT_NAME = 'פוסבוט'
 const SUPPORT_EMAIL = 'support@possbo-app.co.il'
 
 function getTimeStr() {
@@ -938,7 +938,7 @@ export default function ChatBot() {
     const filtered = allGroups.filter(g => g.name?.toLowerCase().includes(groupSearch.toLowerCase()))
     return (
       <div className="chatbot-widget chatbot-groups-widget">
-        <input type="text" className="chatbot-search-input" placeholder="🔍 חיפוש קבוצה..."
+        <input type="text" className="chatbot-search-input" placeholder="🔍 חיפוש קבוצה..." aria-label="חיפוש קבוצה"
           value={groupSearch} onChange={e => setGroupSearch(e.target.value)} />
         {loadingGroups ? (
           <div className="chatbot-loading">טוען קבוצות...</div>
@@ -1027,7 +1027,7 @@ export default function ChatBot() {
     const filtered = allTargets.filter(t => t.name?.toLowerCase().includes(waSearch.toLowerCase()))
     return (
       <div className="chatbot-widget chatbot-groups-widget">
-        <input type="text" className="chatbot-search-input" placeholder="🔍 חיפוש..."
+        <input type="text" className="chatbot-search-input" placeholder="🔍 חיפוש..." aria-label="חיפוש יעד וואטסאפ"
           value={waSearch} onChange={e => setWaSearch(e.target.value)} />
         {!user?.whatsappSessionConnected ? (
           <div className="chatbot-empty">וואטסאפ לא מחובר. חברו בהגדרות.</div>
@@ -1186,29 +1186,29 @@ export default function ChatBot() {
   // ═══════════════════════════════════════════════════════════
   return (
     <>
-      <button ref={fabRef} className="chatbot-fab" onClick={() => setOpen(!open)} title="צ'אט עזרה">
+      <button ref={fabRef} className="chatbot-fab" onClick={() => setOpen(!open)} title="צ'אט עזרה" aria-label={open ? 'סגור צ׳אט עזרה' : 'פתח צ׳אט עזרה'} aria-expanded={open}>
         <img src="/bot-avatar.svg" alt="צ'אט" className="chatbot-fab-img" />
         {!open && <span className="chatbot-fab-pulse" />}
       </button>
 
       {open && (
-        <div className="chatbot-panel" ref={panelRef}>
+        <div className="chatbot-panel" ref={panelRef} role="dialog" aria-modal="false" aria-label="צ׳אט עזרה">
           <div className="chatbot-header">
             <div className="chatbot-header-info">
               <div className="chatbot-avatar">
-                <img src="/bot-avatar.svg" alt="פוסטי" />
+                <img src="/bot-avatar.svg" alt="פוסבוט" />
               </div>
               <div className="chatbot-header-text">
                 <span className="chatbot-name">{AGENT_NAME}</span>
                 <span className="chatbot-status">● מחובר</span>
               </div>
             </div>
-            <button className="chatbot-close" onClick={() => setOpen(false)}>
+            <button className="chatbot-close" onClick={() => setOpen(false)} aria-label="סגור צ׳אט">
               <X size={18} />
             </button>
           </div>
 
-          <div className="chatbot-messages">
+          <div className="chatbot-messages" aria-live="polite" aria-label="הודעות צ׳אט">
             {messages.map((msg, i) => (
               <div key={i} className={`chatbot-msg chatbot-msg-${msg.type} ${msg.style === 'greeting' ? 'chatbot-msg-greeting' : ''} ${msg.style === 'flow' ? 'chatbot-msg-flow' : ''}`}>
                 {msg.type === 'bot' && (
@@ -1247,6 +1247,7 @@ export default function ChatBot() {
                   ref={inputRef}
                   className="chatbot-textarea"
                   placeholder="כתבו את הפוסט כאן..."
+                  aria-label="תוכן הפוסט"
                   value={flowInput}
                   onChange={e => setFlowInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleFlowTextSubmit() } }}
@@ -1254,17 +1255,17 @@ export default function ChatBot() {
                 />
               </div>
               <div className="chatbot-input-actions">
-                <label className="chatbot-img-btn" title="הוסף תמונות">
+                <label className="chatbot-img-btn" title="הוסף תמונות" aria-label="הוסף תמונות או סרטונים">
                   <Image size={16} />
-                  <input type="file" accept="image/*,video/*" multiple hidden onChange={handleImageSelect} />
+                  <input type="file" accept="image/*,video/*" multiple hidden onChange={handleImageSelect} aria-label="בחר תמונות או סרטונים" />
                 </label>
                 {flowData.imagePreviews.length > 0 && (
                   <span className="chatbot-img-count">📷 {flowData.imagePreviews.length}</span>
                 )}
-                <button className="chatbot-send-btn" onClick={handleFlowTextSubmit} disabled={!flowInput.trim()}>
+                <button className="chatbot-send-btn" onClick={handleFlowTextSubmit} disabled={!flowInput.trim()} aria-label="שלח תוכן">
                   <Send size={16} />
                 </button>
-                <button className="chatbot-flow-btn cancel chatbot-cancel-sm" onClick={cancelFlow}>✕</button>
+                <button className="chatbot-flow-btn cancel chatbot-cancel-sm" onClick={cancelFlow} aria-label="בטל יצירה">✕</button>
               </div>
             </div>
           ) : (

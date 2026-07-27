@@ -71,7 +71,7 @@
 }
 
 .confirm-btn-primary {
-  background: var(--indigo, #818cf8);
+  background: var(--indigo);
   color: #fff;
 }
 .confirm-btn-primary:hover {

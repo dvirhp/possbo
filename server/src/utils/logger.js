@@ -45,7 +45,54 @@ const BOLD = "\x1b[1m";
 // ─── Configuration ───────────────────────────────────────
 
 const currentLevel =
-  LEVELS[process.env.LOG_LEVEL?.toLowerCase()] ?? LEVELS.debug;
+  LEVELS[process.env.LOG_LEVEL?.toLowerCase()] ??
+  (process.env.NODE_ENV === "production" ? LEVELS.info : LEVELS.debug);
+
+const isProduction = process.env.NODE_ENV === "production";
+
+const SENSITIVE_KEY_PATTERN =
+  /(password|pass|token|secret|cookie|authorization|captcha|hash|otp|credential|storageState|smtp|apiKey|privateKey|session)/i;
+const PERSONAL_KEY_PATTERN = /(email|phone|idNumber|whatsapp|jid|from|to|ip)/i;
+
+function maskString(value) {
+  if (!value) return value;
+  const str = String(value);
+  if (str.includes("@")) {
+    const [name, domain] = str.split("@");
+    return `${name.slice(0, 2)}***@${domain || "***"}`;
+  }
+  if (/^\+?\d[\d\s-]{5,}$/.test(str)) {
+    return `${str.slice(0, 3)}***${str.slice(-2)}`;
+  }
+  if (str.length > 160) return `${str.slice(0, 160)}…`;
+  return str;
+}
+
+function sanitizeMeta(value, depth = 0) {
+  if (value == null) return value;
+  if (depth > 4) return "[MaxDepth]";
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: maskString(value.message),
+      code: value.code,
+    };
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => sanitizeMeta(item, depth + 1));
+  }
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => {
+        if (SENSITIVE_KEY_PATTERN.test(key)) return [key, "[REDACTED]"];
+        if (PERSONAL_KEY_PATTERN.test(key)) return [key, maskString(item)];
+        return [key, sanitizeMeta(item, depth + 1)];
+      }),
+    );
+  }
+  if (typeof value === "string") return maskString(value);
+  return value;
+}
 
 // ─── Transports ──────────────────────────────────────────
 // Array of transport functions. Each receives a structured log entry.
@@ -71,9 +118,10 @@ function formatTimestamp() {
 }
 
 function formatMeta(meta) {
-  if (!meta || Object.keys(meta).length === 0) return "";
+  const safeMeta = sanitizeMeta(meta);
+  if (!safeMeta || Object.keys(safeMeta).length === 0) return "";
   try {
-    const parts = Object.entries(meta).map(([k, v]) => {
+    const parts = Object.entries(safeMeta).map(([k, v]) => {
       if (typeof v === "string") return `${k}="${v}"`;
       return `${k}=${JSON.stringify(v)}`;
     });
@@ -85,21 +133,45 @@ function formatMeta(meta) {
 
 function formatError(error) {
   if (!error) return "";
-  if (typeof error === "string") return `\n  → ${error}`;
+  if (typeof error === "string") return `\n  → ${maskString(error)}`;
   const lines = [];
   if (error.message) {
-    lines.push(`  → ${error.message}`);
+    lines.push(`  → ${maskString(error.message)}`);
   }
   if (error.code) {
     lines.push(`  code: ${error.code}`);
   }
-  if (error.stack) {
+  if (error.stack && !isProduction) {
     // Show the full real stack trace, skipping the first line (message)
     const stackLines = error.stack.split("\n").slice(1);
     // Keep all stack frames — don't truncate
     lines.push(...stackLines.map((l) => `  ${DIM}${l.trim()}${RESET}`));
   }
   return "\n" + lines.join("\n");
+}
+
+function jsonTransport(entry) {
+  const payload = {
+    timestamp: new Date().toISOString(),
+    level: entry.level,
+    module: entry.module,
+    message: entry.message,
+    meta: sanitizeMeta(entry.meta),
+    error: entry.error
+      ? {
+          name: entry.error.name,
+          message: maskString(entry.error.message || String(entry.error)),
+          code: entry.error.code,
+          stack: isProduction ? undefined : entry.error.stack,
+        }
+      : undefined,
+  };
+  const line = JSON.stringify(payload);
+  if (entry.level === "error") {
+    process.stderr.write(line + "\n");
+  } else {
+    process.stdout.write(line + "\n");
+  }
 }
 
 // ─── Console Transport (default) ─────────────────────────
@@ -123,7 +195,7 @@ function consoleTransport(entry) {
 }
 
 // Register console as default transport
-transports.push(consoleTransport);
+transports.push(isProduction ? jsonTransport : consoleTransport);
 
 // ─── Logger Factory ──────────────────────────────────────
 
@@ -202,30 +274,34 @@ const systemLog = createLogger("system");
 
 import { writeFileSync } from "fs";
 
-process.on("uncaughtException", (error) => {
-  systemLog.error("Uncaught exception — process will exit", error);
-  try {
-    writeFileSync(
-      "crash.log",
-      `[${new Date().toISOString()}] UNCAUGHT EXCEPTION:\n${error?.stack || error}\n`,
-      { flag: "a" },
-    );
-  } catch {
-    /* ignore */
-  }
-  process.exit(1);
-});
+if (!globalThis.__possboLoggerHandlersRegistered) {
+  globalThis.__possboLoggerHandlersRegistered = true;
 
-process.on("unhandledRejection", (reason) => {
-  const error = reason instanceof Error ? reason : new Error(String(reason));
-  systemLog.error("Unhandled promise rejection", error);
-  try {
-    writeFileSync(
-      "crash.log",
-      `[${new Date().toISOString()}] UNHANDLED REJECTION:\n${error?.stack || error}\n`,
-      { flag: "a" },
-    );
-  } catch {
-    /* ignore */
-  }
-});
+  process.on("uncaughtException", (error) => {
+    systemLog.error("Uncaught exception — process will exit", error);
+    try {
+      writeFileSync(
+        "crash.log",
+        `[${new Date().toISOString()}] UNCAUGHT EXCEPTION:\n${error?.stack || error}\n`,
+        { flag: "a" },
+      );
+    } catch {
+      /* ignore */
+    }
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    systemLog.error("Unhandled promise rejection", error);
+    try {
+      writeFileSync(
+        "crash.log",
+        `[${new Date().toISOString()}] UNHANDLED REJECTION:\n${error?.stack || error}\n`,
+        { flag: "a" },
+      );
+    } catch {
+      /* ignore */
+    }
+  });
+}

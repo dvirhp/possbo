@@ -1,4 +1,5 @@
 import axios from "axios";
+import { logClientError } from "./clientLogger";
 
 const API_BASE_URL = "/api";
 
@@ -154,6 +155,18 @@ api.interceptors.response.use(
 
     // Attach user-friendly message
     error.userMessage = getUserFriendlyMessage(error);
+
+    if (
+      !originalRequest?.url?.includes("/client-logs") &&
+      !originalRequest?._clientLogReported &&
+      (error.response?.status >= 500 || isNetworkError(error))
+    ) {
+      originalRequest._clientLogReported = true;
+      logClientError("api_request_failed", error, {
+        source: `${originalRequest?.method?.toUpperCase() || "GET"} ${originalRequest?.url || ""}`,
+        statusCode: error.response?.status,
+      });
+    }
 
     // If we still get a 401 after refresh attempt, redirect to login
     if (

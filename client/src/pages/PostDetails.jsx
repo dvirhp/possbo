@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { authAPI } from '../services/api'
 import { groupsService } from '../services/groupsService'
 import BackButton from '../components/BackButton'
+import BrandLogo from '../components/BrandLogo'
 import '../styles/post-details.css'
 
 export default function PostDetails() {
@@ -49,7 +50,7 @@ export default function PostDetails() {
           <BackButton />
         </div>
         <div className="dash-loader">
-          <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
+          <BrandLogo decorative className="loader-logo-pulse" />
         </div>
       </div>
     )

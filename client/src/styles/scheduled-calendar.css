@@ -126,8 +126,8 @@
 
 .sc-month-arrow:hover {
   background: var(--bg-elevated, #2a2f3a);
-  color: var(--indigo, #818cf8);
-  border-color: var(--indigo, #818cf8);
+  color: var(--indigo);
+  border-color: var(--indigo);
 }
 
 /* Weekday headers */
@@ -155,6 +155,10 @@
 }
 
 .sc-cell {
+  border: 0;
+  font-family: inherit;
+  color: inherit;
+  background: transparent;
   aspect-ratio: 1;
   display: flex;
   flex-direction: column;
@@ -182,7 +186,7 @@
 
 /* Today circle */
 .sc-today {
-  background: var(--indigo-soft, rgba(129,140,248,0.12));
+  background: var(--indigo-soft);
 }
 
 .sc-today .sc-cell-num {
@@ -192,9 +196,23 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--indigo, #818cf8);
+  background: var(--indigo);
   color: white;
   font-weight: 700;
+}
+
+[data-theme="dark"] .sc-cell-active:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+[data-theme="dark"] .sc-today {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .sc-today .sc-cell-num {
+  background: linear-gradient(180deg, #e9eef8 0%, #cbd6e8 100%);
+  color: #050505 !important;
+  box-shadow: 0 0 18px rgba(105, 127, 170, 0.32);
 }
 
 /* Has events indicator */
@@ -235,7 +253,7 @@
   align-items: center;
   gap: 6px;
   padding: 10px 24px;
-  background: var(--gradient-main, linear-gradient(135deg, #818cf8, #c084fc));
+  background: var(--gradient-main);
   color: white;
   border-radius: 99px;
   font-weight: 700;
@@ -244,12 +262,12 @@
   cursor: pointer;
   font-family: inherit;
   transition: 0.2s;
-  box-shadow: 0 4px 16px rgba(129, 140, 248, 0.25);
+  box-shadow: 0 4px 16px var(--indigo-soft);
 }
 
 .sc-empty-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(129, 140, 248, 0.35);
+  box-shadow: 0 6px 20px var(--indigo-soft);
 }
 
 /* Summary */
@@ -268,7 +286,7 @@
 .sc-summary-count {
   font-size: 22px;
   font-weight: 800;
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
 }
 
 .sc-summary-label {
@@ -309,7 +327,7 @@
 
 .sc-day-count {
   font-size: 12px;
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   font-weight: 600;
 }
 
@@ -328,8 +346,8 @@
 }
 
 .sc-day-arrow:hover {
-  color: var(--indigo, #818cf8);
-  border-color: var(--indigo, #818cf8);
+  color: var(--indigo);
+  border-color: var(--indigo);
 }
 
 /* Back to month button */
@@ -389,7 +407,7 @@
 }
 
 .sc-hour-row.has-event {
-  background: var(--indigo-soft, rgba(129,140,248,0.05));
+  background: var(--indigo-soft);
 }
 
 .sc-hour-label {
@@ -423,8 +441,8 @@
   gap: 12px;
   padding: 10px 14px;
   background: var(--bg-elevated, #2a2f3a);
-  border: 1px solid var(--indigo-soft, rgba(129,140,248,0.2));
-  border-right: 3px solid var(--indigo, #818cf8);
+  border: 1px solid var(--indigo-soft);
+  border-right: 3px solid var(--indigo);
   border-radius: 8px;
   transition: 0.15s;
   min-width: 0;
@@ -433,13 +451,13 @@
 
 .sc-event-card:hover {
   background: var(--bg-hover, #313743);
-  border-color: var(--indigo, #818cf8);
+  border-color: var(--indigo);
 }
 
 .sc-event-time {
   font-size: 13px;
   font-weight: 700;
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   white-space: nowrap;
   min-width: 45px;
 }
@@ -731,13 +749,37 @@
   transition: 0.2s;
 }
 .sc-view-toggle button.active {
-  background: var(--indigo-soft, rgba(99,102,241,0.15));
-  color: var(--indigo, #818cf8);
-  border-color: var(--indigo, #818cf8);
+  background: var(--indigo-soft);
+  color: var(--indigo);
+  border-color: var(--indigo);
 }
 .sc-view-toggle button:hover:not(.active) {
   background: var(--bg-elevated, rgba(255,255,255,0.04));
   color: var(--text-primary, #e8ecf0);
+}
+
+[data-theme="dark"] .sc-view-toggle button {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.74);
+}
+
+[data-theme="dark"] .sc-view-toggle button:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .sc-view-toggle button.active {
+  background: linear-gradient(180deg, #e9eef8 0%, #cbd6e8 100%);
+  border-color: rgba(219, 230, 246, 0.84);
+  color: #050505 !important;
+  box-shadow: 0 0 20px rgba(105, 127, 170, 0.28);
+}
+
+[data-theme="dark"] .sc-view-toggle button.active :is(span, svg, path) {
+  color: #050505 !important;
+  stroke: currentColor !important;
 }
 
 /* ═══ List View ═══ */
@@ -764,12 +806,31 @@
   transition: 0.2s;
 }
 .sc-list-range button.active {
-  background: var(--indigo-soft, rgba(99,102,241,0.15));
-  color: var(--indigo, #818cf8);
-  border-color: var(--indigo, #818cf8);
+  background: var(--indigo-soft);
+  color: var(--indigo);
+  border-color: var(--indigo);
 }
 .sc-list-range button:hover:not(.active) {
   background: var(--bg-elevated, rgba(255,255,255,0.04));
+}
+
+[data-theme="dark"] .sc-list-range button {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.74);
+}
+
+[data-theme="dark"] .sc-list-range button:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .sc-list-range button.active {
+  background: linear-gradient(180deg, #e9eef8 0%, #cbd6e8 100%);
+  border-color: rgba(219, 230, 246, 0.84);
+  color: #050505 !important;
+  box-shadow: 0 0 18px rgba(105, 127, 170, 0.24);
 }
 
 /* ═══ Custom date range ═══ */
@@ -803,7 +864,7 @@
   transition: border-color 0.2s;
 }
 .sc-custom-range-field input[type="date"]:focus {
-  border-color: var(--indigo, #818cf8);
+  border-color: var(--indigo);
 }
 .sc-custom-range-field input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
@@ -822,7 +883,7 @@
   overflow: hidden;
 }
 .sc-list-day.sc-list-today {
-  border-color: var(--indigo, rgba(99,102,241,0.4));
+  border-color: var(--indigo, var(--indigo-soft));
 }
 .sc-list-day-header {
   display: flex;
@@ -920,12 +981,12 @@
   letter-spacing: 0.02em;
 }
 .sc-tag-fb {
-  background: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
+  background: var(--indigo-soft);
+  color: var(--indigo);
 }
 .sc-tag-ig {
   background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
+  color: var(--indigo);
 }
 
 /* ═══ Event card status colors ═══ */

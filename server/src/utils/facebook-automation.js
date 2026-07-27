@@ -250,13 +250,16 @@ export async function scrapeMyGroups(userId) {
     // Scroll down until no more new content loads
     let previousHeight = 0;
     let noChangeCount = 0;
-    const maxScrollAttempts = 150;
+    // Keep the scrape comfortably below the client's 120s timeout. Facebook
+    // loads several groups per scroll, so 90 attempts is sufficient even for
+    // large accounts while avoiding a false client-side sync failure.
+    const maxScrollAttempts = 90;
     for (let i = 0; i < maxScrollAttempts; i++) {
       const currentHeight = await page.evaluate(
         () => document.body.scrollHeight,
       );
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(750);
 
       if (currentHeight === previousHeight) {
         noChangeCount++;

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 // Mock pages to avoid loading their dependencies
@@ -59,8 +59,28 @@ vi.mock('../pages/ScheduledCalendar.jsx', () => ({
 vi.mock('../pages/MyGroups.jsx', () => ({
   default: () => <div data-testid="my-groups-page">MyGroups</div>,
 }));
+vi.mock('../context/DataProvider', () => ({
+  DataProvider: ({ children }) => <>{children}</>,
+  useAppData: () => ({ user: null, authChecked: true }),
+}));
 vi.mock('../App.css', () => ({}));
 vi.mock('../styles/sidebar.css', () => ({}));
+
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation(query => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
 
 describe('App', () => {
   it('should render Landing page at root route', async () => {

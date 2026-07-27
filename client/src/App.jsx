@@ -24,6 +24,9 @@ const GroupDetails = lazy(() => import('./pages/GroupDetails'))
 const PostDetails = lazy(() => import('./pages/PostDetails'))
 const OAuthCallback = lazy(() => import('./pages/OAuthCallback'))
 const Privacy = lazy(() => import('./pages/Privacy'))
+const AccessibilityStatement = lazy(() => import('./pages/AccessibilityStatement'))
+const CancellationPolicy = lazy(() => import('./pages/CancellationPolicy'))
+const Contact = lazy(() => import('./pages/Contact'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const Templates = lazy(() => import('./pages/Templates'))
 const TemplateForm = lazy(() => import('./pages/TemplateForm'))
@@ -204,9 +207,9 @@ function GlobalPublishBanner() {
   const hiddenCount = banners.length - visibleBanners.length
 
   return (
-    <div className="global-banners-container">
+    <div className="global-banners-container" aria-live="polite" aria-atomic="false">
       {hiddenCount > 0 && (
-        <div className="global-publish-banner global-banner-overflow">
+        <div className="global-publish-banner global-banner-overflow" role="status">
           <span>+{hiddenCount} פעולות נוספות ברקע</span>
         </div>
       )}
@@ -214,12 +217,21 @@ function GlobalPublishBanner() {
         const colorClass = banner.type === 'progress' ? 'global-banner-progress'
           : banner.type === 'success' ? 'global-banner-success' : 'global-banner-error'
         return (
-          <div key={banner.id} className={`global-publish-banner ${colorClass}`}>
+          <div
+            key={banner.id}
+            className={`global-publish-banner ${colorClass}`}
+            role={banner.type === 'error' ? 'alert' : 'status'}
+          >
             {banner.type === 'progress' && (
-              <span className="global-banner-spinner"></span>
+              <span className="global-banner-spinner" aria-hidden="true"></span>
             )}
             <span>{banner.msg}</span>
-            <button onClick={() => setBanners(prev => prev.filter(b => b.id !== banner.id))}>✕</button>
+            <button
+              onClick={() => setBanners(prev => prev.filter(b => b.id !== banner.id))}
+              aria-label="סגור הודעה"
+            >
+              ✕
+            </button>
           </div>
         )
       })}
@@ -261,6 +273,9 @@ function App() {
           <Route path="/oauth/apple/callback" element={<OAuthCallback />} />
           <Route path="/oauth/instagram/callback" element={<OAuthCallback />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/accessibility-statement" element={<AccessibilityStatement />} />
+          <Route path="/cancellation-policy" element={<CancellationPolicy />} />
+          <Route path="/contact" element={<Contact />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
         </Routes>
         </Suspense>

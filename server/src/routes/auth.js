@@ -2,6 +2,7 @@ import express from "express";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
 import { decrypt } from "../utils/encryption.js";
@@ -31,22 +32,33 @@ const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 
 // In-memory store for pending email verifications (code → data)
 // Format: { email: { code, data, expiresAt } }
-const pendingVerifications = new Map();
-const passwordResetCodes = new Map();
+const hashOneTimeCode = (code) =>
+  crypto.createHash("sha256").update(String(code).trim()).digest("hex");
 
-// Clean expired entries every 5 minutes
-setInterval(
-  () => {
-    const now = Date.now();
-    for (const [key, val] of pendingVerifications) {
-      if (val.expiresAt < now) pendingVerifications.delete(key);
-    }
-    for (const [key, val] of passwordResetCodes) {
-      if (val.expiresAt < now) passwordResetCodes.delete(key);
-    }
-  },
-  5 * 60 * 1000,
-);
+async function createPasswordResetCode(user, code) {
+  await prisma.passwordResetToken.deleteMany({
+    where: { userId: user.id, usedAt: null },
+  });
+  return prisma.passwordResetToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashOneTimeCode(code),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    },
+  });
+}
+
+async function findValidPasswordReset(userId, code) {
+  return prisma.passwordResetToken.findFirst({
+    where: {
+      userId,
+      tokenHash: hashOneTimeCode(code),
+      usedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
 
 // setRefreshCookie, formatUserResponse, issueTokens, normalizeEmail
 // are now imported from utils/auth-service.js
@@ -60,6 +72,7 @@ router.post("/register", async (req, res) => {
     // Verify Turnstile CAPTCHA
     const captchaValid = await verifyTurnstile(captchaToken, req.ip);
     if (!captchaValid) {
+      log.warn("Registration CAPTCHA failed", { email, ip: req.ip });
       return res.status(400).json({ error: "אימות CAPTCHA נכשל — נסה שוב" });
     }
 
@@ -97,16 +110,39 @@ router.post("/register", async (req, res) => {
 
     // Generate and send verification code
     const code = generateCode();
-    pendingVerifications.set(normalizedEmail, {
-      code,
-      data: { email: normalizedEmail, password, name, gender, phone, idNumber },
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    await prisma.pendingRegistration.upsert({
+      where: { email: normalizedEmail },
+      create: {
+        email: normalizedEmail,
+        codeHash: hashOneTimeCode(code),
+        passwordHash,
+        name: name || null,
+        gender: gender || null,
+        phone: phone || null,
+        idNumber: idNumber || null,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+      update: {
+        codeHash: hashOneTimeCode(code),
+        passwordHash,
+        name: name || null,
+        gender: gender || null,
+        phone: phone || null,
+        idNumber: idNumber || null,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
     });
 
     const sent = await sendVerificationEmail(normalizedEmail, code);
     if (!sent) {
       return res.status(500).json({ error: "שגיאה בשליחת המייל — נסה שוב" });
     }
+
+    log.info("Registration verification email requested", {
+      email: normalizedEmail,
+      ip: req.ip,
+    });
 
     res.json({
       success: true,
@@ -129,25 +165,28 @@ router.post("/verify-email", async (req, res) => {
       return res.status(400).json({ error: "חסר אימייל או קוד" });
     }
 
-    const pending = pendingVerifications.get(normalizedEmail);
+    const pending = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!pending) {
       return res
         .status(400)
         .json({ error: "לא נמצא קוד אימות — נסה להירשם מחדש" });
     }
 
-    if (pending.expiresAt < Date.now()) {
-      pendingVerifications.delete(normalizedEmail);
+    if (pending.expiresAt < new Date()) {
+      await prisma.pendingRegistration.delete({
+        where: { email: normalizedEmail },
+      });
       return res.status(400).json({ error: "הקוד פג תוקף — נסה להירשם מחדש" });
     }
 
-    if (pending.code !== code.trim()) {
+    if (pending.codeHash !== hashOneTimeCode(code)) {
       return res.status(400).json({ error: "קוד שגוי — נסה שוב" });
     }
 
     // Code verified — create the user
-    pendingVerifications.delete(normalizedEmail);
-    const { password, name, gender, phone, idNumber } = pending.data;
+    const { passwordHash, name, gender, phone, idNumber } = pending;
 
     // Double-check email not taken (race condition)
     const existing = await prisma.user.findUnique({
@@ -157,17 +196,22 @@ router.post("/verify-email", async (req, res) => {
       return res.status(409).json({ error: "Email already registered" });
     }
 
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-
-    const user = await prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        passwordHash,
-        name: name || null,
-        gender: gender || null,
-        phone: phone || null,
-        idNumber: idNumber || null,
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email: normalizedEmail,
+          passwordHash,
+          name,
+          gender,
+          phone,
+          idNumber,
+          emailVerifiedAt: new Date(),
+        },
+      });
+      await tx.pendingRegistration.delete({
+        where: { email: normalizedEmail },
+      });
+      return created;
     });
 
     // Generate JWT tokens
@@ -199,15 +243,22 @@ router.post("/resend-code", async (req, res) => {
     const { email } = req.body;
     const normalizedEmail = normalizeEmail(email);
 
-    const pending = pendingVerifications.get(normalizedEmail);
+    const pending = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!pending) {
       return res.status(400).json({ error: "לא נמצאה הרשמה בהמתנה" });
     }
 
     // Generate new code
     const code = generateCode();
-    pending.code = code;
-    pending.expiresAt = Date.now() + 10 * 60 * 1000;
+    await prisma.pendingRegistration.update({
+      where: { email: normalizedEmail },
+      data: {
+        codeHash: hashOneTimeCode(code),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    });
 
     const sent = await sendVerificationEmail(normalizedEmail, code);
     if (!sent) {
@@ -229,6 +280,7 @@ router.post("/login", async (req, res) => {
     // Verify Turnstile CAPTCHA
     const captchaValid = await verifyTurnstile(captchaToken, req.ip);
     if (!captchaValid) {
+      log.warn("Login CAPTCHA failed", { email, ip: req.ip });
       return res.status(400).json({ error: "אימות CAPTCHA נכשל — נסה שוב" });
     }
 
@@ -248,11 +300,13 @@ router.post("/login", async (req, res) => {
       where: { email: normalizedEmail },
     });
     if (!user || !user.passwordHash) {
+      log.warn("Login rejected", { email: normalizedEmail, reason: "not_found" });
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
+      log.warn("Login rejected", { userId: user.id, reason: "invalid_password" });
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
@@ -280,6 +334,12 @@ router.post("/login", async (req, res) => {
     const instagramAccount = await prisma.connectedAccount.findFirst({
       where: { userId: user.id, provider: "INSTAGRAM", status: "ACTIVE" },
       select: { providerUserName: true },
+    });
+
+    log.info("Login succeeded", {
+      userId: user.id,
+      hasSubscription: Boolean(activeSubscription),
+      instagramConnected: Boolean(instagramAccount),
     });
 
     res.json({
@@ -322,11 +382,7 @@ router.post("/forgot-password", async (req, res) => {
     }
 
     const code = generateCode();
-    passwordResetCodes.set(normalizedEmail, {
-      code,
-      userId: user.id,
-      expiresAt: Date.now() + 10 * 60 * 1000,
-    });
+    await createPasswordResetCode(user, code);
 
     await sendPasswordResetEmail(normalizedEmail, code);
     res.json({ success: true });
@@ -354,25 +410,33 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({ error: "סיסמה חייבת להכיל עד 128 תווים" });
     }
 
-    const pending = passwordResetCodes.get(normalizedEmail);
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    const pending = user
+      ? await findValidPasswordReset(user.id, code)
+      : null;
     if (!pending) {
       return res.status(400).json({ error: "לא נמצא קוד אימות — בקש קוד חדש" });
     }
 
     if (pending.expiresAt < Date.now()) {
-      passwordResetCodes.delete(normalizedEmail);
+      await prisma.passwordResetToken.delete({ where: { id: pending.id } });
       return res.status(400).json({ error: "הקוד פג תוקף — בקש קוד חדש" });
     }
 
-    if (pending.code !== code.trim()) {
+    if (pending.tokenHash !== hashOneTimeCode(code)) {
       return res.status(400).json({ error: "קוד שגוי" });
     }
 
-    passwordResetCodes.delete(normalizedEmail);
+    await prisma.passwordResetToken.update({
+      where: { id: pending.id },
+      data: { usedAt: new Date() },
+    });
 
     const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
     await prisma.user.update({
-      where: { id: pending.userId },
+      where: { id: user.id },
       data: { passwordHash: newHash },
     });
 
@@ -414,6 +478,7 @@ router.post("/refresh", async (req, res) => {
         where: { id: user.id },
         data: { refreshToken: null },
       });
+      log.warn("Refresh token reuse detected", { userId: user.id, ip: req.ip });
       return res.status(401).json({ error: "Token reuse detected" });
     }
 
@@ -699,6 +764,7 @@ router.post("/logout", async (req, res) => {
         where: { id: req.user.id },
         data: { refreshToken: null },
       });
+      log.info("Logout succeeded", { userId: req.user.id });
     }
 
     res.clearCookie("refreshToken", { path: "/api/auth" });
@@ -734,11 +800,7 @@ router.post("/password/request-code", async (req, res) => {
 
   // Send verification code
   const code = generateCode();
-  passwordResetCodes.set(user.email, {
-    code,
-    userId: user.id,
-    expiresAt: Date.now() + 10 * 60 * 1000,
-  });
+  await createPasswordResetCode(user, code);
 
   const sent = await sendPasswordResetEmail(user.email, code);
   if (!sent) {
@@ -771,21 +833,24 @@ router.patch("/password", async (req, res) => {
     return res.status(401).json({ error: "Not authenticated" });
   }
 
-  const pending = passwordResetCodes.get(user.email);
-  if (!pending || pending.userId !== user.id) {
+  const pending = await findValidPasswordReset(user.id, code);
+  if (!pending) {
     return res.status(400).json({ error: "לא נמצא קוד אימות — בקש קוד חדש" });
   }
 
   if (pending.expiresAt < Date.now()) {
-    passwordResetCodes.delete(user.email);
+    await prisma.passwordResetToken.delete({ where: { id: pending.id } });
     return res.status(400).json({ error: "הקוד פג תוקף — בקש קוד חדש" });
   }
 
-  if (pending.code !== code.trim()) {
+  if (pending.tokenHash !== hashOneTimeCode(code)) {
     return res.status(400).json({ error: "קוד שגוי" });
   }
 
-  passwordResetCodes.delete(user.email);
+  await prisma.passwordResetToken.update({
+    where: { id: pending.id },
+    data: { usedAt: new Date() },
+  });
 
   const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
   await prisma.user.update({

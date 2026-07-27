@@ -5,6 +5,7 @@ import { useTheme } from '../context/ThemeProvider'
 import { useNavigationGuard } from '../context/NavigationGuard'
 import { groupsService } from '../services/groupsService'
 import NotificationSettings from './NotificationSettings'
+import BrandLogo from './BrandLogo'
 import {
   LayoutDashboard, Users, FileText, CalendarDays, BarChart3,
   History, LayoutTemplate, Settings, Bell, SquarePen, Plus, RefreshCw, Sparkles,
@@ -70,7 +71,8 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
     <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
       {/* Logo */}
       <div className="sidebar-logo" onClick={() => guardNavigate(() => { navigate('/dashboard?tab=overview'); onTabChange?.('dashboard') })}>
-        <img src="/logo.svg" alt="Possbo" className="sidebar-logo-img sidebar-logo-wordmark" />
+        <BrandLogo className="sidebar-logo-img" />
+        <span className="sidebar-logo-wordmark">ossbo</span>
       </div>
 
       {/* Main Navigation */}

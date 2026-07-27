@@ -1112,11 +1112,6 @@ export default function CreatePost() {
                 images={postImagePreviews}
                 userName={user?.name}
                 mode={previewMode === 'ig-story' ? 'STORY' : previewMode === 'ig-reel' ? 'REEL' : 'FEED'}
-                onAddImage={(files) => {
-                  const newImages = [...postImages, ...files].slice(0, 10)
-                  setPostImages(newImages)
-                  setPostImagePreviews(newImages.map(f => URL.createObjectURL(f)))
-                }}
               />
             )}
           </div>
@@ -1229,6 +1224,7 @@ export default function CreatePost() {
                     type="text"
                     className="cp-title-input"
                     placeholder="כותרת הקמפיין (לא תפורסם בפייסבוק)"
+                    aria-label="כותרת הקמפיין"
                     value={campaignTitle}
                     onChange={(e) => setCampaignTitle(e.target.value)}
                   />
@@ -1237,6 +1233,8 @@ export default function CreatePost() {
                     ref={postTextareaRef}
                     className={`cp-textarea ${stepErrors[0] && !postText.trim() ? 'input-error' : ''}`}
                     placeholder="מה ברצונך לשתף?"
+                    aria-label="תוכן הפוסט"
+                    aria-invalid={!!(stepErrors[0] && !postText.trim())}
                     value={postText}
                     onChange={(e) => setPostText(e.target.value)}
                     rows={6}
@@ -1257,7 +1255,7 @@ export default function CreatePost() {
                             <img src={preview} alt={`preview ${i + 1}`} />
                           )}
                           <span className="cp-image-number">{postImages[i]?.type?.startsWith('video/') ? '🎬' : i + 1}</span>
-                          <button onClick={() => removeImage(i)} className="cp-remove-img">✕</button>
+                          <button onClick={() => removeImage(i)} className="cp-remove-img" aria-label={`הסר מדיה ${i + 1}`}>✕</button>
                         </div>
                       ))}
                     </div>
@@ -1351,7 +1349,7 @@ export default function CreatePost() {
                       <label className="cp-option-card">
                         <span className="cp-option-card-icon cp-icon-blue">🖼️</span>
                         <span className="cp-option-card-text">תמונות / סרטון</span>
-                        <input type="file" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onChange={handleImageSelect} hidden />
+                        <input type="file" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onChange={handleImageSelect} hidden aria-label="בחר תמונות או סרטונים" />
                       </label>
                       <button
                         type="button"
@@ -1464,7 +1462,7 @@ export default function CreatePost() {
                           {(showAllChips ? selectedGroups : selectedGroups.slice(0, 4)).map(g => (
                             <span key={g.id} className="cp-selected-chip">
                               <span>{g.name}</span>
-                              <button type="button" onClick={() => toggleGroup(g)}>✕</button>
+                              <button type="button" onClick={() => toggleGroup(g)} aria-label={`הסר את ${g.name || 'הקבוצה'} מהבחירה`}>✕</button>
                             </span>
                           ))}
                           {selectedGroups.length > 4 && !showAllChips && (
@@ -1506,14 +1504,15 @@ export default function CreatePost() {
                             <input
                               type="text"
                               placeholder="חפש קבוצה..."
+                              aria-label="חיפוש קבוצה"
                               value={groupSearch}
                               onChange={(e) => setGroupSearch(e.target.value)}
                             />
                           </div>
 
                           <div className="cp-group-actions">
-                            <button onClick={selectAllGroups}>בחר הכל</button>
-                            <button onClick={deselectAll}>נקה בחירה</button>
+                            <button onClick={selectAllGroups} type="button">בחר הכל</button>
+                            <button onClick={deselectAll} type="button">נקה בחירה</button>
                           </div>
 
                           <div className="cp-groups-list">
@@ -1651,7 +1650,7 @@ export default function CreatePost() {
                             <span>סטורי דורש תמונה או סרטון.</span>
                             <label className="cp-ig-upload-btn">
                               📷 העלאת תמונה או סרטון לסטורי
-                              <input type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('STORY')} />
+                              <input type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('STORY')} aria-label="בחר מדיה לסטורי" />
                             </label>
                             <span className="cp-ig-upload-note">📌 מדיה זו תשמש רק לסטורי</span>
                           </div>
@@ -1670,7 +1669,7 @@ export default function CreatePost() {
                                   ) : (
                                     <img src={src} alt={`סטורי ${i + 1}`} className="cp-ig-type-media-thumb" />
                                   )}
-                                  <button type="button" className="cp-ig-type-media-remove" onClick={() => removeIgTypeMedia('STORY', i)}>✕</button>
+                                  <button type="button" className="cp-ig-type-media-remove" onClick={() => removeIgTypeMedia('STORY', i)} aria-label={`הסר מדיה מסטורי ${i + 1}`}>✕</button>
                                 </div>
                               ))}
                             </div>
@@ -1696,21 +1695,21 @@ export default function CreatePost() {
                             </div>
                             <div className="cp-ig-media-choices">
                               <label className={`cp-ig-media-choice ${storyMediaMode === 'first' ? 'active' : ''}`}>
-                                <input type="radio" name="storyMedia" checked={storyMediaMode === 'first'} onChange={() => setStoryMediaMode('first')} />
+                                <input type="radio" name="storyMedia" checked={storyMediaMode === 'first'} onChange={() => setStoryMediaMode('first')} aria-label="בחר תמונה ראשונה לסטורי" />
                                 <div className="cp-ig-media-choice-content">
                                   <span className="cp-ig-media-choice-title">📸 פרסם רק את הראשונה</span>
                                   <span className="cp-ig-media-choice-desc">סטורי אחד עם התמונה הראשונה שהעלית</span>
                                 </div>
                               </label>
                               <label className={`cp-ig-media-choice ${storyMediaMode === 'all' ? 'active' : ''}`}>
-                                <input type="radio" name="storyMedia" checked={storyMediaMode === 'all'} onChange={() => setStoryMediaMode('all')} />
+                                <input type="radio" name="storyMedia" checked={storyMediaMode === 'all'} onChange={() => setStoryMediaMode('all')} aria-label="בחר את כל התמונות לסטורי" />
                                 <div className="cp-ig-media-choice-content">
                                   <span className="cp-ig-media-choice-title">📚 פרסם סטורי לכל תמונה</span>
                                   <span className="cp-ig-media-choice-desc">{postImagePreviews.length} סטוריז נפרדים, אחד לכל תמונה</span>
                                 </div>
                               </label>
                               <label className={`cp-ig-media-choice ${storyMediaMode === 'pick' ? 'active' : ''}`}>
-                                <input type="radio" name="storyMedia" checked={storyMediaMode === 'pick'} onChange={() => setStoryMediaMode('pick')} />
+                                <input type="radio" name="storyMedia" checked={storyMediaMode === 'pick'} onChange={() => setStoryMediaMode('pick')} aria-label="בחר תמונה ידנית לסטורי" />
                                 <div className="cp-ig-media-choice-content">
                                   <span className="cp-ig-media-choice-title">🎯 בחר תמונה ספציפית</span>
                                   <span className="cp-ig-media-choice-desc">בחרי איזו תמונה תופיע בסטורי</span>
@@ -1784,7 +1783,7 @@ export default function CreatePost() {
                                     <span>ריל דורש <strong>סרטון</strong>. העלית רק תמונות.</span>
                                     <label className="cp-ig-upload-btn">
                                       🎬 העלאת סרטון לריל
-                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('REEL')} />
+                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('REEL')} aria-label="בחר סרטון לריל" />
                                     </label>
                                     <span className="cp-ig-upload-note">📌 סרטון זה ישמש רק לריל</span>
                                   </div>
@@ -1797,7 +1796,7 @@ export default function CreatePost() {
                                     <span>ריל דורש סרטון.</span>
                                     <label className="cp-ig-upload-btn">
                                       🎬 העלאת סרטון לריל
-                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('REEL')} />
+                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('REEL')} aria-label="בחר סרטון לריל" />
                                     </label>
                                     <span className="cp-ig-upload-note">📌 סרטון זה ישמש רק לריל</span>
                                   </div>
@@ -1815,7 +1814,7 @@ export default function CreatePost() {
                                   {igTypeMediaPreviews.REEL.map((src, i) => (
                                     <div key={i} className="cp-ig-type-media-item">
                                       <video src={src} className="cp-ig-type-media-thumb" />
-                                      <button type="button" className="cp-ig-type-media-remove" onClick={() => removeIgTypeMedia('REEL', i)}>✕</button>
+                                      <button type="button" className="cp-ig-type-media-remove" onClick={() => removeIgTypeMedia('REEL', i)} aria-label={`הסר מדיה מרילס ${i + 1}`}>✕</button>
                                     </div>
                                   ))}
                                 </div>
@@ -1831,7 +1830,7 @@ export default function CreatePost() {
                             <span>פוסט בפיד דורש לפחות תמונה אחת.</span>
                             <label className="cp-ig-upload-btn">
                               📷 העלאת תמונה לפיד
-                              <input type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('FEED')} />
+                              <input type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('FEED')} aria-label="בחר מדיה לפיד" />
                             </label>
                             <span className="cp-ig-upload-note">📌 מדיה זו תשמש רק לפיד</span>
                           </div>
@@ -1850,7 +1849,7 @@ export default function CreatePost() {
                                   ) : (
                                     <img src={src} alt={`פיד ${i + 1}`} className="cp-ig-type-media-thumb" />
                                   )}
-                                  <button type="button" className="cp-ig-type-media-remove" onClick={() => removeIgTypeMedia('FEED', i)}>✕</button>
+                                  <button type="button" className="cp-ig-type-media-remove" onClick={() => removeIgTypeMedia('FEED', i)} aria-label={`הסר מדיה מפיד ${i + 1}`}>✕</button>
                                 </div>
                               ))}
                             </div>
@@ -1927,6 +1926,7 @@ export default function CreatePost() {
                                   <input
                                     type="text"
                                     placeholder="חפש קבוצה או רשימת תפוצה..."
+                                    aria-label="חיפוש קבוצת וואטסאפ או רשימת תפוצה"
                                     value={waSearch}
                                     onChange={(e) => setWaSearch(e.target.value)}
                                   />
@@ -1941,7 +1941,7 @@ export default function CreatePost() {
                                       return [...prev, ...toAdd]
                                     })
                                   }}>בחר הכל</button>
-                                  <button onClick={() => setSelectedWaTargets([])}>נקה בחירה</button>
+                                  <button onClick={() => setSelectedWaTargets([])} type="button">נקה בחירה</button>
                                   <span className="cp-selected-count">{selectedWaTargets.length} נבחרו</span>
                                 </div>
 
@@ -2233,8 +2233,8 @@ export default function CreatePost() {
                                       <div className="day-times-slots">
                                         {times.map((time,ti) => (
                                           <div key={ti} className="time-slot">
-                                            <input type="time" value={time} onChange={(e) => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
-                                            {times.length > 1 && <button type="button" className="time-remove-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                            <input type="time" value={time} onChange={(e) => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} aria-label={`שעה ${ti + 1} ליום ${dayName}`} />
+                                            {times.length > 1 && <button type="button" className="time-remove-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }} aria-label={`הסר שעה ${ti + 1} מיום ${dayName}`}>✕</button>}
                                           </div>
                                         ))}
                                         {times.length < 5 && <button type="button" className="time-add-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
@@ -2357,8 +2357,8 @@ export default function CreatePost() {
                                       <div className="day-times-slots">
                                         {times.map((time,ti) => (
                                           <div key={ti} className="time-slot">
-                                            <input type="time" value={time} onChange={(e) => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
-                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                            <input type="time" value={time} onChange={(e) => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} aria-label={`שעה ${ti + 1} לפרופיל ביום ${dayName}`} />
+                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }} aria-label={`הסר שעה ${ti + 1} מפרופיל ביום ${dayName}`}>✕</button>}
                                           </div>
                                         ))}
                                         {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
@@ -2530,7 +2530,7 @@ export default function CreatePost() {
                                       <div className="day-times-slots">
                                         {times.map((time,ti) => (
                                           <div key={ti} className="time-slot">
-                                            <input type="time" value={time} onChange={(e) => {
+                                            <input type="time" value={time} aria-label={`שעה ${ti + 1} לאינסטגרם ביום ${dayName}`} onChange={(e) => {
                                               setIgTypeSchedules(prev => {
                                                 const cur = prev[activeIgType]
                                                 const newDayTimes = { ...cur.dayTimes, [dayIdx]: [...(cur.dayTimes[dayIdx] || [''])] }
@@ -2538,7 +2538,7 @@ export default function CreatePost() {
                                                 return { ...prev, [activeIgType]: { ...cur, dayTimes: newDayTimes } }
                                               })
                                             }} />
-                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => {
+                                            {times.length>1 && <button type="button" className="time-remove-btn" aria-label={`הסר שעה ${ti + 1} מאינסטגרם ביום ${dayName}`} onClick={() => {
                                               setIgTypeSchedules(prev => {
                                                 const cur = prev[activeIgType]
                                                 const newDayTimes = { ...cur.dayTimes, [dayIdx]: cur.dayTimes[dayIdx].filter((_,idx)=>idx!==ti) }
@@ -2671,8 +2671,8 @@ export default function CreatePost() {
                                       <div className="day-times-slots">
                                         {times.map((time,ti) => (
                                           <div key={ti} className="time-slot">
-                                            <input type="time" value={time} onChange={(e) => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} />
-                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }}>✕</button>}
+                                            <input type="time" value={time} onChange={(e) => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} aria-label={`שעה ${ti + 1} לוואטסאפ ביום ${dayName}`} />
+                                            {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }} aria-label={`הסר שעה ${ti + 1} מוואטסאפ ביום ${dayName}`}>✕</button>}
                                           </div>
                                         ))}
                                         {times.length<5 && <button type="button" className="time-add-btn" onClick={() => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||['']),''] ; return c }) }}>+ שעה</button>}
@@ -2863,12 +2863,19 @@ export default function CreatePost() {
 
         {showMobilePreview && (
           <div className="fbp-modal-overlay" onClick={() => setShowMobilePreview(false)}>
-            <div className="fbp-modal-content" onClick={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}>
-              <button className="fbp-modal-close" onClick={() => setShowMobilePreview(false)}>✕</button>
-              <div className="cp-preview-toggle" style={{ marginBottom: 8 }}>
+            <div
+              className="fbp-modal-content"
+              role="dialog"
+              aria-modal="true"
+              aria-label="תצוגה מקדימה"
+              onClick={(e) => e.stopPropagation()}
+              onTouchMove={(e) => e.stopPropagation()}
+            >
+              <button className="fbp-modal-close" onClick={() => setShowMobilePreview(false)} aria-label="סגור תצוגה מקדימה">✕</button>
+              <div className="cp-preview-toggle cp-preview-toggle-mobile">
                 <button
                   type="button"
-                  className={`cp-preview-toggle-btn ${previewMode === 'facebook' ? 'active' : ''}`}
+                  className={`cp-preview-toggle-btn cp-toggle-fb ${previewMode === 'facebook' ? 'active' : ''}`}
                   onClick={() => setPreviewMode('facebook')}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
@@ -2876,7 +2883,7 @@ export default function CreatePost() {
                 </button>
                 <button
                   type="button"
-                  className={`cp-preview-toggle-btn ${previewMode.startsWith('ig-') ? 'active' : ''}`}
+                  className={`cp-preview-toggle-btn cp-toggle-ig ${previewMode.startsWith('ig-') ? 'active' : ''}`}
                   onClick={() => setPreviewMode(prev => prev.startsWith('ig-') ? prev : 'ig-feed')}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
@@ -2892,7 +2899,7 @@ export default function CreatePost() {
                 </button>
               </div>
               {previewMode.startsWith('ig-') && (
-                <div className="cp-preview-sub-toggle" style={{ marginBottom: 10 }}>
+                <div className="cp-preview-sub-toggle cp-preview-sub-toggle-mobile">
                   <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-feed' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-feed')}>🖼️ פוסט</button>
                   <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-story' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-story')}>⏱️ סטורי</button>
                   <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-reel' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-reel')}>🎬 רילס</button>

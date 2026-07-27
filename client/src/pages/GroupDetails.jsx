@@ -209,11 +209,11 @@ export default function GroupDetails() {
 
         {showPostForm && (
           <div className="fb-create-post-overlay" onClick={resetPostForm}>
-            <div className="fb-create-post-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="fb-create-post-dialog" role="dialog" aria-modal="true" aria-label={locale.publish.title} onClick={(e) => e.stopPropagation()}>
               {/* Header */}
               <div className="fb-cp-header">
                 <h3>{locale.publish.title}</h3>
-                <button onClick={resetPostForm} className="fb-cp-close-btn">✕</button>
+                <button onClick={resetPostForm} className="fb-cp-close-btn" aria-label="סגור יצירת פוסט">✕</button>
               </div>
 
               <div className="fb-cp-divider" />

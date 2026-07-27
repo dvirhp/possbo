@@ -22,6 +22,32 @@ vi.mock("../../src/utils/posts-storage.js", () => ({
   getPostsByGroup: vi.fn(async () => []),
 }));
 
+const mockGroupFindFirst = vi.fn();
+const mockGroupCreate = vi.fn();
+const mockPostCreate = vi.fn();
+const mockPostGroupCreate = vi.fn();
+const mockPublicationHistoryCreate = vi.fn();
+const mockTransaction = vi.fn();
+
+vi.mock("../../src/config/prisma.js", () => ({
+  default: {
+    group: {
+      findFirst: mockGroupFindFirst,
+      create: mockGroupCreate,
+    },
+    post: {
+      create: mockPostCreate,
+    },
+    postGroup: {
+      create: mockPostGroupCreate,
+    },
+    publicationHistory: {
+      create: mockPublicationHistoryCreate,
+    },
+    $transaction: mockTransaction,
+  },
+}));
+
 // Mock multer - just pass through, let express parse body
 vi.mock("multer", () => {
   const passthrough = (req, res, next) => next();
@@ -49,6 +75,19 @@ beforeEach(async () => {
       createdAt: "2024-01-01T00:00:00.000Z",
       hasScreenshot: !!data.screenshot,
     }));
+  mockGroupFindFirst.mockReset().mockResolvedValue({
+    id: "group-1",
+    url: "https://facebook.com/groups/123",
+  });
+  mockGroupCreate.mockReset().mockResolvedValue({ id: "group-1" });
+  mockPostCreate.mockReset().mockResolvedValue({ id: "post-1" });
+  mockPostGroupCreate.mockReset().mockResolvedValue({ id: "post-group-1" });
+  mockPublicationHistoryCreate.mockReset().mockResolvedValue({ id: "history-1" });
+  mockTransaction.mockReset().mockImplementation(async (callback) => callback({
+    post: { create: mockPostCreate },
+    postGroup: { create: mockPostGroupCreate },
+    publicationHistory: { create: mockPublicationHistoryCreate },
+  }));
   const publishModule = await import("../../src/routes/publish.js");
 
   app = express();

@@ -9,6 +9,7 @@ import {
   Menu, X, Bell, Home, Sparkles, ChevronLeft, ChevronDown, CreditCard, MessageSquareHeart
 } from 'lucide-react'
 import NotificationSettings from './NotificationSettings'
+import BrandLogo from './BrandLogo'
 import '../styles/bottom-nav.css'
 
 // Bottom nav order (RTL): תפריט | בית | [פרסום] | קמפיינים | טמפלייטים
@@ -67,7 +68,7 @@ export default function BottomNav() {
     }
   }, [])
 
-  const hiddenPaths = ['/', '/login', '/register', '/forgot-password', '/privacy']
+  const hiddenPaths = ['/', '/login', '/register', '/forgot-password', '/privacy', '/accessibility-statement', '/cancellation-policy', '/contact']
   if (hiddenPaths.includes(location.pathname)) return null
 
   const isActive = (item) => {
@@ -100,8 +101,8 @@ export default function BottomNav() {
       <svg width="0" height="0" style={{ position: 'absolute' }}>
         <defs>
           <linearGradient id="bnav-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#818cf8" />
-            <stop offset="100%" stopColor="#6366f1" />
+            <stop offset="0%" stopColor="var(--indigo)" />
+            <stop offset="100%" stopColor="var(--indigo)" />
           </linearGradient>
         </defs>
       </svg>
@@ -112,7 +113,14 @@ export default function BottomNav() {
           const Icon = item.icon
           if (item.isMenu) {
             return (
-              <button key={item.id} className={`bottom-nav-item bottom-nav-menu ${drawerOpen ? 'active' : ''}`} onClick={() => setDrawerOpen(!drawerOpen)}>
+              <button
+                key={item.id}
+                className={`bottom-nav-item bottom-nav-menu ${drawerOpen ? 'active' : ''}`}
+                onClick={() => setDrawerOpen(!drawerOpen)}
+                aria-label={drawerOpen ? 'סגור תפריט' : 'פתח תפריט'}
+                aria-expanded={drawerOpen}
+                aria-controls="mobile-drawer"
+              >
                 <Icon size={22} strokeWidth={2} />
                 <span className="bottom-nav-label">{item.label}</span>
               </button>
@@ -124,9 +132,11 @@ export default function BottomNav() {
                 key={item.id}
                 className={`bottom-nav-item bottom-nav-center ${isActive(item) ? 'active' : ''}`}
                 onClick={() => guardNavigate(() => { navigate(item.path); setDrawerOpen(false) })}
+                aria-label={item.label}
+                aria-current={isActive(item) ? 'page' : undefined}
               >
                 <div className="bottom-nav-center-ring">
-                  <img src="/logo-icon.svg" alt="" width="30" height="30" />
+                  <BrandLogo decorative width="30" height="30" />
                 </div>
                 <span className="bottom-nav-label">{item.label}</span>
               </button>
@@ -137,6 +147,8 @@ export default function BottomNav() {
               key={item.id}
               className={`bottom-nav-item ${isActive(item) ? 'active' : ''}`}
               onClick={() => guardNavigate(() => { navigate(item.path); setDrawerOpen(false) })}
+              aria-label={item.label}
+              aria-current={isActive(item) ? 'page' : undefined}
             >
               <Icon size={22} strokeWidth={2} />
               <span className="bottom-nav-label">{item.label}</span>
@@ -161,17 +173,18 @@ export default function BottomNav() {
               <span className="mobile-drawer-email">{user?.email || ''}</span>
             </div>
           </div>
-          <button className="mobile-drawer-close" onClick={() => setDrawerOpen(false)}>
+          <button className="mobile-drawer-close" onClick={() => setDrawerOpen(false)} aria-label="סגור תפריט">
             <X size={20} />
           </button>
         </div>
-        <nav className="mobile-drawer-nav">
+        <nav className="mobile-drawer-nav" id="mobile-drawer" aria-label="תפריט מובייל">
           {DRAWER_ITEMS.map(item => {
             const Icon = item.icon
             return (
               <button
                 key={item.path}
                 className={`mobile-drawer-item ${isDrawerActive(item) ? 'active' : ''}`}
+                aria-current={isDrawerActive(item) ? 'page' : undefined}
                 onClick={() => {
                   if (item.action === 'open-chatbot') {
                     window.dispatchEvent(new Event('open-chatbot'))
@@ -190,7 +203,7 @@ export default function BottomNav() {
         <div className="mobile-drawer-divider" />
         <div className="mobile-drawer-actions">
           <div className="mobile-drawer-expandable">
-            <button className="mobile-drawer-item" onClick={() => setAccountExpanded(prev => !prev)}>
+            <button className="mobile-drawer-item" onClick={() => setAccountExpanded(prev => !prev)} aria-expanded={accountExpanded}>
               <Settings size={20} strokeWidth={1.8} />
               <span>ניהול חשבון</span>
               {accountExpanded ? <ChevronDown size={16} className="mobile-drawer-chevron" /> : <ChevronLeft size={16} className="mobile-drawer-chevron" />}

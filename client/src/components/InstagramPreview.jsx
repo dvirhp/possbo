@@ -156,7 +156,7 @@ export default function InstagramPreview({ text, images, userName, mode = 'FEED'
           {/* Story bottom */}
           <div className="igp-story-bottom">
             <div className="igp-story-reply">
-              <input type="text" placeholder="שלח הודעה..." disabled className="igp-story-reply-input" />
+              <input type="text" placeholder="שלח הודעה..." disabled className="igp-story-reply-input" aria-label="שלח הודעה" />
             </div>
             <div className="igp-story-send">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -253,12 +253,6 @@ export default function InstagramPreview({ text, images, userName, mode = 'FEED'
         {/* Time */}
         <div className="igp-post-time">עכשיו</div>
       </div>
-
-      {!text && !images?.length && (
-        <div className="igp-empty-state">
-          <p>התחל לכתוב כדי לראות תצוגה מקדימה</p>
-        </div>
-      )}
     </div>
   )
 }

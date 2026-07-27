@@ -98,6 +98,7 @@ export default function LocationAutocomplete({ value, onChange, placeholder, dis
               onMouseDown={(e) => { e.preventDefault(); handleClear() }}
               className="loc-autocomplete-clear"
               type="button"
+              aria-label="נקה מיקום"
             >
               ✕
             </button>
@@ -119,12 +120,17 @@ export default function LocationAutocomplete({ value, onChange, placeholder, dis
           placeholder={placeholder || 'חפש מיקום...'}
           className="loc-autocomplete-input"
           disabled={disabled}
+          aria-label={placeholder || 'חפש מיקום'}
+          role="combobox"
+          aria-expanded={showDropdown}
+          aria-autocomplete="list"
         />
         {query && (
           <button
             onMouseDown={(e) => { e.preventDefault(); handleClear() }}
             className="loc-autocomplete-clear"
             type="button"
+            aria-label="נקה מיקום"
           >
             ✕
           </button>
@@ -132,13 +138,14 @@ export default function LocationAutocomplete({ value, onChange, placeholder, dis
       </div>
 
       {showDropdown && (results.length > 0 || loading) && (
-        <ul className="loc-autocomplete-dropdown">
+        <ul className="loc-autocomplete-dropdown" role="listbox" aria-label="תוצאות מיקום">
           {loading && <li className="loc-autocomplete-loading">מחפש...</li>}
           {results.map((place) => (
             <li
               key={place.id}
               onMouseDown={(e) => { e.preventDefault(); handleSelect(place) }}
               className="loc-autocomplete-item"
+              role="option"
             >
               <span className="loc-autocomplete-item-icon">📍</span>
               <div className="loc-autocomplete-item-text">

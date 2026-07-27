@@ -105,6 +105,7 @@ describe('Register page', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.change(screen.getByPlaceholderText(/אימייל/), { target: { value: 'a@b.com' } });
     fireEvent.change(screen.getByPlaceholderText(/סיסמה/), { target: { value: '123456' } });
+    fireEvent.change(screen.getByPlaceholderText(/תעודת זהות/), { target: { value: '123456789' } });
     const submitBtn = screen.getByRole('button', { name: /הירשם/ });
     fireEvent.click(submitBtn);
     await waitFor(() => {
@@ -118,6 +119,7 @@ describe('Register page', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.change(screen.getByPlaceholderText(/אימייל/), { target: { value: 'a@b.com' } });
     fireEvent.change(screen.getByPlaceholderText(/סיסמה/), { target: { value: '123' } });
+    fireEvent.change(screen.getByPlaceholderText(/תעודת זהות/), { target: { value: '123456789' } });
     const submitBtn = screen.getByRole('button', { name: /הירשם/ });
     fireEvent.click(submitBtn);
     await waitFor(() => {

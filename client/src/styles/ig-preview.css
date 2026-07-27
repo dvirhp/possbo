@@ -7,14 +7,15 @@
   width: 280px;
   min-height: 520px;
   max-height: 600px;
-  background: #000;
+  background: var(--igp-bg, #000);
   border-radius: 36px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 0 0 2px #333;
+  box-shadow: 0 14px 40px var(--igp-shadow, rgba(0,0,0,0.5)), inset 0 0 0 2px var(--igp-frame-border, #333);
   display: flex;
   flex-direction: column;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   position: relative;
+  color: var(--igp-text, #fff);
 }
 
 .igp-story-frame {
@@ -30,13 +31,13 @@
   padding: 8px 20px 4px;
   font-size: 11px;
   font-weight: 600;
-  color: #fff;
+  color: var(--igp-text, #fff);
 }
 
 .igp-phone-island {
   width: 70px;
   height: 22px;
-  background: #1a1a1a;
+  background: var(--igp-island, #1a1a1a);
   border-radius: 20px;
 }
 
@@ -50,7 +51,7 @@
   display: block;
   width: 14px;
   height: 10px;
-  background: #fff;
+  background: var(--igp-status, #fff);
   border-radius: 2px;
   opacity: 0.8;
 }
@@ -68,7 +69,7 @@
   top: 3px;
   width: 2px;
   height: 4px;
-  background: #fff;
+  background: var(--igp-status, #fff);
   border-radius: 0 1px 1px 0;
   opacity: 0.8;
 }
@@ -79,13 +80,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 14px 8px;
+  background: var(--igp-bg, #000);
 }
 
 .igp-ig-logo {
   font-family: 'Segoe UI', sans-serif;
   font-size: 20px;
   font-weight: 700;
-  color: #fff;
+  color: var(--igp-text, #fff);
   font-style: italic;
 }
 
@@ -95,7 +97,7 @@
 }
 
 .igp-icon-btn {
-  color: #fff;
+  color: var(--igp-text, #fff);
   cursor: default;
 }
 
@@ -103,7 +105,7 @@
 .igp-content {
   flex: 1;
   overflow-y: auto;
-  background: #000;
+  background: var(--igp-bg, #000);
 }
 
 .igp-content::-webkit-scrollbar {
@@ -116,6 +118,8 @@
   align-items: center;
   padding: 10px 12px;
   gap: 10px;
+  background: var(--igp-bg, #000);
+  border-bottom: 1px solid var(--igp-divider, transparent);
 }
 
 .igp-post-avatar {
@@ -136,20 +140,20 @@
 .igp-avatar-placeholder {
   width: 100%;
   height: 100%;
-  background: #333;
+  background: var(--igp-avatar-bg, #333);
   border-radius: 50%;
-  border: 2px solid #000;
+  border: 2px solid var(--igp-bg, #000);
 }
 
 .igp-post-username {
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  color: var(--igp-text, #fff);
   flex: 1;
 }
 
 .igp-post-more {
-  color: #fff;
+  color: var(--igp-text, #fff);
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 1px;
@@ -160,7 +164,7 @@
 .igp-post-image {
   width: 100%;
   aspect-ratio: 1;
-  background: #1a1a1a;
+  background: var(--igp-media-bg, #1a1a1a);
   position: relative;
   overflow: hidden;
 }
@@ -179,7 +183,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #555;
+  color: var(--igp-muted, #555);
 }
 
 .igp-image-placeholder span {
@@ -222,25 +226,25 @@
 .igp-actions-right {
   display: flex;
   gap: 14px;
-  color: #fff;
+  color: var(--igp-text, #fff);
 }
 
 .igp-actions-left {
-  color: #fff;
+  color: var(--igp-text, #fff);
 }
 
 /* ─── Likes ─── */
 .igp-likes {
   padding: 0 12px 4px;
   font-size: 12px;
-  color: #fff;
+  color: var(--igp-text, #fff);
 }
 
 /* ─── Caption ─── */
 .igp-caption {
   padding: 2px 12px 4px;
   font-size: 12px;
-  color: #fff;
+  color: var(--igp-text, #fff);
   line-height: 1.5;
   direction: rtl;
 }
@@ -253,14 +257,14 @@
 .igp-comments-link {
   padding: 2px 12px;
   font-size: 11px;
-  color: #888;
+  color: var(--igp-secondary, #888);
   cursor: default;
 }
 
 .igp-post-time {
   padding: 4px 12px 10px;
   font-size: 10px;
-  color: #555;
+  color: var(--igp-muted, #555);
   text-transform: uppercase;
 }
 
@@ -284,7 +288,7 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  background: #000;
+  background: var(--igp-bg, #000);
 }
 
 /* ─── Story Progress ─── */
@@ -380,7 +384,7 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  color: #555;
+  color: var(--igp-muted, #555);
 }
 
 .igp-story-empty span {
@@ -601,9 +605,10 @@
   display: flex;
   gap: 4px;
   margin-bottom: 10px;
-  background: var(--bg-deep, #16181d);
+  background: var(--preview-toggle-bg, var(--bg-deep, #16181d));
   padding: 3px;
   border-radius: 10px;
+  border: 1px solid var(--preview-toggle-border, transparent);
 }
 
 .cp-preview-toggle-btn {
@@ -623,6 +628,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .cp-preview-toggle-btn:hover {
@@ -630,18 +636,20 @@
 }
 
 .cp-preview-toggle-btn.active {
-  background: var(--bg-base, #1c1f26);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  background: var(--preview-toggle-active-bg, var(--bg-base, #1c1f26));
+  box-shadow: var(--preview-toggle-active-shadow, 0 1px 4px rgba(0,0,0,0.2));
 }
 
 .cp-toggle-fb.active {
   color: #1877F2;
 }
 .cp-toggle-fb.active svg {
-  fill: #1877F2;
+  color: #1877F2;
+  fill: currentColor;
 }
 .cp-toggle-fb svg {
-  fill: var(--text-muted, #6b7684);
+  color: var(--text-muted, #6b7684);
+  fill: currentColor;
   transition: fill 0.2s;
 }
 
@@ -649,10 +657,12 @@
   color: #E1306C;
 }
 .cp-toggle-ig.active svg {
-  fill: url(#ig-gradient) !important;
+  color: #E1306C;
+  fill: currentColor;
 }
 .cp-toggle-ig svg {
-  fill: var(--text-muted, #6b7684);
+  color: var(--text-muted, #6b7684);
+  fill: currentColor;
   transition: fill 0.2s;
 }
 
@@ -660,10 +670,12 @@
   color: #25D366;
 }
 .cp-toggle-wa.active svg {
-  fill: #25D366;
+  color: #25D366;
+  fill: currentColor;
 }
 .cp-toggle-wa svg {
-  fill: var(--text-muted, #6b7684);
+  color: var(--text-muted, #6b7684);
+  fill: currentColor;
   transition: fill 0.2s;
 }
 
@@ -676,6 +688,7 @@
   display: flex;
   gap: 6px;
   margin-bottom: 8px;
+  width: 100%;
 }
 
 .cp-preview-sub-btn {
@@ -694,6 +707,83 @@
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
+  min-width: 0;
+}
+
+.cp-preview-toggle-mobile,
+.cp-preview-sub-toggle-mobile {
+  width: min(100%, 380px);
+  margin-inline: auto;
+}
+
+.cp-preview-toggle-mobile {
+  margin-bottom: 8px;
+  padding: 4px;
+}
+
+.cp-preview-sub-toggle-mobile {
+  margin-bottom: 10px;
+}
+
+.cp-preview-toggle-mobile .cp-preview-toggle-btn,
+.cp-preview-sub-toggle-mobile .cp-preview-sub-btn {
+  min-height: 34px;
+  padding: 7px 8px;
+  font-size: 11px;
+}
+
+:root,
+[data-theme="dark"] {
+  --igp-bg: #000;
+  --igp-frame-border: #2f3338;
+  --igp-shadow: rgba(255, 255, 255, 0.1);
+  --igp-island: #151515;
+  --igp-status: #fff;
+  --igp-text: #fff;
+  --igp-secondary: rgba(255, 255, 255, 0.58);
+  --igp-muted: rgba(255, 255, 255, 0.32);
+  --igp-divider: rgba(255, 255, 255, 0.08);
+  --igp-media-bg: #181818;
+  --igp-avatar-bg: #303136;
+  --preview-toggle-bg: rgba(255, 255, 255, 0.08);
+  --preview-toggle-border: rgba(255, 255, 255, 0.12);
+  --preview-toggle-active-bg: #fff;
+  --preview-toggle-active-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+}
+
+[data-theme="light"] {
+  --igp-bg: #fff;
+  --igp-frame-border: #d7dde6;
+  --igp-shadow: rgba(15, 23, 42, 0.16);
+  --igp-island: #111827;
+  --igp-status: #111827;
+  --igp-text: #111827;
+  --igp-secondary: #667085;
+  --igp-muted: #98a2b3;
+  --igp-divider: #eceff3;
+  --igp-media-bg: #f3f4f6;
+  --igp-avatar-bg: #d0d5dd;
+  --preview-toggle-bg: rgba(15, 23, 42, 0.06);
+  --preview-toggle-border: rgba(15, 23, 42, 0.1);
+  --preview-toggle-active-bg: #fff;
+  --preview-toggle-active-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+}
+
+[data-theme="light"] .igp-phone-frame:not(.igp-story-frame):not(.igp-reel-frame) {
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16), inset 0 0 0 2px var(--igp-frame-border);
+}
+
+[data-theme="light"] .igp-story-frame,
+[data-theme="light"] .igp-reel-frame {
+  --igp-bg: #000;
+  --igp-frame-border: #111827;
+  --igp-shadow: rgba(15, 23, 42, 0.24);
+  --igp-text: #fff;
+  --igp-status: #fff;
+  --igp-island: #151515;
+  --igp-muted: rgba(255, 255, 255, 0.38);
+  --igp-media-bg: #181818;
+  --igp-avatar-bg: #303136;
 }
 
 .cp-preview-sub-btn:hover {
@@ -709,8 +799,24 @@
 
 @media (max-width: 480px) {
   .igp-phone-frame {
-    width: 260px;
+    width: min(100%, 260px);
     min-height: 480px;
     max-height: 560px;
+    border-radius: 32px;
+  }
+
+  .cp-preview-toggle-mobile,
+  .cp-preview-sub-toggle-mobile {
+    width: min(100%, 260px);
+  }
+
+  .cp-preview-toggle-mobile {
+    gap: 3px;
+  }
+
+  .cp-preview-toggle-mobile .cp-preview-toggle-btn,
+  .cp-preview-sub-toggle-mobile .cp-preview-sub-btn {
+    padding-inline: 6px;
+    font-size: 10.5px;
   }
 }

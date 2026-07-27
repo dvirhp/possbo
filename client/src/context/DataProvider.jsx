@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect } f
 import { authAPI } from '../services/api'
 import { clearAccessToken } from '../services/http'
 import { groupsService } from '../services/groupsService'
+import { logClientError } from '../services/clientLogger'
 
 const DataContext = createContext(null)
 
@@ -11,43 +12,24 @@ const CACHE_TTL = 30_000 // 30 seconds
 const POLL_INTERVAL = 20_000 // 20 seconds
 // localStorage key for cached app data
 const DATA_CACHE_KEY = 'possbo_app_data'
-const DATA_CACHE_TTL = 5 * 60 * 1000 // 5 minutes — show cached data instantly
 // localStorage key for cached WA contacts
 const WA_CONTACTS_CACHE_KEY = 'possbo_wa_contacts'
 const WA_BROADCASTS_CACHE_KEY = 'possbo_wa_broadcasts'
 
 // Load cached data from localStorage (runs synchronously at module level for speed)
 function loadCachedData() {
-  try {
-    const raw = localStorage.getItem(DATA_CACHE_KEY)
-    if (!raw) return null
-    const cached = JSON.parse(raw)
-    if (Date.now() - cached.ts > DATA_CACHE_TTL) return null
-    return cached.data
-  } catch { return null }
-}
-
-function saveCachedData(data) {
-  try {
-    localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }))
-  } catch { /* ignore quota errors */ }
+  return null
 }
 
 // localStorage key for cached user (for instant auth-checked feel)
 const USER_CACHE_KEY = 'possbo_user'
 
 function loadCachedUser() {
-  try {
-    const raw = localStorage.getItem(USER_CACHE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw)
-  } catch { return null }
+  return null
 }
 
-function saveCachedUser(userData) {
-  try {
-    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(userData))
-  } catch { /* ignore */ }
+function saveCachedUser(_userData) {
+  // Authentication state is restored from the httpOnly cookie and the DB.
 }
 
 function clearCachedUser() {
@@ -83,19 +65,14 @@ export function DataProvider({ children }) {
   const authVerifiedRef = useRef(false) // true only after checkAuth completes (not just cached)
   const userRef = useRef(cachedUser)
   const pollTimerRef = useRef(null)
+  const waStatusCheckedRef = useRef(false)
 
   // ── WhatsApp sync state (persists across page navigation) ──
   const [waGroups, setWaGroups] = useState(() => {
-    try {
-      const raw = localStorage.getItem(WA_CONTACTS_CACHE_KEY)
-      return raw ? JSON.parse(raw) : []
-    } catch { return [] }
+    return []
   })
   const [waBroadcastLists, setWaBroadcastLists] = useState(() => {
-    try {
-      const raw = localStorage.getItem(WA_BROADCASTS_CACHE_KEY)
-      return raw ? JSON.parse(raw) : []
-    } catch { return [] }
+    return []
   })
   const [waSyncing, setWaSyncing] = useState(false)
   const [waQrDataUrl, setWaQrDataUrl] = useState(null)
@@ -113,12 +90,10 @@ export function DataProvider({ children }) {
       const lists = broadcastRes.data?.lists || []
       setWaGroups(groups)
       setWaBroadcastLists(lists)
-      try { localStorage.setItem(WA_CONTACTS_CACHE_KEY, JSON.stringify(groups)) } catch { /* ignore */ }
-      try { localStorage.setItem(WA_BROADCASTS_CACHE_KEY, JSON.stringify(lists)) } catch { /* ignore */ }
       waGroupsLoadedRef.current = true
       return { groups, broadcastLists: lists }
     } catch (err) {
-      console.error('[WA] loadGroups error:', err)
+      logClientError('wa_groups_load_failed', err, { source: 'DataProvider' })
       return { groups: waGroups, broadcastLists: waBroadcastLists }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -139,7 +114,7 @@ export function DataProvider({ children }) {
       window.dispatchEvent(new CustomEvent('possbo-wa-sync-done'))
     } catch (err) {
       if (err?.code === 'ERR_CANCELED') return // intentionally aborted
-      console.error('[WA] sync error:', err)
+      logClientError('wa_groups_sync_failed', err, { source: 'DataProvider' })
       setWaError(err.userMessage || 'שגיאה בסנכרון')
     } finally {
       waSyncAbortRef.current = null
@@ -210,16 +185,6 @@ export function DataProvider({ children }) {
       setRecentCampaigns({ drafts: d.recentCampaigns?.drafts || [], history: d.recentCampaigns?.history || [] })
       lastFetchRef.current.all = Date.now()
 
-      // Cache data for instant rendering on next page load
-      saveCachedData({
-        campaigns: d.campaigns || [],
-        groups: d.groups || [],
-        jobs: d.jobs || [],
-        posts: d.history || [],
-        stats: d.stats || null,
-        templates: d.templates || [],
-        recentCampaigns: { drafts: d.recentCampaigns?.drafts || [], history: d.recentCampaigns?.history || [] },
-      })
     } catch {
       // silent
     } finally {
@@ -237,18 +202,32 @@ export function DataProvider({ children }) {
     checkAuth()
   }, [])
 
+  // Reconcile the persisted user flag with the live WhatsApp socket status.
+  // This prevents different screens from showing conflicting connection states.
+  useEffect(() => {
+    if (!user || !authVerifiedRef.current || waStatusCheckedRef.current) return
+    waStatusCheckedRef.current = true
+
+    authAPI.getWhatsappStatus()
+      .then((res) => {
+        const connected = Boolean(res.data?.connected)
+        const phone = res.data?.phone || null
+        setUser((current) => current ? {
+          ...current,
+          whatsappSessionConnected: connected,
+          whatsappSessionPhone: phone,
+        } : current)
+      })
+      .catch(() => {
+        waStatusCheckedRef.current = false
+      })
+  }, [user])
+
   const checkAuth = useCallback(async () => {
     // Skip refresh attempt if we have no cached user — a first-time visitor
     // won't have a refresh token cookie, so avoid the 401 console noise
-    if (!cachedUser) {
-      setAuthChecked(true)
-      authVerifiedRef.current = true
-      return false
-    }
-
     try {
       const refreshRes = await authAPI.refresh()
-      console.log('[DataProvider] refresh response:', refreshRes?.data?.user?.instagramConnected, refreshRes?.data?.user?.instagramUsername)
       // Use user data from refresh response if available (avoids extra getMe call)
       const userData = refreshRes?.data?.user
       if (userData) {
@@ -331,6 +310,7 @@ export function DataProvider({ children }) {
     setWaQrDataUrl(null)
     setWaError(null)
     waGroupsLoadedRef.current = false
+    waStatusCheckedRef.current = false
     // Fire-and-forget server logout — don't block UI
     authAPI.logout().catch(() => {})
   }, [])

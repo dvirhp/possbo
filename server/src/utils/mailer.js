@@ -19,7 +19,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Load the white logo PNG (for dark header; inverted via CSS in dark mode)
+// White mark for the dark header; email dark mode inverts it on the white header.
 const logoPngBuffer = readFileSync(
   join(__dirname, "../assets/logo-email-white.png"),
 );
@@ -112,6 +112,15 @@ function buildEmailHtml({ title, bodyContent }) {
 </html>`;
 }
 
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 /**
  * Send a verification code email
  */
@@ -153,7 +162,7 @@ export async function sendVerificationEmail(to, code) {
         "X-Priority": "1",
       },
     });
-    log.info(`Verification email sent to ${to}`);
+    log.info("Verification email sent", { to });
     return true;
   } catch (error) {
     log.error("Failed to send email", error);
@@ -202,7 +211,7 @@ export async function sendPasswordResetEmail(to, code) {
         "X-Priority": "1",
       },
     });
-    log.info(`Password reset email sent to ${to}`);
+    log.info("Password reset email sent", { to });
     return true;
   } catch (error) {
     log.error("Failed to send password reset email", error);
@@ -301,10 +310,84 @@ export async function sendFeedbackEmail({
         },
       ],
     });
-    log.info(`Feedback email sent from ${userEmail}`);
+    log.info("Feedback email sent", { userEmail });
     return true;
   } catch (error) {
     log.error("Failed to send feedback email", error);
+    throw error;
+  }
+}
+
+/**
+ * Send contact form email to the site admin
+ */
+export async function sendContactEmail({
+  name,
+  email,
+  phone,
+  subject,
+  message,
+  accountUser,
+}) {
+  const safeName = escapeHtml(name);
+  const safeEmail = escapeHtml(email);
+  const safePhone = escapeHtml(phone || "לא נמסר");
+  const safeSubject = escapeHtml(subject || "פנייה כללית");
+  const safeMessage = escapeHtml(message);
+  const safeAccount = accountUser
+    ? `${escapeHtml(accountUser.name || "משתמש")} (${escapeHtml(accountUser.email || "")})`
+    : "פנייה ציבורית ללא התחברות";
+
+  const bodyContent = `
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1a1a2e;text-align:center;">פניית צור קשר חדשה</h2>
+    <table role="presentation" width="100%" style="margin-bottom:16px;">
+      <tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;"><strong>שם:</strong> ${safeName}</td></tr>
+      <tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;"><strong>אימייל:</strong> ${safeEmail}</td></tr>
+      <tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;"><strong>טלפון:</strong> ${safePhone}</td></tr>
+      <tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;"><strong>נושא:</strong> ${safeSubject}</td></tr>
+      <tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;"><strong>חשבון:</strong> ${safeAccount}</td></tr>
+    </table>
+    <div style="padding:14px 16px;background:#f3f4f6;border-radius:10px;border:1px solid #e5e7eb;">
+      <strong style="display:block;margin-bottom:8px;color:#1a1a2e;font-size:14px;">תוכן ההודעה:</strong>
+      <p style="margin:0;font-size:13px;color:#1a1a2e;line-height:1.7;white-space:pre-wrap;">${safeMessage}</p>
+    </div>
+  `;
+
+  const html = buildEmailHtml({ title: "פניית צור קשר - Possbo", bodyContent });
+  const text = [
+    `פניית צור קשר חדשה מ-${name}`,
+    `אימייל: ${email}`,
+    `טלפון: ${phone || "לא נמסר"}`,
+    `נושא: ${subject || "פנייה כללית"}`,
+    `חשבון: ${
+      accountUser
+        ? `${accountUser.name || "משתמש"} (${accountUser.email || ""})`
+        : "פנייה ציבורית ללא התחברות"
+    }`,
+    "",
+    message,
+  ].join("\n");
+
+  try {
+    await transporter.sendMail({
+      from: `"Possbo Contact" <${process.env.SMTP_USER}>`,
+      to: process.env.SMTP_USER,
+      replyTo: email,
+      subject: `צור קשר - ${subject || name}`,
+      html,
+      text,
+      attachments: [
+        {
+          filename: "possbo-logo.png",
+          content: logoPngBuffer,
+          cid: "possbo-logo",
+        },
+      ],
+    });
+    log.info("Contact email sent");
+    return true;
+  } catch (error) {
+    log.error("Failed to send contact email", error);
     throw error;
   }
 }

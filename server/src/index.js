@@ -17,6 +17,10 @@ import {
   refreshLimiter,
   publishLimiter,
 } from "./utils/rate-limit.js";
+import {
+  attachRequestContext,
+  logRequestCompletion,
+} from "./middleware/request-logging.js";
 
 // Initialize environment variables
 dotenv.config();
@@ -39,6 +43,7 @@ app.use(
 
 // Middleware
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+app.use(attachRequestContext);
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
@@ -75,6 +80,7 @@ app.use(async (req, _res, next) => {
   }
   next();
 });
+app.use(logRequestCompletion);
 
 // Import routes
 import authRoutes from "./routes/auth.js";
@@ -87,6 +93,8 @@ import templateRoutes from "./routes/templates.js";
 import subscriptionRoutes from "./routes/subscription.js";
 import aiRoutes from "./routes/ai.js";
 import feedbackRoutes from "./routes/feedback.js";
+import contactRoutes from "./routes/contact.js";
+import clientLogRoutes from "./routes/client-logs.js";
 import instagramRoutes from "./routes/instagram.js";
 import whatsappRoutes from "./routes/whatsapp.js";
 import whatsappBotRoutes from "./routes/whatsapp-bot.js";
@@ -107,6 +115,8 @@ app.use("/api/templates", templateRoutes);
 app.use("/api/subscription", subscriptionRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/feedback", feedbackRoutes);
+app.use("/api/contact", contactRoutes);
+app.use("/api/client-logs", clientLogRoutes);
 app.use("/api/instagram", instagramRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/webhooks/whatsapp", whatsappBotRoutes);

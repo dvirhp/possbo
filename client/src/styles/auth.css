@@ -13,7 +13,7 @@
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: var(--gradient-main, linear-gradient(135deg, #818cf8, #c084fc));
+  background: var(--gradient-main);
   color: white;
   display: flex;
   align-items: center;
@@ -108,7 +108,7 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
-  background: var(--gradient-main, linear-gradient(135deg, #818cf8, #c084fc));
+  background: var(--gradient-main);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -163,9 +163,9 @@
 
 .auth-input:focus {
   outline: none;
-  border-color: var(--indigo, #818cf8);
+  border-color: var(--indigo);
   background: var(--bg-card, #23272f);
-  box-shadow: 0 0 0 3px var(--indigo-soft, rgba(129,140,248,0.12));
+  box-shadow: 0 0 0 3px var(--indigo-soft);
 }
 
 .auth-forgot-link {
@@ -180,7 +180,7 @@
   transition: color 0.15s;
 }
 .auth-forgot-link a:hover {
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
 }
 
 .auth-error {
@@ -217,19 +217,19 @@
   padding: 15px;
   border: none;
   border-radius: 12px;
-  background: var(--gradient-main, linear-gradient(135deg, #818cf8, #c084fc));
+  background: var(--gradient-main);
   color: white;
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
   transition: 0.2s;
   font-family: inherit;
-  box-shadow: 0 4px 16px rgba(129, 140, 248, 0.25);
+  box-shadow: 0 4px 16px var(--indigo-soft);
 }
 
 .auth-submit-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(129, 140, 248, 0.35);
+  box-shadow: 0 6px 20px var(--indigo-soft);
 }
 
 .auth-submit-btn:active:not(:disabled) {
@@ -252,7 +252,7 @@
 }
 
 .auth-footer a {
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   font-weight: 600;
   text-decoration: none;
 }
@@ -274,12 +274,12 @@
 .auth-terms-checkbox input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: var(--indigo, #818cf8);
+  accent-color: var(--indigo);
   cursor: pointer;
   flex-shrink: 0;
 }
 .auth-terms-checkbox a {
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   text-decoration: none;
 }
 .auth-terms-checkbox a:hover {
@@ -301,7 +301,7 @@
   padding: 0 24px;
 }
 .auth-oauth-terms a {
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   text-decoration: none;
 }
 .auth-oauth-terms a:hover {
@@ -415,7 +415,7 @@
 .auth-link-btn {
   background: none;
   border: none;
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   font-weight: 600;
   cursor: pointer;
   font-size: 14px;
@@ -464,7 +464,7 @@
 .privacy-back-btn:hover {
   background: var(--bg-hover, #313743);
   color: var(--text-primary, #e8ecf0);
-  border-color: var(--indigo, #818cf8);
+  border-color: var(--indigo);
 }
 
 .privacy-logo-img {
@@ -488,7 +488,7 @@
 }
 
 .privacy-section:hover {
-  border-color: rgba(129, 140, 248, 0.15);
+  border-color: var(--indigo-soft);
 }
 
 .privacy-section h2 {
@@ -501,7 +501,7 @@
 
 .privacy-section h3 {
   font-size: 14px;
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   margin: 20px 0 8px;
   font-weight: 600;
 }
@@ -534,7 +534,7 @@
 }
 
 .privacy-contact a {
-  color: var(--indigo, #818cf8);
+  color: var(--indigo);
   font-size: 16px;
   font-weight: 600;
   text-decoration: none;
@@ -560,6 +560,150 @@
 
 .privacy-footer p {
   margin: 0;
+}
+
+/* ═══════════ Contact Page ═══════════ */
+.contact-page {
+  max-width: 760px;
+}
+
+.contact-intro {
+  text-align: center;
+}
+
+.contact-intro-icon {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary, #e8ecf0);
+  background: var(--bg-elevated, #2a2f3a);
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  box-shadow: 0 0 22px rgba(112, 160, 255, 0.18);
+}
+
+.contact-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.contact-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  text-align: right;
+}
+
+.contact-field-full,
+.contact-form-status,
+.contact-submit {
+  grid-column: 1 / -1;
+}
+
+.contact-field label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, #e8ecf0);
+}
+
+.contact-field input,
+.contact-field textarea {
+  width: 100%;
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 12px;
+  background: var(--bg-elevated, #2a2f3a);
+  color: var(--text-primary, #e8ecf0);
+  padding: 13px 14px;
+  font: inherit;
+  direction: rtl;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.contact-field textarea {
+  resize: vertical;
+  min-height: 140px;
+  line-height: 1.7;
+}
+
+.contact-field input:focus,
+.contact-field textarea:focus {
+  outline: none;
+  border-color: var(--indigo, #7c8cff);
+  background: var(--bg-card, #23272f);
+  box-shadow: 0 0 0 3px var(--indigo-soft, rgba(124, 140, 255, 0.18));
+}
+
+.contact-form-status {
+  min-height: 24px;
+}
+
+.contact-error,
+.contact-success {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.contact-error {
+  color: var(--rose, #fda4af);
+  background: var(--rose-soft, rgba(253,164,175,0.1));
+  border: 1px solid rgba(253, 164, 175, 0.18);
+}
+
+.contact-success {
+  color: #14532d;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+[data-theme="dark"] .contact-success {
+  color: #bbf7d0;
+}
+
+.contact-submit {
+  min-height: 50px;
+  border: 1px solid rgba(120, 150, 210, 0.42);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(226, 232, 240, 0.98), rgba(204, 213, 226, 0.96)),
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.78), transparent 42%);
+  color: #08111f;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  box-shadow: 0 10px 28px rgba(25, 55, 100, 0.18);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.contact-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px rgba(25, 55, 100, 0.24);
+}
+
+.contact-submit:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .contact-submit {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(183, 203, 238, 0.55), transparent 38%),
+    linear-gradient(135deg, #22324a, #111c2c 72%);
+  border-color: rgba(130, 170, 235, 0.44);
+  color: #f8fbff;
+  box-shadow: 0 0 24px rgba(82, 139, 230, 0.28), 0 16px 38px rgba(0, 0, 0, 0.32);
 }
 
 /* ─── Back button in auth header ─── */
@@ -604,5 +748,17 @@
 
   .auth-form {
     padding: 24px 20px 12px;
+  }
+
+  .privacy-page {
+    padding: 24px 16px;
+  }
+
+  .privacy-section {
+    padding: 22px 18px;
+  }
+
+  .contact-form {
+    grid-template-columns: 1fr;
   }
 }

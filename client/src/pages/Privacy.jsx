@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { getAccessToken } from '../services/http'
+import BrandLogo from '../components/BrandLogo'
 import '../styles/auth.css'
 
 export default function Privacy() {
@@ -13,7 +14,7 @@ export default function Privacy() {
     <div className="auth-container">
       <div className="privacy-page">
         <div className="privacy-topbar">
-          <img src="/logo.svg" alt="Possbo" className="privacy-logo-img" onClick={handleLogoClick} style={{ cursor: 'pointer' }} />
+          <BrandLogo className="privacy-logo-img" onClick={handleLogoClick} style={{ cursor: 'pointer' }} />
           <h1 className="privacy-topbar-title">מדיניות פרטיות ותנאי שימוש</h1>
           <button onClick={() => navigate(-1)} className="privacy-back-btn">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
@@ -48,6 +49,9 @@ export default function Privacy() {
               <li>תקשורת מאובטחת בפרוטוקול HTTPS</li>
               <li>אימות דו-שלבי באמצעות קוד מייל</li>
             </ul>
+
+            <h3>שימוש ב-Cookies חיוניים</h3>
+            <p>אנו משתמשים ב-Cookies חיוניים לצורך התחברות מאובטחת, שמירת סשן ורענון גישה לחשבון. Cookies אלו נדרשים להפעלת השירות באופן תקין ואינם משמשים לפרסום, שיווק או מעקב חיצוני.</p>
 
             <h3>שמירה ומחיקה</h3>
             <p>המידע שלך נשמר כל עוד החשבון פעיל. באפשרותך לבקש מחיקת חשבון ומידע בכל עת באמצעות פנייה אלינו.</p>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import '../styles/accessibility.css'
 
 const A11Y_STORAGE_KEY = 'possbo-a11y-settings'
@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
 
 export default function AccessibilityWidget() {
   const [open, setOpen] = useState(false)
+  const panelRef = useRef(null)
   const [settings, setSettings] = useState(() => {
     try {
       const saved = localStorage.getItem(A11Y_STORAGE_KEY)
@@ -49,6 +50,20 @@ export default function AccessibilityWidget() {
     try { localStorage.setItem(A11Y_STORAGE_KEY, JSON.stringify(settings)) } catch { /* ignore */ }
   }, [settings])
 
+  useEffect(() => {
+    if (!open) return
+    const previousFocus = document.activeElement
+    window.setTimeout(() => panelRef.current?.querySelector('button')?.focus(), 0)
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      previousFocus?.focus?.()
+    }
+  }, [open])
+
   const toggleSetting = (key) => {
     setSettings(prev => ({ ...prev, [key]: !prev[key] }))
   }
@@ -81,7 +96,13 @@ export default function AccessibilityWidget() {
       {open && (
         <>
           <div className="a11y-overlay" onClick={() => setOpen(false)} />
-          <div className="a11y-panel" role="dialog" aria-label="תפריט נגישות">
+          <div
+            className="a11y-panel"
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="תפריט נגישות"
+          >
             <div className="a11y-panel-header">
               <h3>♿ הגדרות נגישות</h3>
               <button className="a11y-close" onClick={() => setOpen(false)} aria-label="סגור">✕</button>
@@ -94,31 +115,31 @@ export default function AccessibilityWidget() {
                 <span className="a11y-option-value">{fontLabel}</span>
               </button>
 
-              <button className={`a11y-option ${settings.highContrast ? 'active' : ''}`} onClick={() => toggleSetting('highContrast')}>
+              <button className={`a11y-option ${settings.highContrast ? 'active' : ''}`} onClick={() => toggleSetting('highContrast')} aria-pressed={settings.highContrast}>
                 <span className="a11y-option-icon">🌗</span>
                 <span className="a11y-option-label">ניגודיות גבוהה</span>
                 <span className="a11y-option-status">{settings.highContrast ? '✓' : ''}</span>
               </button>
 
-              <button className={`a11y-option ${settings.linkHighlight ? 'active' : ''}`} onClick={() => toggleSetting('linkHighlight')}>
+              <button className={`a11y-option ${settings.linkHighlight ? 'active' : ''}`} onClick={() => toggleSetting('linkHighlight')} aria-pressed={settings.linkHighlight}>
                 <span className="a11y-option-icon">🔗</span>
                 <span className="a11y-option-label">הדגשת קישורים</span>
                 <span className="a11y-option-status">{settings.linkHighlight ? '✓' : ''}</span>
               </button>
 
-              <button className={`a11y-option ${settings.grayscale ? 'active' : ''}`} onClick={() => toggleSetting('grayscale')}>
+              <button className={`a11y-option ${settings.grayscale ? 'active' : ''}`} onClick={() => toggleSetting('grayscale')} aria-pressed={settings.grayscale}>
                 <span className="a11y-option-icon">🎨</span>
                 <span className="a11y-option-label">גווני אפור</span>
                 <span className="a11y-option-status">{settings.grayscale ? '✓' : ''}</span>
               </button>
 
-              <button className={`a11y-option ${settings.pauseAnimations ? 'active' : ''}`} onClick={() => toggleSetting('pauseAnimations')}>
+              <button className={`a11y-option ${settings.pauseAnimations ? 'active' : ''}`} onClick={() => toggleSetting('pauseAnimations')} aria-pressed={settings.pauseAnimations}>
                 <span className="a11y-option-icon">⏸️</span>
                 <span className="a11y-option-label">עצירת אנימציות</span>
                 <span className="a11y-option-status">{settings.pauseAnimations ? '✓' : ''}</span>
               </button>
 
-              <button className={`a11y-option ${settings.bigCursor ? 'active' : ''}`} onClick={() => toggleSetting('bigCursor')}>
+              <button className={`a11y-option ${settings.bigCursor ? 'active' : ''}`} onClick={() => toggleSetting('bigCursor')} aria-pressed={settings.bigCursor}>
                 <span className="a11y-option-icon">🖱️</span>
                 <span className="a11y-option-label">סמן גדול</span>
                 <span className="a11y-option-status">{settings.bigCursor ? '✓' : ''}</span>

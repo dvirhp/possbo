@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
+import BrandLogo from '../components/BrandLogo'
 import '../styles/scheduled-calendar.css'
 
 const HEBREW_MONTHS = [
@@ -241,7 +242,7 @@ export default function ScheduledCalendar() {
       <header className="sc-topbar">
         <div className="sc-topbar-spacer" />
         <h1 className="sc-title">יומן קמפיינים</h1>
-        <button className="sc-back" onClick={() => navigate('/dashboard')}>
+        <button className="sc-back" onClick={() => navigate('/dashboard')} aria-label="חזור לדשבורד">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
           </svg>
@@ -250,14 +251,14 @@ export default function ScheduledCalendar() {
 
       {!authChecked ? (
         <div className="sc-loading">
-          <img src="/logo-icon.svg" alt="" className="loader-logo-pulse" />
+          <BrandLogo decorative className="loader-logo-pulse" />
           <span>טוען יומן...</span>
         </div>
       ) : selectedDate ? (
         /* ═══════ DAY VIEW ═══════ */
         <div className="sc-day-view">
           <div className="sc-day-header">
-            <button className="sc-day-arrow" onClick={prevDay}>
+            <button className="sc-day-arrow" onClick={prevDay} aria-label="היום הקודם">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -268,7 +269,7 @@ export default function ScheduledCalendar() {
                 <span className="sc-day-count">{getDayEvents(selectedDate).length} פריטים</span>
               )}
             </div>
-            <button className="sc-day-arrow" onClick={nextDay}>
+            <button className="sc-day-arrow" onClick={nextDay} aria-label="היום הבא">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="15 18 9 12 15 6"/>
               </svg>
@@ -307,13 +308,13 @@ export default function ScheduledCalendar() {
         <>
           {/* View toggle */}
           <div className="sc-view-toggle">
-            <button className={viewMode === 'calendar' ? 'active' : ''} onClick={() => setViewMode('calendar')}>
+            <button className={viewMode === 'calendar' ? 'active' : ''} onClick={() => setViewMode('calendar')} aria-pressed={viewMode === 'calendar'}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
               </svg>
               לוח חודשי
             </button>
-            <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}>
+            <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')} aria-pressed={viewMode === 'list'}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
               </svg>
@@ -324,7 +325,7 @@ export default function ScheduledCalendar() {
           {viewMode === 'calendar' ? (
             <div className="sc-month-view">
               <div className="sc-month-header">
-                <button className="sc-month-arrow" onClick={nextMonth}>
+                <button className="sc-month-arrow" onClick={nextMonth} aria-label="החודש הבא">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="9 18 15 12 9 6"/>
                   </svg>
@@ -332,7 +333,7 @@ export default function ScheduledCalendar() {
                 <h2 className="sc-month-title">
                   {HEBREW_MONTHS[viewMonth.getMonth()]} {viewMonth.getFullYear()}
                 </h2>
-                <button className="sc-month-arrow" onClick={prevMonth}>
+                <button className="sc-month-arrow" onClick={prevMonth} aria-label="החודש הקודם">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="15 18 9 12 15 6"/>
                   </svg>
@@ -350,12 +351,15 @@ export default function ScheduledCalendar() {
                   const dots = date ? getDotColors(date) : []
                   const events = date ? getDayEvents(date) : null
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={i}
                       className={`sc-cell ${date ? 'sc-cell-active' : ''} ${date && isToday(date) ? 'sc-today' : ''} ${dots.length > 0 ? 'sc-has-events' : ''}`}
+                      disabled={!date}
                       onClick={() => handleDayClick(date)}
                       onMouseEnter={() => date && events && setHoveredDay(date.toISOString().split('T')[0])}
                       onMouseLeave={() => setHoveredDay(null)}
+                      aria-label={date ? `${date.getDate()} ${HEBREW_MONTHS[date.getMonth()]}${events?.length ? `, ${events.length} פריטים` : ''}` : undefined}
                     >
                       {date && (
                         <>
@@ -385,7 +389,7 @@ export default function ScheduledCalendar() {
                           )}
                         </>
                       )}
-                    </div>
+                    </button>
                   )
                 })}
               </div>
@@ -422,11 +426,11 @@ export default function ScheduledCalendar() {
                 <div className="sc-custom-range">
                   <div className="sc-custom-range-field">
                     <label>מ-</label>
-                    <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+                    <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} aria-label="תאריך התחלה" />
                   </div>
                   <div className="sc-custom-range-field">
                     <label>עד</label>
-                    <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} />
+                    <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} aria-label="תאריך סיום" />
                   </div>
                 </div>
               )}

@@ -69,13 +69,13 @@ export default function NotificationSettings({ open, onClose }) {
   return (
     <>
       <div className="notif-overlay" onClick={onClose} />
-      <div className="notif-panel">
+      <div className="notif-panel" role="dialog" aria-modal="true" aria-labelledby="notif-settings-title">
         <div className="notif-panel-header">
-          <h3>
+          <h3 id="notif-settings-title">
             <Bell size={18} />
             הגדרות התראות
           </h3>
-          <button className="notif-close" onClick={onClose}>
+          <button className="notif-close" onClick={onClose} aria-label="סגור הגדרות התראות">
             <X size={18} />
           </button>
         </div>
@@ -92,6 +92,8 @@ export default function NotificationSettings({ open, onClose }) {
           <button
             className={`notif-toggle-switch ${settings.enabled ? 'on' : ''}`}
             onClick={handleMasterToggle}
+            aria-label={settings.enabled ? 'כבה התראות' : 'הפעל התראות'}
+            aria-pressed={settings.enabled}
           >
             <span className="notif-toggle-knob" />
           </button>
@@ -114,6 +116,8 @@ export default function NotificationSettings({ open, onClose }) {
                 <button
                   className={`notif-toggle-switch small ${settings.emailOnSuccess ? 'on' : ''}`}
                   onClick={() => handleToggle('emailOnSuccess')}
+                  aria-label="התראות מייל על פרסום שהצליח"
+                  aria-pressed={settings.emailOnSuccess}
                 >
                   <span className="notif-toggle-knob" />
                 </button>
@@ -127,6 +131,8 @@ export default function NotificationSettings({ open, onClose }) {
                 <button
                   className={`notif-toggle-switch small ${settings.emailOnFailure ? 'on' : ''}`}
                   onClick={() => handleToggle('emailOnFailure')}
+                  aria-label="התראות מייל על פרסום שנכשל"
+                  aria-pressed={settings.emailOnFailure}
                 >
                   <span className="notif-toggle-knob" />
                 </button>
@@ -140,6 +146,8 @@ export default function NotificationSettings({ open, onClose }) {
                 <button
                   className={`notif-toggle-switch small ${settings.emailOnSchedule ? 'on' : ''}`}
                   onClick={() => handleToggle('emailOnSchedule')}
+                  aria-label="התראות מייל על פוסט שתוזמן"
+                  aria-pressed={settings.emailOnSchedule}
                 >
                   <span className="notif-toggle-knob" />
                 </button>
@@ -161,6 +169,8 @@ export default function NotificationSettings({ open, onClose }) {
                 <button
                   className={`notif-toggle-switch small ${settings.pushOnSuccess ? 'on' : ''}`}
                   onClick={() => handleToggle('pushOnSuccess')}
+                  aria-label="התראות לטלפון על פרסום שהצליח"
+                  aria-pressed={settings.pushOnSuccess}
                 >
                   <span className="notif-toggle-knob" />
                 </button>
@@ -174,6 +184,8 @@ export default function NotificationSettings({ open, onClose }) {
                 <button
                   className={`notif-toggle-switch small ${settings.pushOnFailure ? 'on' : ''}`}
                   onClick={() => handleToggle('pushOnFailure')}
+                  aria-label="התראות לטלפון על פרסום שנכשל"
+                  aria-pressed={settings.pushOnFailure}
                 >
                   <span className="notif-toggle-knob" />
                 </button>
@@ -187,6 +199,8 @@ export default function NotificationSettings({ open, onClose }) {
                 <button
                   className={`notif-toggle-switch small ${settings.pushOnSchedule ? 'on' : ''}`}
                   onClick={() => handleToggle('pushOnSchedule')}
+                  aria-label="התראות לטלפון על פוסט שתוזמן"
+                  aria-pressed={settings.pushOnSchedule}
                 >
                   <span className="notif-toggle-knob" />
                 </button>
