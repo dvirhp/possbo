@@ -4,13 +4,11 @@ import { useAppData } from '../context/DataProvider'
 import { templatesService } from '../services/templatesService'
 import ConfirmDialog from '../components/ConfirmDialog'
 import BrandLogo from '../components/BrandLogo'
-import { Plus, Pencil, Trash2, Rocket, FileText, Calendar, Users, Search, LayoutGrid, List, Eye, MoreVertical, X, Clock, MapPin, UserX } from 'lucide-react'
+import { Plus, Pencil, Trash2, Rocket, FileText, Users, Search, LayoutGrid, List, Eye, MoreVertical, X, MapPin, UserX } from 'lucide-react'
 import '../styles/templates.css'
 
 const API_HOST = 'http://localhost:8000'
 const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
-const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
-
 function formatNumber(n) {
   if (!n) return '0'
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -91,14 +89,12 @@ export default function Templates() {
           title: template.campaignTitle || '',
           isAnonymous: template.isAnonymous,
           location: template.location || '',
-          scheduleMode: template.scheduleMode || 'now',
-          recurringDays: template.recurringDays || [],
-          recurringTimes: template.recurringTimes || [],
-          dayTimes: template.dayTimes || {},
           groupIds: template.groupIds || [],
-          imageUrls: template.imageUrls || [],
-          whatsappText: template.whatsappText || null,
-        }
+           imageUrls: template.imageUrls || [],
+           whatsappText: template.whatsappText || null,
+           whatsappEnabled: !!template.whatsappEnabled,
+           whatsappTargets: template.whatsappTargets || [],
+         }
       }
     })
   }
@@ -113,12 +109,6 @@ export default function Templates() {
   const getTotalReach = (groupIds) => {
     const resolved = resolveGroups(groupIds)
     return resolved.reduce((sum, g) => sum + (g.memberCount || 0), 0)
-  }
-
-  const scheduleModeLabel = (mode) => {
-    if (mode === 'scheduled') return 'מתוזמן'
-    if (mode === 'recurring') return 'חוזר'
-    return 'מיידי'
   }
 
   const filtered = useMemo(() => {
@@ -168,7 +158,7 @@ export default function Templates() {
               <span className="tpl-info-icon">💡</span>
               <div>
                 <strong>מה זה טמפלייט?</strong>
-                <p>טמפלייט הוא תבנית מוכנה לפוסט, כולל טקסט, תמונות, קבוצות ותזמון. במקום ליצור הכל מחדש כל פעם, שמרו טמפלייט ופרסמו בלחיצה אחת!</p>
+                <p>טמפלייט הוא תבנית מוכנה לפוסט, כולל טקסט, תמונות ויעדי פרסום. במקום ליצור הכול מחדש בכל פעם, שמרו טמפלייט והשתמשו בו ליצירת קמפיין חדש.</p>
               </div>
             </div>
 
@@ -205,7 +195,6 @@ export default function Templates() {
                   <span className="tpl-list-col tpl-list-col-name">שם</span>
                   <span className="tpl-list-col tpl-list-col-groups">קבוצות</span>
                   <span className="tpl-list-col tpl-list-col-reach">חשיפה</span>
-                  <span className="tpl-list-col tpl-list-col-schedule">תזמון</span>
                   <span className="tpl-list-col tpl-list-col-usage">שימושים</span>
                   <span className="tpl-list-col tpl-list-col-actions"></span>
                 </div>
@@ -236,9 +225,6 @@ export default function Templates() {
                       <div className="tpl-list-col tpl-list-col-reach">
                         <span className="tpl-list-reach">{reach > 0 ? formatNumber(reach) : '—'}</span>
                         {reach > 0 && <Eye size={13} className="tpl-list-reach-icon" />}
-                      </div>
-                      <div className="tpl-list-col tpl-list-col-schedule">
-                        <span className="tpl-list-schedule-badge">{scheduleModeLabel(tpl.scheduleMode)}</span>
                       </div>
                       <div className="tpl-list-col tpl-list-col-usage">
                         <span>{tpl.usageCount}</span>
@@ -330,12 +316,6 @@ export default function Templates() {
                               {activeTooltip === `reach-${tpl.id}` && groups.length > 0 && (
                                 <span className="tpl-tooltip">{groups.map(g => `${g.name}: ${formatNumber(g.memberCount || 0)}`).join('\n')}</span>
                               )}
-                            </span>
-                          )}
-                          {tpl.scheduleMode && tpl.scheduleMode !== 'now' && (
-                            <span className="tpl-meta-tag">
-                              <Calendar size={12} />
-                              {scheduleModeLabel(tpl.scheduleMode)}
                             </span>
                           )}
                           <span
@@ -450,36 +430,6 @@ export default function Templates() {
                   <div className="tpl-detail-field">
                     <span className="tpl-detail-label"><Eye size={14} /> חשיפה משוערת</span>
                     <span className="tpl-detail-value tpl-detail-highlight">{formatNumber(reach)}</span>
-                  </div>
-                )}
-
-                {/* Schedule mode */}
-                <div className="tpl-detail-field">
-                  <span className="tpl-detail-label"><Clock size={14} /> מצב תזמון</span>
-                  <span className="tpl-detail-value">{scheduleModeLabel(tpl.scheduleMode)}</span>
-                </div>
-
-                {/* Recurring days */}
-                {tpl.scheduleMode === 'recurring' && tpl.recurringDays?.length > 0 && (
-                  <div className="tpl-detail-field">
-                    <span className="tpl-detail-label"><Calendar size={14} /> ימים חוזרים</span>
-                    <div className="tpl-detail-days">
-                      {tpl.recurringDays.sort((a, b) => a - b).map(d => (
-                        <span key={d} className="tpl-detail-day-tag">{DAY_NAMES[d]}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Recurring times */}
-                {tpl.scheduleMode === 'recurring' && tpl.recurringTimes?.length > 0 && (
-                  <div className="tpl-detail-field">
-                    <span className="tpl-detail-label"><Clock size={14} /> שעות</span>
-                    <div className="tpl-detail-days">
-                      {tpl.recurringTimes.map(t => (
-                        <span key={t} className="tpl-detail-day-tag">{t}</span>
-                      ))}
-                    </div>
                   </div>
                 )}
 

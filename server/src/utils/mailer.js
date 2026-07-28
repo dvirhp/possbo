@@ -220,6 +220,56 @@ export async function sendPasswordResetEmail(to, code) {
 }
 
 /**
+ * Notify a customer that Instagram publishing cannot continue until OAuth is
+ * connected again. The caller is responsible for deduplicating these emails.
+ */
+export async function sendInstagramReconnectEmail(to, name = "") {
+  if (!to) {
+    log.warn("Instagram reconnect email skipped: user has no email");
+    return false;
+  }
+
+  const safeName = escapeHtml(name || "שלום");
+  const clientUrl = process.env.CLIENT_URL || "http://localhost:4200";
+  const reconnectUrl = `${clientUrl.replace(/\/$/, "")}/dashboard?tab=account`;
+  const bodyContent = `
+    <h2 class="email-title" style="margin:0 0 12px;font-size:20px;font-weight:700;color:#1a1a2e;text-align:center;">נדרש חיבור מחדש ל־Instagram</h2>
+    <p class="email-text" style="margin:0 0 16px;font-size:14px;color:#4b5563;line-height:1.8;">${safeName}, לא הצלחנו לפרסם את הקמפיין שלך ב־Instagram מפני שהחיבור לחשבון אינו תקף.</p>
+    <p class="email-text" style="margin:0 0 22px;font-size:14px;color:#4b5563;line-height:1.8;">כדי להמשיך לפרסם פוסטים, סטוריז ורילס, יש להיכנס להגדרות Possbo ולחבר את חשבון Instagram מחדש.</p>
+    <table role="presentation" width="100%"><tr><td align="center">
+      <a href="${reconnectUrl}" style="display:inline-block;padding:12px 24px;border-radius:10px;background:#e1306c;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">חיבור Instagram מחדש</a>
+    </td></tr></table>
+    <p class="email-muted" style="margin:22px 0 0;font-size:12px;color:#6b7280;text-align:center;">הקמפיין לא סומן כהצלחה ב־Instagram.</p>
+  `;
+  const html = buildEmailHtml({
+    title: "נדרש חיבור מחדש ל־Instagram - Possbo",
+    bodyContent,
+  });
+
+  try {
+    await transporter.sendMail({
+      from: `"Possbo" <${process.env.SMTP_USER}>`,
+      to,
+      subject: "נדרש חיבור מחדש ל־Instagram",
+      html,
+      text: `${name ? `${name}, ` : ""}לא הצלחנו לפרסם את הקמפיין שלך ב־Instagram. יש לחבר את החשבון מחדש דרך הגדרות Possbo: ${reconnectUrl}`,
+      attachments: [
+        {
+          filename: "possbo-logo.png",
+          content: logoPngBuffer,
+          cid: "possbo-logo",
+        },
+      ],
+    });
+    log.info("Instagram reconnect email sent", { to });
+    return true;
+  } catch (error) {
+    log.error("Failed to send Instagram reconnect email", error, { to });
+    return false;
+  }
+}
+
+/**
  * Generate a 6-digit verification code
  */
 export function generateCode() {

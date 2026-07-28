@@ -355,7 +355,7 @@ export default function Dashboard() {
     window.scrollTo(0, 0)
   }, [activeTab])
 
-  const hasActiveFilters = statusFilter !== 'all' || platformFilter !== 'all' || groupFilter !== 'all' || templateFilter !== 'all' || sortBy !== 'date'
+  const hasActiveFilters = statusFilter !== 'all' || platformFilter !== 'all' || groupFilter !== 'all' || templateFilter !== 'all' || sortBy !== 'date' || Boolean(dashDateRange.from)
 
   const resetFilters = () => {
     setStatusFilter('all')
@@ -363,6 +363,7 @@ export default function Dashboard() {
     setGroupFilter('all')
     setTemplateFilter('all')
     setSortBy(activeTab === 'groups' ? 'name' : 'date')
+    setDashDateRange({ from: '', to: '' })
   }
 
   const filteredJobs = useMemo(() => {
@@ -677,7 +678,7 @@ export default function Dashboard() {
 
               {/* ─── FILTER BAR ─── */}
               {activeTab !== 'account' && activeTab !== 'stats' && activeTab !== 'overview' && activeTab !== 'groups' && (
-                <div className="filter-bar">
+                <div className={`filter-bar ${activeTab === 'campaigns' ? 'filter-bar-campaigns' : ''}`}>
                   <div className="filter-bar-search">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -943,6 +944,33 @@ export default function Dashboard() {
                       <button className="filter-sheet-reset" onClick={resetFilters}>איפוס</button>
                     </div>
 
+                    {/* Date range filter */}
+                    {activeTab === 'campaigns' && (
+                      <div className="filter-sheet-section">
+                        <label className="filter-sheet-label">תקופה</label>
+                        <div className="filter-sheet-date-range">
+                          <label>
+                            <span>מתאריך</span>
+                            <input
+                              type="date"
+                              value={dashDateRange.from}
+                              max={dashDateRange.to || undefined}
+                              onChange={e => setDashDateRange(prev => ({ ...prev, from: e.target.value }))}
+                            />
+                          </label>
+                          <label>
+                            <span>עד תאריך</span>
+                            <input
+                              type="date"
+                              value={dashDateRange.to}
+                              min={dashDateRange.from || undefined}
+                              onChange={e => setDashDateRange(prev => ({ ...prev, to: e.target.value }))}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Status filter */}
                     {(activeTab === 'campaigns' || activeTab === 'posts') && (
                       <div className="filter-sheet-section">
@@ -1131,7 +1159,7 @@ export default function Dashboard() {
                 {activeTab === 'groups' && <GroupsPanel groups={groups} navigate={navigate} sessionRequired={sessionRequired} onRefresh={handleRefreshGroups} refreshing={refreshingGroups} />}
                 {activeTab === 'posts' && <PostsPanel posts={filteredPosts} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} />}
                 {activeTab === 'stats' && (
-                  <StatsPanel stats={stats} />
+                  <StatsPanel stats={stats} posts={posts} />
                 )}
                 {activeTab === 'account' && <AccountPanel user={user} logout={logout} setUser={setUser} navigate={navigate} handleBootstrap={handleBootstrap} bootstrapping={bootstrapping} />}
               </div>
@@ -2893,7 +2921,7 @@ function BestPostingTimesChart({ hourlyData: data }) {
   )
 }
 
-function StatsPanel({ stats }) {
+function StatsPanel({ stats, posts = [] }) {
   const navigate = useNavigate()
   const toDS = (d) => d.toISOString().split('T')[0]
   const defaultRange = useMemo(() => {
@@ -2905,6 +2933,7 @@ function StatsPanel({ stats }) {
   const [dateRange, setDateRange] = useState(defaultRange)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [chartType, setChartType] = useState('area') // 'area' or 'bar'
+  const [performancePlatform, setPerformancePlatform] = useState('instagram')
   const [exposureChartRef, exposureChartSize] = useContainerSize()
 
   // Top posts state
@@ -3027,6 +3056,45 @@ function StatsPanel({ stats }) {
     }))
   }, [exposure, dateRange])
 
+  const platformInsights = useMemo(() => {
+    const from = new Date(`${dateRange.from}T00:00:00`)
+    const to = new Date(`${dateRange.to}T23:59:59.999`)
+    const periodRows = posts.filter(row => {
+      const date = new Date(row.publishedAt || row.createdAt)
+      return !Number.isNaN(date.getTime()) && date >= from && date <= to && row.status !== 'FAILED'
+    })
+    const platformOf = row => row.platform || (row.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : row.targetType === 'WHATSAPP' ? 'WHATSAPP' : 'FACEBOOK')
+    const instagramRows = periodRows.filter(row => platformOf(row) === 'INSTAGRAM')
+    const facebookRows = periodRows.filter(row => platformOf(row) === 'FACEBOOK')
+    const total = (rows, field) => rows.reduce((sum, row) => sum + Number(row[field] || 0), 0)
+    const formats = ['FEED', 'REEL', 'STORY'].map(type => {
+      const rows = instagramRows.filter(row => (row.igType || 'FEED') === type)
+      return {
+        type,
+        count: rows.length,
+        views: total(rows, 'views'),
+        interactions: rows.reduce((sum, row) => sum + Number(row.likes || 0) + Number(row.comments || 0) + Number(row.shares || 0) + Number(row.replies || 0), 0),
+      }
+    })
+    return {
+      instagram: {
+        count: instagramRows.length,
+        likes: total(instagramRows, 'likes'),
+        comments: total(instagramRows, 'comments'),
+        shares: total(instagramRows, 'shares'),
+        views: total(instagramRows, 'views'),
+        reach: total(instagramRows, 'reach'),
+        formats,
+      },
+      facebook: {
+        count: facebookRows.length,
+        likes: total(facebookRows, 'likes'),
+        comments: total(facebookRows, 'comments'),
+        exposure: total(facebookRows, 'groupMemberCount'),
+      },
+    }
+  }, [posts, dateRange])
+
   return (
     <div className="stats-layout">
       {/* Date range selector */}
@@ -3073,6 +3141,71 @@ function StatsPanel({ stats }) {
           <span className="stat-box-val">{stats?.groupsCount || 0}</span>
           <span className="stat-box-label">קבוצות פעילות</span>
         </div>
+      </div>
+
+      <div className={`stats-chart-card stats-platform-card stats-platform-${performancePlatform}`}>
+        <div className="stats-platform-tabs" role="tablist" aria-label="בחירת רשת חברתית">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={performancePlatform === 'instagram'}
+            className={performancePlatform === 'instagram' ? 'active instagram' : ''}
+            onClick={() => setPerformancePlatform('instagram')}
+          >
+            Instagram
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={performancePlatform === 'facebook'}
+            className={performancePlatform === 'facebook' ? 'active facebook' : ''}
+            onClick={() => setPerformancePlatform('facebook')}
+          >
+            Facebook
+          </button>
+        </div>
+
+        {performancePlatform === 'instagram' ? (
+          <div role="tabpanel">
+            <div className="stats-platform-heading">
+              <h4>ביצועי Instagram</h4>
+              <span>{platformInsights.instagram.count} פרסומים</span>
+            </div>
+            <div className="stats-network-kpis">
+              <div><strong>{formatNumber(platformInsights.instagram.views)}</strong><span>צפיות</span></div>
+              <div><strong>{formatNumber(platformInsights.instagram.likes)}</strong><span>לייקים</span></div>
+              <div><strong>{formatNumber(platformInsights.instagram.comments)}</strong><span>תגובות</span></div>
+              <div><strong>{formatNumber(platformInsights.instagram.shares)}</strong><span>שיתופים</span></div>
+              <div><strong>{formatNumber(platformInsights.instagram.reach)}</strong><span>חשיפה</span></div>
+            </div>
+            <div className="stats-format-list">
+              {platformInsights.instagram.formats.map(format => {
+                const max = Math.max(...platformInsights.instagram.formats.map(item => item.views), 1)
+                return (
+                  <div className="stats-format-row" key={format.type}>
+                    <span>{format.type === 'FEED' ? 'פוסטים' : format.type === 'REEL' ? 'רילס' : 'סטוריז'} ({format.count})</span>
+                    <div className="stats-format-track"><i style={{ width: `${format.views ? Math.max(4, (format.views / max) * 100) : 0}%` }}/></div>
+                    <strong>{formatNumber(format.views)} צפיות · {formatNumber(format.interactions)} אינטראקציות</strong>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div role="tabpanel">
+            <div className="stats-platform-heading">
+              <h4>ביצועי Facebook</h4>
+              <span>נתונים זמינים בלבד</span>
+            </div>
+            <div className="stats-network-kpis stats-network-kpis-facebook">
+              <div><strong>{formatNumber(platformInsights.facebook.count)}</strong><span>פרסומים</span></div>
+              <div><strong>{formatNumber(platformInsights.facebook.likes)}</strong><span>לייקים</span></div>
+              <div><strong>{formatNumber(platformInsights.facebook.comments)}</strong><span>תגובות</span></div>
+              <div><strong>{formatNumber(platformInsights.facebook.exposure)}</strong><span>חשיפה משוערת</span></div>
+            </div>
+            <p className="stats-platform-note">צפיות ושיתופים אינם מוצגים בפייסבוק כל עוד אין עבורם נתון אמין מהמקור.</p>
+          </div>
+        )}
       </div>
 
       {/* Exposure Chart */}
@@ -3754,7 +3887,10 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                               }
                             }, 500)
                           }
-                        } catch { /* ignore */ }
+                        } catch (err) {
+                          logClientError('instagram_reconnect_failed', err, { source: 'Dashboard' })
+                          window.alert(err?.response?.data?.error || err?.userMessage || 'שגיאה בחיבור Instagram מחדש')
+                        }
                       }}>
                         החלף
                       </button>
@@ -3807,7 +3943,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                         }
                       } catch (err) {
                         logClientError('instagram_auth_url_failed', err, { source: 'Dashboard' })
-                        window.alert('שגיאה ביצירת קישור חיבור')
+                        window.alert(err?.response?.data?.error || err?.userMessage || 'שגיאה ביצירת קישור חיבור')
                       }
                     }}>
                       חבר
@@ -4659,7 +4795,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
     try {
       const res = await groupsService.refreshPublicationMetrics(pubId)
       if (res.data.success) {
-        setPubHistory(prev => prev?.map(h => (h.id === pubId || h.originalId === pubId) ? { ...h, likes: res.data.metrics.likes, comments: res.data.metrics.comments } : h))
+        setPubHistory(prev => prev?.map(h => (h.id === pubId || h.originalId === pubId) ? { ...h, ...res.data.metrics } : h))
         window.dispatchEvent(new CustomEvent('possbo-op-done', { detail: { id: `refresh-${pubId}`, success: true, msg: `✅ מידע עודכן: ${res.data.metrics.likes} לייקים, ${res.data.metrics.comments} תגובות` } }))
       }
     } catch {
@@ -5060,7 +5196,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                             </span>
                           </div>
                           <div className="detail-history-card-stats">
-                            {h.igPublishType !== 'STORY' && h.platform !== 'WHATSAPP' && (
+                            {h.platform !== 'WHATSAPP' && (
                               <>
                                 <span className="detail-history-stat" title="לייקים">
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
@@ -5070,15 +5206,24 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
                                   {h.comments ?? '—'}
                                 </span>
+                                {h.platform === 'INSTAGRAM' && (
+                                  <>
+                                    <span className="detail-history-stat" title="שיתופים">↗ {h.shares ?? 0}</span>
+                                    <span className="detail-history-stat" title="צפיות">👁 {h.views ?? 0}</span>
+                                  </>
+                                )}
                               </>
                             )}
-                            {h.postUrl && h.igPublishType !== 'STORY' && h.platform !== 'WHATSAPP' && (
+                            {h.postUrl && h.platform !== 'WHATSAPP' && (
                               <a href={h.postUrl} target="_blank" rel="noopener noreferrer" className="detail-history-stat detail-history-link" title={h.platform === 'INSTAGRAM' ? 'פתח באינסטגרם' : 'פתח בפייסבוק'}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                                 {h.platform === 'INSTAGRAM' ? 'צפה באינסטגרם' : 'צפה בפוסט'}
                               </a>
                             )}
-                            {h.status === 'SUCCESS' && h.igPublishType !== 'STORY' && h.platform !== 'WHATSAPP' && (
+                            {h.igPublishType === 'STORY' && !h.storyActive && (
+                              <span className="detail-history-stat">הסטורי הסתיים · הנתונים נשמרו</span>
+                            )}
+                            {h.status === 'SUCCESS' && h.platform !== 'WHATSAPP' && (
                               <button
                                 className={`detail-history-stat detail-history-refresh ${refreshingId === (h.originalId || h.id) ? 'refreshing' : ''}`}
                                 title="רענן לייקים ותגובות"

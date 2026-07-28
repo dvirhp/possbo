@@ -355,6 +355,7 @@ export default function GeneratePost() {
   const location = useLocation()
   const { user } = useAppData()
   const fromCreatePost = location.state?.fromCreatePost || false
+  const fromTemplateForm = location.state?.fromTemplateForm || false
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -422,6 +423,16 @@ export default function GeneratePost() {
   }
 
   const handleUseInPost = () => {
+    if (fromTemplateForm) {
+      const templateId = location.state?.templateId
+      navigate(templateId ? `/templates/${templateId}/edit` : '/templates/new', {
+        state: {
+          generatedContent: generatedPost,
+          templateDraft: location.state?.templateDraft || null,
+        },
+      })
+      return
+    }
     navigate('/create-post', { state: { generatedContent: generatedPost } })
   }
 
@@ -950,7 +961,7 @@ export default function GeneratePost() {
               </button>
               <button className="generate-btn primary" onClick={handleUseInPost}>
                 <SquarePen size={18} />
-                {fromCreatePost ? 'חזרה לפוסט עם התוכן' : 'עבור לפרסום פוסט'}
+                {fromTemplateForm ? 'חזרה לטמפלייט עם התוכן' : fromCreatePost ? 'חזרה לפוסט עם התוכן' : 'עבור לפרסום פוסט'}
               </button>
             </div>
           </div>

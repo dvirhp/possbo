@@ -1,6 +1,7 @@
 {
   "name": "Possbo",
   "short_name": "Possbo",
+  "id": "/",
   "description": "פרסום אוטומטי לקבוצות פייסבוק",
   "start_url": "/",
   "display": "standalone",
@@ -11,10 +12,10 @@
   "lang": "he",
   "icons": [
     {
-      "src": "/brand/possbo-mark-black.png",
+      "src": "/brand/possbo-favicon-dark-v5.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

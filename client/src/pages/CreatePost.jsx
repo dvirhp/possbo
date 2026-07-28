@@ -268,27 +268,31 @@ export default function CreatePost() {
   const [igTypeMedia, setIgTypeMedia] = useState({ FEED: [], STORY: [], REEL: [] }) // per-type specific media
   const [igTypeMediaPreviews, setIgTypeMediaPreviews] = useState({ FEED: [], STORY: [], REEL: [] })
   const [igTypeCaptions, setIgTypeCaptions] = useState({ FEED: '', STORY: '', REEL: '' }) // per-type captions
+  const [reelVideoScope, setReelVideoScope] = useState('campaign') // 'campaign' | 'reel'
   const [previewMode, setPreviewMode] = useState('facebook') // 'facebook' | 'ig-feed' | 'ig-story' | 'ig-reel' | 'whatsapp'
   const instagramConnected = user?.instagramConnected || false
 
   // WhatsApp distribution
-  const [whatsappDistEnabled, setWhatsappDistEnabled] = useState(fromTemplate?.whatsappEnabled || false)
   const [selectedWaTargets, setSelectedWaTargets] = useState(fromTemplate?.whatsappTargets || []) // array of { id, type: 'group'|'broadcast', name }
+  const whatsappDistEnabled = selectedWaTargets.length > 0
   const whatsappConnected = user?.whatsappSessionConnected || false
   const [waSearch, setWaSearch] = useState('')
+  const [waTargetTab, setWaTargetTab] = useState('groups')
 
   // Live-check Instagram connection when tab is first opened (in case cached user is stale)
   const checkInstagramStatus = useCallback(async () => {
-    if (instagramConnected) return
     try {
       const res = await authAPI.getInstagramStatus()
       if (res?.data?.connected) {
         const updates = { instagramConnected: true, instagramUsername: res.data.account?.username }
         if (res.data.avatarUrl) updates.avatarUrl = res.data.avatarUrl
         setUser(prev => ({ ...prev, ...updates }))
+      } else {
+        setInstagramEnabled(false)
+        setUser(prev => ({ ...prev, instagramConnected: false, instagramUsername: null }))
       }
     } catch { /* ignore */ }
-  }, [instagramConnected, setUser])
+  }, [setUser])
 
   // Distribution view tab
   const [distributionTab, setDistributionTab] = useState('facebook')
@@ -305,13 +309,14 @@ export default function CreatePost() {
 
   // Sync from cache
   useEffect(() => {
-    if (cachedTemplates?.length) setTemplates(cachedTemplates)
+    setTemplates(cachedTemplates || [])
   }, [cachedTemplates])
 
   const [campaignTitle, setCampaignTitle] = useState(fromTemplate?.title || republishData?.title || '')
   const [postText, setPostText] = useState(fromTemplate?.content || republishData?.content || generatedContent || '')
   const [postImages, setPostImages] = useState([])
   const [postImagePreviews, setPostImagePreviews] = useState([])
+  const [restoredImageUrls, setRestoredImageUrls] = useState(fromTemplate?.imageUrls || [])
   const [isAnonymous, setIsAnonymous] = useState(fromTemplate?.isAnonymous || republishData?.isAnonymous || false)
 
   // Track unsaved changes
@@ -419,6 +424,37 @@ export default function CreatePost() {
     setScheduleMode(tpl.scheduleMode || 'now')
     setRecurringDays(tpl.recurringDays || [])
     setDayTimes(tpl.dayTimes || {})
+    setPublishToProfile(tpl.publishToProfile || false)
+    setProfileScheduleMode(tpl.profileScheduleMode || 'now')
+    setProfileScheduleDate(tpl.profileScheduleDate || '')
+    setProfileScheduleTime(tpl.profileScheduleTime || '')
+    setProfileRecurringDays(tpl.profileRecurringDays || [])
+    setProfileDayTimes(tpl.profileDayTimes || {})
+    setProfileRecurringStartDate(tpl.profileRecurringStartDate || '')
+    setProfileRecurringEndDate(tpl.profileRecurringEndDate || '')
+    setInstagramEnabled(tpl.instagramEnabled || false)
+    setInstagramPublishTypes(tpl.instagramPublishTypes?.length ? tpl.instagramPublishTypes : ['FEED'])
+    setStoryMediaMode(tpl.storyMediaMode || 'first')
+    setStoryPickedIndex(tpl.storyPickedIndex || 0)
+    setIgScheduleMode(tpl.igScheduleMode || 'now')
+    setIgScheduleDate(tpl.igScheduleDate || '')
+    setIgScheduleTime(tpl.igScheduleTime || '')
+    setIgRecurringDays(tpl.igRecurringDays || [])
+    setIgDayTimes(tpl.igDayTimes || {})
+    setIgRecurringStartDate(tpl.igRecurringStartDate || '')
+    setIgRecurringEndDate(tpl.igRecurringEndDate || '')
+    setSelectedWaTargets(tpl.whatsappTargets || [])
+    setWaScheduleMode(tpl.waScheduleMode || 'now')
+    setWaScheduleDate(tpl.waScheduleDate || '')
+    setWaScheduleTime(tpl.waScheduleTime || '')
+    setWaRecurringDays(tpl.waRecurringDays || [])
+    setWaDayTimes(tpl.waDayTimes || {})
+    setWaRecurringStartDate(tpl.waRecurringStartDate || '')
+    setWaRecurringEndDate(tpl.waRecurringEndDate || '')
+    setWhatsappMessage(tpl.whatsappText || '')
+    setShowWhatsapp(!!tpl.whatsappText)
+    setRestoredImageUrls(tpl.imageUrls || [])
+    setPostImagePreviews(tpl.imageUrls || [])
     if (tpl.groupIds?.length && cachedGroups?.length) {
       const matched = cachedGroups.filter(g => tpl.groupIds.includes(g.id))
       setSelectedGroups(matched)
@@ -440,6 +476,20 @@ export default function CreatePost() {
   const [results, setResults] = useState(null)
   const [error, setError] = useState(null)
   const [showMobilePreview, setShowMobilePreview] = useState(false)
+
+  useEffect(() => {
+    if (!showMobilePreview) return undefined
+    const previousOverflow = document.body.style.overflow
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setShowMobilePreview(false)
+    }
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showMobilePreview])
 
   useEffect(() => {
     if (authChecked && !user) {
@@ -505,6 +555,68 @@ export default function CreatePost() {
     setIgTypeMediaPreviews(prev => ({ ...prev, [igType]: updated.map(f => URL.createObjectURL(f)) }))
   }
 
+  const handleReelVideoSelect = (e) => {
+    const files = Array.from(e.target.files).filter(file => file.type?.startsWith('video/'))
+    if (files.length === 0) return
+
+    if (reelVideoScope === 'campaign') {
+      const updated = [...postImages, ...files].slice(0, 10)
+      setPostImages(updated)
+      setPostImagePreviews(updated.map(file => URL.createObjectURL(file)))
+    } else {
+      const updated = [...igTypeMedia.REEL, ...files].slice(0, 5)
+      setIgTypeMedia(prev => ({ ...prev, REEL: updated }))
+      setIgTypeMediaPreviews(prev => ({ ...prev, REEL: updated.map(file => URL.createObjectURL(file)) }))
+    }
+    e.target.value = ''
+  }
+
+  const changeReelVideoScope = (scope) => {
+    setReelVideoScope(scope)
+
+    if (scope === 'reel') {
+      // A video may have been uploaded while the default "whole campaign"
+      // option was still selected. Move it out of the shared campaign media
+      // immediately so Feed/Story continue using only their original images.
+      const campaignVideos = postImages.filter(file => file?.type?.startsWith('video/'))
+      if (campaignVideos.length > 0) {
+        const campaignMedia = postImages.filter(file => !file?.type?.startsWith('video/'))
+        const reelMedia = [...igTypeMedia.REEL, ...campaignVideos].slice(0, 5)
+        setPostImages(campaignMedia)
+        setPostImagePreviews(campaignMedia.map(file => URL.createObjectURL(file)))
+        setIgTypeMedia(prev => ({ ...prev, REEL: reelMedia }))
+        setIgTypeMediaPreviews(prev => ({
+          ...prev,
+          REEL: reelMedia.map(file => URL.createObjectURL(file)),
+        }))
+      }
+      return
+    }
+
+    // When switching back to "whole campaign", return Reel-specific videos to
+    // the shared media collection so every selected destination can use them.
+    const reelVideos = igTypeMedia.REEL.filter(file => file?.type?.startsWith('video/'))
+    if (reelVideos.length > 0) {
+      const sharedMedia = [...postImages, ...reelVideos].slice(0, 10)
+      const remainingReelMedia = igTypeMedia.REEL.filter(file => !file?.type?.startsWith('video/'))
+      setPostImages(sharedMedia)
+      setPostImagePreviews(sharedMedia.map(file => URL.createObjectURL(file)))
+      setIgTypeMedia(prev => ({ ...prev, REEL: remainingReelMedia }))
+      setIgTypeMediaPreviews(prev => ({
+        ...prev,
+        REEL: remainingReelMedia.map(file => URL.createObjectURL(file)),
+      }))
+    }
+  }
+
+  const toggleInstagramType = (type) => {
+    setInstagramPublishTypes(prev => {
+      const next = prev.includes(type) ? prev.filter(value => value !== type) : [...prev, type]
+      setInstagramEnabled(next.length > 0)
+      return next
+    })
+  }
+
   const removeIgTypeMedia = (igType, index) => {
     const updated = igTypeMedia[igType].filter((_, i) => i !== index)
     setIgTypeMedia(prev => ({ ...prev, [igType]: updated }))
@@ -568,6 +680,7 @@ export default function CreatePost() {
           recurringEndDate: recurringEndDate || null,
           campaignType: scheduleMode === 'recurring' ? 'RECURRING' : 'SCHEDULED',
           templateName: fromTemplate?.name || selectedTemplateName || null,
+          existingImageUrls: restoredImageUrls,
           profileScheduleMode,
           profileScheduleDate: profileScheduleMode === 'scheduled' ? profileScheduleDate : null,
           profileScheduleTime: profileScheduleMode === 'scheduled' ? profileScheduleTime : null,
@@ -614,7 +727,7 @@ export default function CreatePost() {
           setError(res.data.error || 'שגיאה ביצירת הקמפיין')
         }
       } catch (err) {
-        setError(err.userMessage || 'שגיאה בלתי צפויה')
+        setError('לא הצלחנו ליצור את הקמפיין כרגע. נסו שוב מאוחר יותר.')
       } finally {
         setPublishing(false)
       }
@@ -627,7 +740,7 @@ export default function CreatePost() {
       : postText
 
     try {
-      const groupCount = selectedGroups.length + (publishToProfile ? 1 : 0) + (instagramEnabled ? 1 : 0) + (whatsappDistEnabled ? selectedWaTargets.length : 0)
+      const groupCount = selectedGroups.length + (publishToProfile ? 1 : 0) + (instagramEnabled ? instagramPublishTypes.length : 0) + (whatsappDistEnabled ? 1 : 0)
       const res = await groupsService.createCampaign({
         title: campaignTitle,
         text: finalText,
@@ -643,6 +756,7 @@ export default function CreatePost() {
         scheduleMode: 'now',
         campaignType: 'ONE_TIME',
         templateName: fromTemplate?.name || selectedTemplateName || null,
+        existingImageUrls: restoredImageUrls,
         profileScheduleMode,
         profileScheduleDate: profileScheduleMode === 'scheduled' ? profileScheduleDate : null,
         profileScheduleTime: profileScheduleMode === 'scheduled' ? profileScheduleTime : null,
@@ -675,13 +789,13 @@ export default function CreatePost() {
         if (fromTemplate?.id) {
           templatesService.markUsed(fromTemplate.id).catch(() => {})
         }
-        window.dispatchEvent(new CustomEvent('possbo-publish-start', { detail: { count: groupCount, postId: res.data.postId, targets: { groups: selectedGroups.length, profile: publishToProfile, instagram: instagramEnabled, whatsapp: whatsappDistEnabled ? selectedWaTargets.length : 0 } } }))
+        window.dispatchEvent(new CustomEvent('possbo-publish-start', { detail: { count: groupCount, postId: res.data.postId, targets: { groups: selectedGroups.length, profile: publishToProfile, instagram: instagramEnabled ? instagramPublishTypes.length : 0, whatsapp: whatsappDistEnabled ? 1 : 0 } } }))
         navigate(-1)
       } else {
         setError(res.data.error || 'שגיאה ביצירת הפרסום')
       }
     } catch (err) {
-      setError(err.userMessage || 'שגיאה בלתי צפויה')
+      setError('לא הצלחנו ליצור את הפרסום כרגע. נסו שוב מאוחר יותר.')
     } finally {
       setPublishing(false)
     }
@@ -719,6 +833,50 @@ export default function CreatePost() {
             dayTimes,
             recurringStartDate,
             recurringEndDate: recurringEndDate || null,
+            existingImageUrls: restoredImageUrls,
+            draftData: {
+              currentStep,
+              scheduleMode,
+              scheduleDate,
+              scheduleTime,
+              recurringDays,
+              dayTimes,
+              recurringStartDate,
+              recurringEndDate,
+              publishToProfile,
+              profileScheduleMode,
+              profileScheduleDate,
+              profileScheduleTime,
+              profileRecurringDays,
+              profileDayTimes,
+              profileRecurringStartDate,
+              profileRecurringEndDate,
+              instagramEnabled,
+              instagramPublishTypes,
+              storyMediaMode,
+              storyPickedIndex,
+              storyCaptions,
+              igTypeSchedules,
+              igScheduleMode,
+              igScheduleDate,
+              igScheduleTime,
+              igRecurringDays,
+              igDayTimes,
+              igRecurringStartDate,
+              igRecurringEndDate,
+              selectedWaTargets,
+              waScheduleMode,
+              waScheduleDate,
+              waScheduleTime,
+              waRecurringDays,
+              waDayTimes,
+              waRecurringStartDate,
+              waRecurringEndDate,
+              showWhatsapp,
+              whatsappNumber,
+              whatsappMessage,
+              distributionTab,
+            },
           }, postImages)
           setDirty(false)
           forceRefresh()
@@ -803,12 +961,56 @@ export default function CreatePost() {
 
   const handleContinueDraft = (draft) => {
     // Restore all data
+    const saved = draft.draftData || {}
     const content = draft.content?.replace(/\n\nhttps:\/\/wa\.me\/[^\s]*/g, '') || ''
     setPostText(content)
     setCampaignTitle(draft.title || '')
     setIsAnonymous(draft.isAnonymous || false)
     setPostLocation(draft.location || '')
     setShowLocationInput(!!draft.location)
+    setRestoredImageUrls(draft.images || [])
+    setPostImagePreviews(draft.images || [])
+
+    setScheduleMode(saved.scheduleMode || draft.scheduleMode || 'now')
+    setScheduleDate(saved.scheduleDate || '')
+    setScheduleTime(saved.scheduleTime || '')
+    setRecurringDays(saved.recurringDays || draft.recurringDays || [])
+    setDayTimes(saved.dayTimes || draft.dayTimes || {})
+    setRecurringStartDate(saved.recurringStartDate || (draft.recurringStart ? new Date(draft.recurringStart).toISOString().split('T')[0] : ''))
+    setRecurringEndDate(saved.recurringEndDate || (draft.recurringEnd ? new Date(draft.recurringEnd).toISOString().split('T')[0] : ''))
+    setPublishToProfile(saved.publishToProfile || false)
+    setProfileScheduleMode(saved.profileScheduleMode || 'now')
+    setProfileScheduleDate(saved.profileScheduleDate || '')
+    setProfileScheduleTime(saved.profileScheduleTime || '')
+    setProfileRecurringDays(saved.profileRecurringDays || [])
+    setProfileDayTimes(saved.profileDayTimes || {})
+    setProfileRecurringStartDate(saved.profileRecurringStartDate || '')
+    setProfileRecurringEndDate(saved.profileRecurringEndDate || '')
+    setInstagramEnabled(saved.instagramEnabled || false)
+    setInstagramPublishTypes(saved.instagramPublishTypes?.length ? saved.instagramPublishTypes : ['FEED'])
+    setStoryMediaMode(saved.storyMediaMode || 'first')
+    setStoryPickedIndex(saved.storyPickedIndex || 0)
+    setStoryCaptions(saved.storyCaptions || [])
+    if (saved.igTypeSchedules) setIgTypeSchedules(saved.igTypeSchedules)
+    setIgScheduleMode(saved.igScheduleMode || 'now')
+    setIgScheduleDate(saved.igScheduleDate || '')
+    setIgScheduleTime(saved.igScheduleTime || '')
+    setIgRecurringDays(saved.igRecurringDays || [])
+    setIgDayTimes(saved.igDayTimes || {})
+    setIgRecurringStartDate(saved.igRecurringStartDate || '')
+    setIgRecurringEndDate(saved.igRecurringEndDate || '')
+    setSelectedWaTargets(saved.selectedWaTargets || [])
+    setWaScheduleMode(saved.waScheduleMode || 'now')
+    setWaScheduleDate(saved.waScheduleDate || '')
+    setWaScheduleTime(saved.waScheduleTime || '')
+    setWaRecurringDays(saved.waRecurringDays || [])
+    setWaDayTimes(saved.waDayTimes || {})
+    setWaRecurringStartDate(saved.waRecurringStartDate || '')
+    setWaRecurringEndDate(saved.waRecurringEndDate || '')
+    setShowWhatsapp(saved.showWhatsapp || false)
+    if (saved.whatsappNumber) setWhatsappNumber(saved.whatsappNumber)
+    setWhatsappMessage(saved.whatsappMessage || '')
+    if (saved.distributionTab) setDistributionTab(saved.distributionTab)
 
     // Restore groups
     if (draft.groups?.length) {
@@ -821,30 +1023,12 @@ export default function CreatePost() {
       })))
     }
 
-    // Restore schedule
-    if (draft.scheduleMode === 'recurring') {
-      setScheduleMode('recurring')
-      setRecurringDays(draft.recurringDays || [])
-      if (draft.dayTimes) setDayTimes(draft.dayTimes)
-      if (draft.recurringStart) setRecurringStartDate(new Date(draft.recurringStart).toISOString().split('T')[0])
-      if (draft.recurringEnd) setRecurringEndDate(new Date(draft.recurringEnd).toISOString().split('T')[0])
-    } else if (draft.scheduleMode === 'scheduled') {
-      setScheduleMode('scheduled')
-    }
-
     setShowRestore(false)
 
     // Jump to the last step the user was working on
     setTimeout(() => {
-      if (draft.scheduleMode && draft.scheduleMode !== 'now' && (draft.recurringDays?.length > 0 || draft.scheduleMode === 'scheduled')) {
-        setCurrentStep(3) // Was on review
-      } else if (draft.groupCount > 0) {
-        setCurrentStep(2) // Was on schedule
-      } else if (content.trim()) {
-        setCurrentStep(1) // Was on groups
-      } else {
-        setCurrentStep(0) // Was on content
-      }
+      const fallbackStep = draft.groupCount > 0 ? 2 : content.trim() ? 1 : 0
+      setCurrentStep(Number.isInteger(saved.currentStep) ? Math.min(Math.max(saved.currentStep, 0), 3) : fallbackStep)
     }, 100)
   }
 
@@ -894,10 +1078,22 @@ export default function CreatePost() {
       if (!postText.trim()) errors[0] = 'יש לכתוב טקסט לפוסט'
     }
     if (step >= 1) {
-      const hasIgMedia = Object.values(igTypeMedia).some(arr => arr.length > 0)
       if (selectedGroups.length === 0 && !publishToProfile && !instagramEnabled && !whatsappDistEnabled) errors[1] = 'יש לבחור לפחות קבוצה אחת, פרסום בפרופיל, אינסטגרם או וואטסאפ'
-      else if (instagramEnabled && postImages.length === 0 && !hasIgMedia) errors[1] = 'יש להוסיף תמונה או סרטון לפרסום באינסטגרם'
-      else if (whatsappDistEnabled && selectedWaTargets.length === 0) errors[1] = 'יש לבחור לפחות קבוצה או רשימת תפוצה אחת לוואטסאפ'
+      else if (instagramEnabled && instagramPublishTypes.length === 0) errors[1] = 'יש לבחור לפחות יעד אחד באינסטגרם: פוסט, סטורי או רילס'
+      else if (instagramEnabled) {
+        const sharedMedia = postImages
+        const mediaFor = (type) => igTypeMedia[type].length ? igTypeMedia[type] : sharedMedia
+        if (instagramPublishTypes.includes('FEED') && mediaFor('FEED').length === 0) {
+          errors[1] = 'יש להוסיף תמונה או סרטון המיועדים לפוסט Instagram'
+        } else if (instagramPublishTypes.includes('STORY') && mediaFor('STORY').length === 0) {
+          errors[1] = 'יש להוסיף תמונה או סרטון המיועדים לסטורי Instagram'
+        } else if (
+          instagramPublishTypes.includes('REEL') &&
+          !mediaFor('REEL').some(file => file?.type?.startsWith('video/'))
+        ) {
+          errors[1] = 'יש להוסיף סרטון המיועד לרילס Instagram'
+        }
+      }
     }
     if (step >= 2) {
       if (scheduleMode === 'scheduled') {
@@ -909,6 +1105,24 @@ export default function CreatePost() {
         else if (!recurringDays.every(d => dayTimes[d]?.some(t => t.trim()))) errors[2] = 'יש לבחור שעה לכל יום שנבחר'
         else if (!recurringStartDate) errors[2] = 'יש לבחור תאריך התחלה'
         else if (!recurringEndDate) errors[2] = 'יש לבחור תאריך סיום'
+      }
+      if (instagramEnabled) {
+        for (const type of instagramPublishTypes) {
+          const typeSchedule = igTypeSchedules[type]
+          const label = type === 'FEED' ? 'פוסט Instagram' : type === 'STORY' ? 'סטורי Instagram' : 'רילס Instagram'
+          if (typeSchedule?.mode === 'scheduled' && (!typeSchedule.date || !typeSchedule.time)) {
+            errors[2] = `יש לבחור תאריך ושעה עבור ${label}`
+            break
+          }
+          if (typeSchedule?.mode === 'recurring') {
+            const days = typeSchedule.recurringDays || []
+            const hasAllTimes = days.length > 0 && days.every(day => typeSchedule.dayTimes?.[day]?.some(time => time.trim()))
+            if (!hasAllTimes || !typeSchedule.startDate || !typeSchedule.endDate) {
+              errors[2] = `יש להשלים ימים, שעות ותקופה עבור ${label}`
+              break
+            }
+          }
+        }
       }
     }
     return errors
@@ -964,7 +1178,16 @@ export default function CreatePost() {
             onClick={handleSaveAsDraft}
             disabled={savingDraft}
           >
-            {savingDraft ? '⏳' : '💾'} {savingDraft ? 'שומר...' : 'שמור כטיוטה'}
+            {savingDraft ? (
+              <svg className="cp-draft-spinner" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="9" opacity="0.25"/><path d="M21 12a9 9 0 0 0-9-9"/>
+              </svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6"/>
+              </svg>
+            )}
+            <span>{savingDraft ? 'שומר...' : 'שמור כטיוטה'}</span>
           </button>
         ) : <div className="cp-topbar-spacer" />}
         <h1 className="cp-title">קמפיין חדש</h1>
@@ -1130,17 +1353,23 @@ export default function CreatePost() {
                 <>
                   {recentHistory.length > 0 && (
                     <button type="button" className={`cp-restore-card ${showRestore === 'history' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'history' ? false : 'history')}>
-                      <span className="cp-restore-card-text">שחזור מהיסטוריה</span>
+                      <span className="cp-restore-card-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></span>
+                      <span className="cp-restore-card-copy"><strong>שחזור מהיסטוריה</strong><small>פתח קמפיין שפורסם בעבר</small></span>
+                      <span className="cp-restore-card-count">{recentHistory.length}</span>
                     </button>
                   )}
                   {templates.length > 0 && (
                     <button type="button" className={`cp-restore-card ${showRestore === 'templates' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'templates' ? false : 'templates')}>
-                      <span className="cp-restore-card-text">טען מתמפלטים</span>
+                      <span className="cp-restore-card-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+                      <span className="cp-restore-card-copy"><strong>טעינה מתבנית</strong><small>התחל מתוכן ששמרת</small></span>
+                      <span className="cp-restore-card-count">{templates.length}</span>
                     </button>
                   )}
                   {recentDrafts.length > 0 && (
                     <button type="button" className={`cp-restore-card ${showRestore === 'drafts' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'drafts' ? false : 'drafts')}>
-                      <span className="cp-restore-card-text">המשך מאיפה שעצרתי</span>
+                      <span className="cp-restore-card-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6"/></svg></span>
+                      <span className="cp-restore-card-copy"><strong>המשך טיוטה</strong><small>חזור למקום שבו עצרת</small></span>
+                      <span className="cp-restore-card-count">{recentDrafts.length}</span>
                     </button>
                   )}
                 </>
@@ -1219,11 +1448,18 @@ export default function CreatePost() {
             {/* STEP 0: Content */}
             {currentStep === 0 && (
               <div className="cp-step-panel">
-                <div className="cp-card">
+                <div className="cp-card cp-content-editor">
+                  <div className="cp-content-editor-heading">
+                    <div>
+                      <span className="cp-content-eyebrow">תוכן הקמפיין</span>
+                      <h2>כתיבת הפוסט</h2>
+                      <p>נסח את המסר והוסף את הפרטים שיצורפו לפרסום</p>
+                    </div>
+                  </div>
                   <input
                     type="text"
                     className="cp-title-input"
-                    placeholder="כותרת הקמפיין (לא תפורסם בפייסבוק)"
+                    placeholder="שם הקמפיין — לשימוש פנימי"
                     aria-label="כותרת הקמפיין"
                     value={campaignTitle}
                     onChange={(e) => setCampaignTitle(e.target.value)}
@@ -1232,7 +1468,7 @@ export default function CreatePost() {
                   <textarea
                     ref={postTextareaRef}
                     className={`cp-textarea ${stepErrors[0] && !postText.trim() ? 'input-error' : ''}`}
-                    placeholder="מה ברצונך לשתף?"
+                    placeholder="כתוב כאן את תוכן הפוסט..."
                     aria-label="תוכן הפוסט"
                     aria-invalid={!!(stepErrors[0] && !postText.trim())}
                     value={postText}
@@ -1243,6 +1479,14 @@ export default function CreatePost() {
                     textareaRef={postTextareaRef}
                     onSelect={(newText) => setPostText(newText)}
                   />
+                  <button
+                    type="button"
+                    className="cp-ai-generate-btn cp-ai-generate-inline"
+                    onClick={() => navigate('/generate-post', { state: { fromCreatePost: true } })}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2L12 3Z"/><path d="m19 14-.8 2.2L16 17l2.2.8L19 20l.8-2.2L22 17l-2.2-.8L19 14Z"/></svg>
+                    יצירת תוכן עם AI
+                  </button>
                   </div>
 
                   {postImagePreviews.length > 0 && (
@@ -1313,11 +1557,20 @@ export default function CreatePost() {
 
                   {showWhatsapp && whatsappNumber && (
                     <div className="cp-whatsapp-wrap cp-whatsapp-active">
-                      <div className="cp-whatsapp-row">✓ קישור וואטסאפ</div>
-                      <div className="cp-whatsapp-row" dir="ltr">wa.me/{whatsappNumber.replace(/[^0-9]/g, '')}{whatsappMessage ? '?text=...' : ''}</div>
-                      {whatsappMessage && !waEditingMsg && <div className="cp-wa-msg-preview">💬 {whatsappMessage}</div>}
+                      <div className="cp-wa-active-header">
+                        <span className="cp-wa-active-icon">
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                        </span>
+                        <span className="cp-wa-active-title">
+                          <strong>קישור WhatsApp</strong>
+                          <small>הקישור יצורף לתוכן הפוסט</small>
+                        </span>
+                        <span className="cp-wa-active-status">פעיל</span>
+                      </div>
+                      <div className="cp-whatsapp-row cp-wa-active-link" dir="ltr">wa.me/{whatsappNumber.replace(/[^0-9]/g, '')}{whatsappMessage ? '?text=...' : ''}</div>
+                      {whatsappMessage && !waEditingMsg && <div className="cp-wa-msg-preview">{whatsappMessage}</div>}
                       {!waEditingMsg ? (
-                        <button type="button" className="cp-wa-edit-btn" onClick={() => setWaEditingMsg(true)}>✏️ ערוך הודעה</button>
+                        <button type="button" className="cp-wa-edit-btn" onClick={() => setWaEditingMsg(true)}>עריכת הודעה</button>
                       ) : (
                         <div className="cp-wa-edit-wrap">
                           <span className="cp-wa-edit-label">הודעה שתוצג בוואטסאפ</span>
@@ -1328,26 +1581,21 @@ export default function CreatePost() {
                             onChange={(e) => setWhatsappMessage(e.target.value)}
                             dir="rtl"
                           />
-                          <button type="button" className="cp-wa-edit-btn" onClick={() => setWaEditingMsg(false)}>✓ סיום עריכה</button>
+                          <button type="button" className="cp-wa-edit-btn" onClick={() => setWaEditingMsg(false)}>סיום עריכה</button>
                         </div>
                       )}
                     </div>
                   )}
 
-                  <button
-                    type="button"
-                    className="cp-ai-generate-btn"
-                    onClick={() => navigate('/generate-post', { state: { fromCreatePost: true } })}
-                  >
-                    <span>✨</span>
-                    יצירת תוכן עם AI
-                  </button>
-
-                  <div className="cp-options">
+                  <div className="cp-options cp-content-tools">
+                    <div className="cp-content-tools-heading">
+                      <strong>אפשרויות נוספות</strong>
+                      <span>מדיה, מיקום והגדרות משלימות</span>
+                    </div>
                     <label className="cp-options-label">● הוספות</label>
                     <div className="cp-options-row">
                       <label className="cp-option-card">
-                        <span className="cp-option-card-icon cp-icon-blue">🖼️</span>
+                        <span className="cp-option-card-icon cp-icon-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/></svg></span>
                         <span className="cp-option-card-text">תמונות / סרטון</span>
                         <input type="file" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onChange={handleImageSelect} hidden aria-label="בחר תמונות או סרטונים" />
                       </label>
@@ -1356,7 +1604,7 @@ export default function CreatePost() {
                         className={`cp-option-card ${showLocationInput ? 'active' : ''}`}
                         onClick={() => setShowLocationInput(!showLocationInput)}
                       >
-                        <span className="cp-option-card-icon cp-icon-red">📍</span>
+                        <span className="cp-option-card-icon cp-icon-red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
                         <span className="cp-option-card-text">מיקום</span>
                       </button>
                       <label className={`cp-option-card ${isAnonymous ? 'active' : ''}`}>
@@ -1366,7 +1614,7 @@ export default function CreatePost() {
                           onChange={(e) => setIsAnonymous(e.target.checked)}
                           hidden
                         />
-                        <span className="cp-option-card-icon cp-icon-gray">👻</span>
+                        <span className="cp-option-card-icon cp-icon-gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
                         <span className="cp-option-card-text">אנונימי</span>
                       </label>
                     </div>
@@ -1390,11 +1638,11 @@ export default function CreatePost() {
                       }}
                     >
                       <span className="cp-option-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#25d366">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                         </svg>
                       </span>
-                      <span>הוסף וואטסאפ</span>
+                      <span>{showWhatsapp ? 'הסר וואטסאפ' : 'הוסף וואטסאפ'}</span>
                     </button>
                   </div>
                 </div>
@@ -1425,7 +1673,7 @@ export default function CreatePost() {
                   <button
                     type="button"
                     className={`cp-platform-tab cp-platform-tab-whatsapp ${distributionTab === 'whatsapp' ? 'active' : ''}`}
-                    onClick={() => { setDistributionTab('whatsapp'); if (whatsappConnected) { setWhatsappDistEnabled(true); loadWaGroups() } }}
+                    onClick={() => { setDistributionTab('whatsapp'); if (whatsappConnected) loadWaGroups() }}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                     <span>WhatsApp</span>
@@ -1434,9 +1682,20 @@ export default function CreatePost() {
 
                 {/* ─── Facebook section ─── */}
                 {distributionTab === 'facebook' && (
-                <>
+                <div className="cp-facebook-panel">
+                <div className="cp-facebook-panel-heading">
+                  <div>
+                    <span className="cp-facebook-eyebrow">יעדי פרסום</span>
+                    <h3>איפה לפרסם בפייסבוק?</h3>
+                    <p>אפשר לבחור קבוצות, פרופיל אישי או את שניהם</p>
+                  </div>
+                  <span className="cp-facebook-target-total">
+                    {(selectedGroups.length + (publishToProfile ? 1 : 0))} יעדים
+                  </span>
+                </div>
+
                 {/* Profile Publishing Toggle */}
-                <div className="cp-card cp-profile-toggle-card">
+                <div className={`cp-facebook-profile-option ${publishToProfile ? 'selected' : ''}`}>
                   <label className="cp-profile-toggle">
                     <span className="cp-profile-toggle-icon">👤</span>
                     <span className="cp-profile-toggle-label">
@@ -1451,10 +1710,15 @@ export default function CreatePost() {
                   </label>
                 </div>
 
-                <div className="cp-card">
-                  <div className="cp-card-header">
-                    <h3>בחר קבוצות לפרסום</h3>
-                        {selectedGroups.length > 0 && <span className="cp-badge">{selectedGroups.length} נבחרו</span>}
+                <div className="cp-facebook-groups-section">
+                  <div className="cp-card-header cp-facebook-groups-header">
+                    <div>
+                      <h3>קבוצות פייסבוק</h3>
+                      <span>בחר את הקהלים שאליהם הפוסט יישלח</span>
+                    </div>
+                    <span className={`cp-badge ${selectedGroups.length > 0 ? 'has-selection' : ''}`}>
+                      {selectedGroups.length} נבחרו
+                    </span>
                       </div>
 
                       {selectedGroups.length > 0 && (
@@ -1536,12 +1800,12 @@ export default function CreatePost() {
                         </div>
                       )}
                     </div>
-                </>
+                </div>
                 )}
 
                 {/* ─── Instagram section ─── */}
                 {distributionTab === 'instagram' && (
-                  <div className="cp-card cp-instagram-card">
+                  <div className="cp-platform-panel cp-instagram-card">
                     {!instagramConnected ? (
                       <div className="cp-ig-connect-notice">
                         <div className="cp-ig-notice-icon">
@@ -1595,8 +1859,9 @@ export default function CreatePost() {
                                   }
                                 }, 500)
                               }
-                            } catch {
-                              window.alert('שגיאה ביצירת קישור חיבור')
+                            } catch (error) {
+                              const message = error?.response?.data?.error || error?.userMessage || 'שגיאה ביצירת קישור חיבור'
+                              window.alert(message)
                             }
                           }}
                         >
@@ -1604,14 +1869,24 @@ export default function CreatePost() {
                           חבר חשבון Instagram
                         </button>
                       </div>
-                    ) : (
+                    ) : (<>
+                      <div className="cp-platform-panel-heading cp-instagram-panel-heading">
+                        <div>
+                          <span className="cp-platform-eyebrow">חשבון מחובר</span>
+                          <h3>פרסום ב־Instagram</h3>
+                          <p>בחר את הפורמטים שבהם התוכן יפורסם</p>
+                        </div>
+                        <span className="cp-platform-selection-count">
+                          {instagramPublishTypes.length} פורמטים
+                        </span>
+                      </div>
                       <div className="cp-ig-options">
                         <p className="cp-ig-options-label">סוג הפרסום באינסטגרם:</p>
                         <div className="cp-ig-type-grid">
                           <button
                             type="button"
                             className={`cp-ig-type-card ${instagramPublishTypes.includes('FEED') ? 'active' : ''}`}
-                            onClick={() => setInstagramPublishTypes(prev => prev.includes('FEED') ? prev.filter(v => v !== 'FEED') : [...prev, 'FEED'])}
+                            onClick={() => toggleInstagramType('FEED')}
                           >
                             <span className="cp-ig-type-icon">🖼️</span>
                             <span className="cp-ig-type-name">פוסט</span>
@@ -1620,7 +1895,7 @@ export default function CreatePost() {
                           <button
                             type="button"
                             className={`cp-ig-type-card ${instagramPublishTypes.includes('STORY') ? 'active' : ''}`}
-                            onClick={() => setInstagramPublishTypes(prev => prev.includes('STORY') ? prev.filter(v => v !== 'STORY') : [...prev, 'STORY'])}
+                            onClick={() => toggleInstagramType('STORY')}
                           >
                             <span className="cp-ig-type-icon">⏱️</span>
                             <span className="cp-ig-type-name">סטורי</span>
@@ -1629,7 +1904,7 @@ export default function CreatePost() {
                           <button
                             type="button"
                             className={`cp-ig-type-card ${instagramPublishTypes.includes('REEL') ? 'active' : ''}`}
-                            onClick={() => setInstagramPublishTypes(prev => prev.includes('REEL') ? prev.filter(v => v !== 'REEL') : [...prev, 'REEL'])}
+                            onClick={() => toggleInstagramType('REEL')}
                           >
                             <span className="cp-ig-type-icon">🎬</span>
                             <span className="cp-ig-type-name">ריל</span>
@@ -1765,6 +2040,34 @@ export default function CreatePost() {
                         {/* Reels — video required */}
                         {instagramPublishTypes.includes('REEL') && (
                           <div className="cp-ig-media-options">
+                            <div className="cp-reel-scope">
+                              <div className="cp-reel-scope-heading">
+                                <strong>איפה להשתמש בסרטון שאוסיף?</strong>
+                                <span>ברירת המחדל היא כל הקמפיין</span>
+                              </div>
+                              <div className="cp-reel-scope-options" role="radiogroup" aria-label="שימוש בסרטון">
+                                <button
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={reelVideoScope === 'campaign'}
+                                  className={reelVideoScope === 'campaign' ? 'active' : ''}
+                                  onClick={() => changeReelVideoScope('campaign')}
+                                >
+                                  <span className="cp-reel-scope-icon">✨</span>
+                                  <span><strong>כל הקמפיין</strong><small>Facebook וכל יעדי Instagram</small></span>
+                                </button>
+                                <button
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={reelVideoScope === 'reel'}
+                                  className={reelVideoScope === 'reel' ? 'active' : ''}
+                                  onClick={() => changeReelVideoScope('reel')}
+                                >
+                                  <span className="cp-reel-scope-icon">🎬</span>
+                                  <span><strong>רק לרילס</strong><small>שאר הקמפיין יישאר ללא שינוי</small></span>
+                                </button>
+                              </div>
+                            </div>
                             {(() => {
                               const hasVideo = postImages.some(f => f?.type?.startsWith('video/')) || igTypeMedia.REEL.some(f => f?.type?.startsWith('video/'))
                               const hasImages = postImagePreviews.length > 0 && !postImages.some(f => f?.type?.startsWith('video/'))
@@ -1783,9 +2086,9 @@ export default function CreatePost() {
                                     <span>ריל דורש <strong>סרטון</strong>. העלית רק תמונות.</span>
                                     <label className="cp-ig-upload-btn">
                                       🎬 העלאת סרטון לריל
-                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('REEL')} aria-label="בחר סרטון לריל" />
+                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleReelVideoSelect} aria-label="בחר סרטון לריל" />
                                     </label>
-                                    <span className="cp-ig-upload-note">📌 סרטון זה ישמש רק לריל</span>
+                                    <span className="cp-ig-upload-note">📌 הסרטון ישמש {reelVideoScope === 'campaign' ? 'את כל הקמפיין' : 'רק את הרילס'}</span>
                                   </div>
                                 )
                               }
@@ -1796,9 +2099,9 @@ export default function CreatePost() {
                                     <span>ריל דורש סרטון.</span>
                                     <label className="cp-ig-upload-btn">
                                       🎬 העלאת סרטון לריל
-                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleIgTypeMediaSelect('REEL')} aria-label="בחר סרטון לריל" />
+                                      <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleReelVideoSelect} aria-label="בחר סרטון לריל" />
                                     </label>
-                                    <span className="cp-ig-upload-note">📌 סרטון זה ישמש רק לריל</span>
+                                    <span className="cp-ig-upload-note">📌 הסרטון ישמש {reelVideoScope === 'campaign' ? 'את כל הקמפיין' : 'רק את הרילס'}</span>
                                   </div>
                                 )
                               }
@@ -1857,13 +2160,13 @@ export default function CreatePost() {
                           </div>
                         )}
                       </div>
-                    )}
+                    </>)}
                   </div>
                 )}
 
                 {/* ─── WhatsApp section ─── */}
                 {distributionTab === 'whatsapp' && (
-                  <div className="cp-card cp-whatsapp-card">
+                  <div className="cp-platform-panel cp-whatsapp-card">
                     {!whatsappConnected ? (
                       <div className="cp-ig-connect-notice">
                         <div className="cp-ig-notice-icon" style={{ color: '#25d366', fontSize: 48 }}>
@@ -1882,24 +2185,17 @@ export default function CreatePost() {
                       </div>
                     ) : (
                       <>
-                      {/* WhatsApp Enable Toggle */}
-                      <div className="cp-card cp-profile-toggle-card">
-                        <label className="cp-profile-toggle">
-                          <span className="cp-profile-toggle-icon">💬</span>
-                          <span className="cp-profile-toggle-label">
-                            <span>שליחה דרך וואטסאפ</span>
-                            <span className="cp-profile-toggle-hint">הפוסט ישלח לקבוצות וואטסאפ ורשימות תפוצה</span>
+                        <div className="cp-platform-panel-heading cp-whatsapp-panel-heading">
+                          <div>
+                            <span className="cp-platform-eyebrow">בחירת נמענים</span>
+                            <h3>שליחה דרך WhatsApp</h3>
+                            <p>בחר קבוצות או רשימות תפוצה לשליחת הקמפיין</p>
+                          </div>
+                          <span className="cp-platform-selection-count">
+                            {selectedWaTargets.length} יעדים
                           </span>
-                          <input
-                            type="checkbox"
-                            checked={whatsappDistEnabled}
-                            onChange={(e) => setWhatsappDistEnabled(e.target.checked)}
-                          />
-                        </label>
-                      </div>
-
-                      {whatsappDistEnabled && (
-                        <div className="cp-card">
+                        </div>
+                        <div className="cp-platform-content cp-whatsapp-content">
                           {(() => {
                             const allWaItems = [
                               ...(waGroups || []).map(g => ({ id: g.id, type: 'group', name: g.name, size: g.participants || null })),
@@ -1909,8 +2205,17 @@ export default function CreatePost() {
                             const filteredWaItems = searchLower
                               ? allWaItems.filter(item => item.name.toLowerCase().includes(searchLower))
                               : allWaItems
-                            const waGroupItems = filteredWaItems.filter(item => item.type === 'group')
-                            const waBroadcastItems = filteredWaItems.filter(item => item.type === 'broadcast')
+                            // A search intentionally spans both target types. Without
+                            // a search, only the active inner tab is displayed.
+                            const visibleWaItems = searchLower
+                              ? filteredWaItems
+                              : filteredWaItems.filter(item =>
+                                  waTargetTab === 'groups'
+                                    ? item.type === 'group'
+                                    : item.type === 'broadcast'
+                                )
+                            const waGroupItems = visibleWaItems.filter(item => item.type === 'group')
+                            const waBroadcastItems = visibleWaItems.filter(item => item.type === 'broadcast')
 
                             return allWaItems.length === 0 ? (
                               <div className="cp-no-groups">
@@ -1932,9 +2237,32 @@ export default function CreatePost() {
                                   />
                                 </div>
 
+                                <div className="cp-wa-target-tabs" role="tablist" aria-label="סוג יעד בוואטסאפ">
+                                  <button
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={waTargetTab === 'groups'}
+                                    className={waTargetTab === 'groups' ? 'active' : ''}
+                                    onClick={() => setWaTargetTab('groups')}
+                                  >
+                                    <span>קבוצות WhatsApp</span>
+                                    <span className="cp-wa-tab-count">{waGroups?.length || 0}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={waTargetTab === 'broadcasts'}
+                                    className={waTargetTab === 'broadcasts' ? 'active' : ''}
+                                    onClick={() => setWaTargetTab('broadcasts')}
+                                  >
+                                    <span>רשימות תפוצה</span>
+                                    <span className="cp-wa-tab-count">{waBroadcastLists?.length || 0}</span>
+                                  </button>
+                                </div>
+
                                 <div className="cp-group-actions">
                                   <button onClick={() => {
-                                    const all = filteredWaItems.map(item => ({ id: item.id, type: item.type, name: item.name }))
+                                    const all = visibleWaItems.map(item => ({ id: item.id, type: item.type, name: item.name }))
                                     setSelectedWaTargets(prev => {
                                       const existing = new Set(prev.map(t => `${t.type}:${t.id}`))
                                       const toAdd = all.filter(t => !existing.has(`${t.type}:${t.id}`))
@@ -1992,12 +2320,16 @@ export default function CreatePost() {
                                       </label>
                                     )
                                   })}
+                                  {visibleWaItems.length === 0 && (
+                                    <div className="cp-wa-no-results">
+                                      {searchLower ? 'לא נמצאו תוצאות בקבוצות או ברשימות תפוצה' : 'אין יעדים בטאב זה'}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )
                           })()}
                         </div>
-                      )}
                       </>
                     )}
                   </div>
@@ -2726,18 +3058,18 @@ export default function CreatePost() {
                       <span className="cp-review-label">יעדי פרסום:</span>
                       <div className="cp-review-groups">
                         {publishToProfile && <span className="cp-review-chip cp-chip-profile">👤 פרופיל אישי</span>}
+                        {selectedGroups.length > 0 && <span className="cp-review-chip cp-chip-profile">Facebook · {selectedGroups.length} קבוצות</span>}
                         {selectedGroups.slice(0, 5).map(g => (
-                          <span key={g.id} className="cp-review-chip">{g.name}</span>
+                          <span key={g.id} className="cp-review-chip">👥 {g.name}</span>
                         ))}
                         {selectedGroups.length > 5 && <span className="cp-review-chip cp-chip-more">+{selectedGroups.length - 5} נוספות</span>}
-                        {instagramEnabled && (
-                          <span className="cp-review-chip cp-chip-instagram">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-                            {' '}Instagram — {instagramPublishTypes.map(t => t === 'FEED' ? 'פוסט' : t === 'STORY' ? 'סטורי' : 'ריל').join(', ')}
-                            {instagramPublishTypes.includes('STORY') && postImagePreviews.length > 1 && storyMediaMode === 'all' && ` (${postImagePreviews.length} סטוריז)`}
-                            {instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' && ` (תמונה ${storyPickedIndex + 1})`}
+                        {instagramEnabled && instagramPublishTypes.map(type => (
+                          <span className="cp-review-chip cp-chip-instagram" key={type}>
+                            📸 Instagram · {type === 'FEED' ? 'פוסט' : type === 'STORY' ? 'סטורי' : 'רילס'}
+                            {type === 'STORY' && postImagePreviews.length > 1 && storyMediaMode === 'all' && ` (${postImagePreviews.length})`}
+                            {type === 'STORY' && storyMediaMode === 'pick' && ` (תמונה ${storyPickedIndex + 1})`}
                           </span>
-                        )}
+                        ))}
                         {whatsappDistEnabled && (
                           <span className="cp-review-chip cp-chip-whatsapp">
                             💬 WhatsApp — {selectedWaTargets.length} יעדים
@@ -2773,19 +3105,20 @@ export default function CreatePost() {
                             </span>
                           </div>
                         )}
-                        {instagramEnabled && (
-                          <div className="cp-review-schedule-item">
-                            <span className="cp-review-schedule-platform">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="#e1306c"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-                              {' '}Instagram:
-                            </span>
-                            <span>
-                              {igScheduleMode === 'now' && '⚡ מיידי'}
-                              {igScheduleMode === 'scheduled' && `📅 ${igScheduleDate && igScheduleTime ? new Date(`${igScheduleDate}T${igScheduleTime}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + igScheduleTime : 'לא הוגדר'}`}
-                              {igScheduleMode === 'recurring' && `🔄 ${igRecurringDays.length} ימים בשבוע`}
-                            </span>
-                          </div>
-                        )}
+                        {instagramEnabled && instagramPublishTypes.map(type => {
+                          const typeLabel = type === 'FEED' ? 'פוסט' : type === 'STORY' ? 'סטורי' : 'רילס'
+                          const typeSchedule = igTypeSchedules[type] || { mode: 'now', recurringDays: [] }
+                          return (
+                            <div className="cp-review-schedule-item" key={type}>
+                              <span className="cp-review-schedule-platform">📸 Instagram {typeLabel}:</span>
+                              <span>
+                                {typeSchedule.mode === 'now' && '⚡ מיידי'}
+                                {typeSchedule.mode === 'scheduled' && `📅 ${typeSchedule.date && typeSchedule.time ? new Date(`${typeSchedule.date}T${typeSchedule.time}`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + typeSchedule.time : 'לא הוגדר'}`}
+                                {typeSchedule.mode === 'recurring' && `🔄 ${(typeSchedule.recurringDays || []).length} ימים בשבוע`}
+                              </span>
+                            </div>
+                          )
+                        })}
                         {whatsappDistEnabled && (
                           <div className="cp-review-schedule-item">
                             <span className="cp-review-schedule-platform">💬 WhatsApp:</span>
@@ -2871,7 +3204,13 @@ export default function CreatePost() {
               onClick={(e) => e.stopPropagation()}
               onTouchMove={(e) => e.stopPropagation()}
             >
-              <button className="fbp-modal-close" onClick={() => setShowMobilePreview(false)} aria-label="סגור תצוגה מקדימה">✕</button>
+              <div className="fbp-modal-toolbar">
+                <div>
+                  <strong>תצוגה מקדימה</strong>
+                  <span>כך הקמפיין ייראה בפלטפורמה</span>
+                </div>
+                <button className="fbp-modal-close" onClick={() => setShowMobilePreview(false)} aria-label="סגור תצוגה מקדימה">✕</button>
+              </div>
               <div className="cp-preview-toggle cp-preview-toggle-mobile">
                 <button
                   type="button"
@@ -2905,6 +3244,7 @@ export default function CreatePost() {
                   <button type="button" className={`cp-preview-sub-btn ${previewMode === 'ig-reel' ? 'active' : ''}`} onClick={() => setPreviewMode('ig-reel')}>🎬 רילס</button>
                 </div>
               )}
+              <div className="fbp-modal-stage">
               {previewMode === 'facebook' ? (
                 <FacebookPreview
                   text={postText}
@@ -2929,6 +3269,7 @@ export default function CreatePost() {
                   mode={previewMode === 'ig-story' ? 'STORY' : previewMode === 'ig-reel' ? 'REEL' : 'FEED'}
                 />
               )}
+              </div>
             </div>
           </div>
         )}

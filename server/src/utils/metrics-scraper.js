@@ -230,7 +230,7 @@ async function scrapePostMetrics(context, postUrl) {
     await page.evaluate(() => window.scrollBy(0, 300));
     await page.waitForTimeout(1500);
 
-    const metrics = await page.evaluate(() => {
+    const metrics = await page.evaluate((requestedPostUrl) => {
       let likes = null;
       let comments = null;
       const debugInfo = { strategies: [] };
@@ -244,11 +244,54 @@ async function scrapePostMetrics(context, postUrl) {
       // metrics from OTHER posts visible on the page.
       let postRoot = null;
 
+      // Locate the article containing the exact post ID from the requested URL.
+      // Facebook permalink pages can still render neighbouring feed posts.
+      let requestedPostId = null;
+      let currentPagePostId = null;
+      try {
+        const requestedUrl = new URL(requestedPostUrl);
+        requestedPostId =
+          requestedUrl.pathname.match(/\/(?:posts|permalink)\/(\d+)/i)?.[1] ||
+          requestedUrl.searchParams.get("story_fbid") ||
+          requestedUrl.searchParams.get("fbid");
+        const currentUrl = new URL(window.location.href);
+        currentPagePostId =
+          currentUrl.pathname.match(/\/(?:posts|permalink)\/(\d+)/i)?.[1] ||
+          currentUrl.searchParams.get("story_fbid") ||
+          currentUrl.searchParams.get("fbid");
+      } catch {
+        /* use the visual fallbacks below */
+      }
+
+      if (requestedPostId) {
+        const articles = Array.from(
+          document.querySelectorAll('[role="article"]'),
+        );
+        postRoot =
+          articles.find((article) =>
+            Array.from(article.querySelectorAll("a[href]")).some((anchor) => {
+              try {
+                const href = new URL(anchor.href, window.location.origin);
+                const hrefPostId =
+                  href.pathname.match(/\/(?:posts|permalink)\/(\d+)/i)?.[1] ||
+                  href.searchParams.get("story_fbid") ||
+                  href.searchParams.get("fbid");
+                return hrefPostId === requestedPostId;
+              } catch {
+                return false;
+              }
+            }),
+          ) || null;
+        if (postRoot) {
+          debugInfo.strategies.push(`SCOPE: matching-post-${requestedPostId}`);
+        }
+      }
+
       // Priority 1: Dialog — FB often opens post links in a dialog overlay
       // But only use it if it actually contains post-like content (reactions area)
       // and is not just a notifications panel or other UI dialog
       const dialogs = document.querySelectorAll('div[role="dialog"]');
-      for (const dialog of dialogs) {
+      for (const dialog of postRoot ? [] : dialogs) {
         const dialogText = dialog.textContent || "";
         // A post dialog typically has "Like" / "Comment" / "Share" buttons
         // and/or reaction content — not just notification text
@@ -268,14 +311,24 @@ async function scrapePostMetrics(context, postUrl) {
       // Priority 2: Main content area
       if (!postRoot) {
         const main = document.querySelector('div[role="main"]');
-        if (main) {
-          postRoot = main;
-          debugInfo.strategies.push("SCOPE: main");
+        if (
+          main &&
+          (!requestedPostId || currentPagePostId === requestedPostId)
+        ) {
+          postRoot = main.querySelector('[role="article"]') || main;
+          debugInfo.strategies.push(
+            postRoot === main ? "SCOPE: main" : "SCOPE: first-main-article",
+          );
         }
       }
 
-      // Fallback: entire document
+      // Never read another post after Facebook redirected away from the
+      // requested permalink.
       if (!postRoot) {
+        if (requestedPostId) {
+          debugInfo.strategies.push("SCOPE: requested-post-not-found");
+          return { likes: null, comments: null, debugInfo, targetMatched: false };
+        }
         postRoot = document;
         debugInfo.strategies.push("SCOPE: document (fallback)");
       }
@@ -601,8 +654,8 @@ async function scrapePostMetrics(context, postUrl) {
       }
       debugInfo.sampleTexts = sampleTexts;
 
-      return { likes, comments, debugInfo };
-    });
+      return { likes, comments, debugInfo, targetMatched: true };
+    }, postUrl);
 
     log.info("Raw scraped metrics", {
       url: postUrl,
@@ -611,6 +664,14 @@ async function scrapePostMetrics(context, postUrl) {
       strategies: metrics.debugInfo?.strategies,
       sampleTexts: metrics.debugInfo?.sampleTexts,
     });
+
+    if (metrics.targetMatched === false) {
+      log.warn("Facebook redirected away from the requested post", {
+        requestedUrl: postUrl,
+        loadedUrl: page.url(),
+      });
+      return null;
+    }
 
     // Parse on server side
     let likesCount = 0;
@@ -720,14 +781,15 @@ export async function scrapeUserPublicationMetrics(userId, publications) {
       const batchResults = await Promise.all(
         batch.map(async (pub) => {
           const metrics = await scrapePostMetrics(context, pub.externalPostUrl);
+          if (!metrics) return null;
           return {
             publicationId: pub.id,
-            likes: metrics?.likes ?? 0,
-            comments: metrics?.comments ?? 0,
+            likes: metrics.likes,
+            comments: metrics.comments,
           };
         }),
       );
-      results.push(...batchResults);
+      results.push(...batchResults.filter(Boolean));
 
       // Human-like delay between batches
       if (i + CONCURRENCY < validPubs.length) {
@@ -761,6 +823,10 @@ export async function savePublicationMetrics(
   shares = 0,
   reach = 0,
   impressions = 0,
+  views = 0,
+  saves = 0,
+  replies = 0,
+  totalInteractions = 0,
 ) {
   await prisma.publicationMetric.create({
     data: {
@@ -770,6 +836,10 @@ export async function savePublicationMetrics(
       sharesCount: shares,
       reachCount: reach,
       impressionsCount: impressions,
+      viewsCount: views,
+      savesCount: saves,
+      repliesCount: replies,
+      totalInteractionsCount: totalInteractions,
     },
   });
 }
@@ -816,6 +886,10 @@ export async function refreshSinglePublicationMetrics(userId, publicationId) {
       result.shares || 0,
       result.reach || 0,
       result.impressions || 0,
+      result.views || 0,
+      result.saved || 0,
+      result.replies || 0,
+      result.totalInteractions || 0,
     );
     return {
       likes: result.likes,
@@ -823,6 +897,10 @@ export async function refreshSinglePublicationMetrics(userId, publicationId) {
       shares: result.shares || 0,
       reach: result.reach || 0,
       impressions: result.impressions || 0,
+      views: result.views || 0,
+      saved: result.saved || 0,
+      replies: result.replies || 0,
+      totalInteractions: result.totalInteractions || 0,
     };
   }
 
@@ -837,7 +915,11 @@ export async function refreshSinglePublicationMetrics(userId, publicationId) {
   });
 
   const results = await scrapeUserPublicationMetrics(userId, [pub]);
-  const result = results[0] || { likes: 0, comments: 0 };
+  const result = results[0];
+  if (!result) {
+    log.warn(`No verified Facebook metrics for publication ${publicationId}`);
+    return null;
+  }
 
   log.info(`Metrics result for ${publicationId}:`, {
     likes: result.likes,
@@ -870,7 +952,7 @@ export async function refreshInstagramMetrics(userId, publications) {
     // Try to refresh the token before giving up
     try {
       const oldToken = decrypt(account.accessTokenEncrypted);
-      const refreshUrl = `https://graph.instagram.com/refresh_access_token?grant_type=ig_exchange_token&access_token=${oldToken}`;
+      const refreshUrl = `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${oldToken}`;
       const refreshResp = await fetch(refreshUrl);
       if (refreshResp.ok) {
         const refreshData = await refreshResp.json();
@@ -915,95 +997,49 @@ export async function refreshInstagramMetrics(userId, publications) {
   for (const pub of publications) {
     if (!pub.externalPostId) continue;
     try {
-      // Use the Insights endpoint with correct metric names per media type
-      // Stories only support: impressions, reach, replies, follows, navigation, profile_activity, profile_visits
-      // Feed/Reels support: likes, comments, shares, reach, saved, total_interactions, views
       const isStory = pub.igMediaType === "STORY";
-      const metrics = isStory
-        ? "impressions,reach"
-        : "likes,comments,shares,reach,saved";
+      const requestedMetrics = isStory
+        ? ["likes", "comments", "shares", "replies", "reach", "views", "impressions"]
+        : pub.igMediaType === "REEL"
+          ? ["likes", "comments", "shares", "reach", "saved", "views", "plays", "total_interactions"]
+          : ["likes", "comments", "shares", "reach", "saved", "views", "impressions", "total_interactions"];
 
-      const insightsUrl =
-        `https://graph.instagram.com/v25.0/${pub.externalPostId}/insights` +
-        `?metric=${metrics}&access_token=${accessToken}`;
-      const resp = await fetch(insightsUrl);
-
-      if (!resp.ok) {
-        const errBody = await resp.text().catch(() => "");
-        log.debug(
-          `IG Insights API error for ${pub.externalPostId}: ${resp.status} ${errBody}`,
-        );
-
-        // Fallback to basic media fields if insights endpoint fails
-        // (e.g. for media with hidden like counts or insufficient viewers)
-        const fallbackResult = await fetchIgMediaFields(
-          pub.externalPostId,
-          accessToken,
-        );
-        if (fallbackResult) {
-          results.push({ publicationId: pub.id, ...fallbackResult });
-        }
-        continue;
-      }
-
-      const data = await resp.json();
-      if (data.error) {
-        log.debug(
-          `IG Insights returned error for ${pub.externalPostId}: ${data.error.message}`,
-        );
-        const fallbackResult = await fetchIgMediaFields(
-          pub.externalPostId,
-          accessToken,
-        );
-        if (fallbackResult) {
-          results.push({ publicationId: pub.id, ...fallbackResult });
-        }
-        continue;
-      }
-
-      // Parse insights response: data[] contains {name, values: [{value}]}
+      // Query metrics separately. Meta's supported metric set differs by media
+      // type and account; one unsupported metric must not discard every other
+      // valid insight for the publication.
       const metricsMap = {};
-      if (data.data && Array.isArray(data.data)) {
-        for (const entry of data.data) {
-          metricsMap[entry.name] = entry.values?.[0]?.value || 0;
+      for (const metric of requestedMetrics) {
+        const insightsUrl =
+          `https://graph.instagram.com/v25.0/${pub.externalPostId}/insights` +
+          `?metric=${metric}&access_token=${accessToken}`;
+        const resp = await fetch(insightsUrl);
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        for (const entry of data.data || []) {
+          const rawValue = entry.values?.[0]?.value ?? entry.total_value?.value ?? 0;
+          if (typeof rawValue === "number") metricsMap[entry.name] = rawValue;
         }
       }
 
-      // If Insights returned 200 but with empty data, fall back to basic media fields
-      if (!isStory && Object.keys(metricsMap).length === 0) {
-        log.debug(
-          `IG Insights returned empty data for ${pub.externalPostId}, trying fallback`,
-        );
-        const fallbackResult = await fetchIgMediaFields(
-          pub.externalPostId,
-          accessToken,
-        );
-        if (fallbackResult) {
-          results.push({ publicationId: pub.id, ...fallbackResult });
-        }
-        continue;
-      }
-
-      if (isStory) {
-        results.push({
-          publicationId: pub.id,
-          likes: 0,
-          comments: 0,
-          shares: 0,
-          reach: metricsMap.reach || 0,
-          impressions: metricsMap.impressions || 0,
-        });
-      } else {
-        results.push({
-          publicationId: pub.id,
-          likes: metricsMap.likes || 0,
-          comments: metricsMap.comments || 0,
-          shares: metricsMap.shares || 0,
-          reach: metricsMap.reach || 0,
-          impressions: 0,
-          saved: metricsMap.saved || 0,
-        });
-      }
+      const fallbackResult = await fetchIgMediaFields(pub.externalPostId, accessToken);
+      results.push({
+        publicationId: pub.id,
+        likes: metricsMap.likes ?? fallbackResult?.likes ?? 0,
+        comments: metricsMap.comments ?? fallbackResult?.comments ?? 0,
+        shares: metricsMap.shares || 0,
+        replies: metricsMap.replies || 0,
+        reach: metricsMap.reach || 0,
+        impressions: metricsMap.impressions || 0,
+        views: metricsMap.views || metricsMap.plays || 0,
+        saved: metricsMap.saved || 0,
+        totalInteractions:
+          metricsMap.total_interactions ||
+          (metricsMap.likes || 0) +
+            (metricsMap.comments || 0) +
+            (metricsMap.shares || 0) +
+            (metricsMap.replies || 0) +
+            (metricsMap.saved || 0),
+      });
     } catch (err) {
       log.debug(
         `Failed to fetch IG metrics for ${pub.externalPostId}: ${err.message}`,
@@ -1033,6 +1069,10 @@ async function fetchIgMediaFields(mediaId, accessToken) {
       shares: 0,
       reach: 0,
       impressions: 0,
+      views: 0,
+      saved: 0,
+      replies: 0,
+      totalInteractions: (data.like_count || 0) + (data.comments_count || 0),
     };
   } catch {
     return null;

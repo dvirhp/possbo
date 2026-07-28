@@ -37,6 +37,10 @@ const GeneratePost = lazy(() => import('./pages/GeneratePost'))
 const Feedback = lazy(() => import('./pages/Feedback'))
 
 const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password']
+const shouldHideChatBot = (pathname) =>
+  pathname === '/create-post' ||
+  pathname === '/templates/new' ||
+  /^\/templates\/[^/]+\/edit$/.test(pathname)
 
 function ScrollToTop() {
   const { pathname } = useLocation()
@@ -46,7 +50,7 @@ function ScrollToTop() {
 
 function AuthWidgets() {
   const { pathname } = useLocation()
-  if (PUBLIC_ROUTES.includes(pathname)) return null
+  if (PUBLIC_ROUTES.includes(pathname) || shouldHideChatBot(pathname)) return null
   return (
     <>
       <ChatBot />

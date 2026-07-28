@@ -633,13 +633,14 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
     })
   }, [campaigns, dateRange])
 
-  // Top performing posts - sorted by likes or comments
+  // WhatsApp has no engagement metrics, so it shows the four latest posts.
+  // Facebook and Instagram are ranked by the selected engagement metric.
   const [topPostsSort, setTopPostsSort] = useState('likes')
   const [topPostsPlatform, setTopPostsPlatform] = useState('all')
   const topPosts = useMemo(() => {
     const postsData = stats?.topPosts || []
     if (!postsData.length) return []
-    return [...postsData]
+    const filtered = postsData
       .filter(p => {
         if (topPostsPlatform === 'all') return true
         if (topPostsPlatform === 'facebook') return (p.platform || 'FACEBOOK') === 'FACEBOOK'
@@ -647,11 +648,19 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
         if (topPostsPlatform === 'whatsapp') return p.platform === 'WHATSAPP'
         return true
       })
-      .sort((a, b) => {
-        if (topPostsSort === 'comments') return (b.comments || 0) - (a.comments || 0)
-        return (b.likes || 0) - (a.likes || 0)
-      })
-      .slice(0, 5)
+
+    const byDate = (a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)
+    const sorted = [...filtered].sort((a, b) => {
+      if (topPostsPlatform === 'whatsapp') return byDate(a, b)
+      const primary = topPostsSort === 'comments' ? 'comments' : 'likes'
+      const secondary = primary === 'likes' ? 'comments' : 'likes'
+      return (b[primary] || 0) - (a[primary] || 0)
+        || (b[secondary] || 0) - (a[secondary] || 0)
+        || byDate(a, b)
+    })
+
+    return sorted
+      .slice(0, 4)
       .map(p => ({
         id: p.id,
         postId: p.postId,
@@ -660,6 +669,10 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
         date: p.publishedAt,
         likes: p.likes || 0,
         comments: p.comments || 0,
+        shares: p.shares || 0,
+        views: p.views || 0,
+        reach: p.reach || 0,
+        interactions: p.interactions || 0,
         platform: p.platform || 'FACEBOOK',
         targetType: p.targetType || 'GROUP',
         igType: p.igType || null,
@@ -766,8 +779,8 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
             <div className="ov2-top-posts-header">
               <h3>פוסטים מובילים</h3>
               <div className="ov2-top-posts-toggle">
-                <button className={`ov2-toggle-btn ${topPostsSort === 'likes' ? 'active' : ''}`} onClick={() => setTopPostsSort('likes')}>👍 לייקים</button>
-                <button className={`ov2-toggle-btn ${topPostsSort === 'comments' ? 'active' : ''}`} onClick={() => setTopPostsSort('comments')}>💬 תגובות</button>
+                <button className={`ov2-toggle-btn ${topPostsSort === 'likes' ? 'active' : ''}`} disabled={topPostsPlatform === 'whatsapp'} onClick={() => setTopPostsSort('likes')}>👍 לייקים</button>
+                <button className={`ov2-toggle-btn ${topPostsSort === 'comments' ? 'active' : ''}`} disabled={topPostsPlatform === 'whatsapp'} onClick={() => setTopPostsSort('comments')}>💬 תגובות</button>
               </div>
             </div>
             <div className="ov2-top-posts-platform-filter">
@@ -791,11 +804,16 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
                       {post.groupName ? ` • ${post.groupName}` : ''}
                       {post.date ? ` • ${new Date(post.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}` : ''}
                     </span>
+                    {post.platform === 'INSTAGRAM' && (
+                      <span className="ov2-top-post-ig-insights">👁 {formatNumber(post.views)} צפיות · ↗ {formatNumber(post.shares)} שיתופים</span>
+                    )}
                   </div>
-                  <div className="ov2-top-post-engagement">
-                    <span className="ov2-engagement-value">{formatNumber(topPostsSort === 'likes' ? post.likes : post.comments)}</span>
-                    <span className="ov2-engagement-label">{topPostsSort === 'likes' ? '👍' : '💬'}</span>
-                  </div>
+                  {post.platform !== 'WHATSAPP' && (
+                    <div className="ov2-top-post-engagement">
+                      <span className="ov2-engagement-value">{formatNumber(post[topPostsSort] || 0)}</span>
+                      <span className="ov2-engagement-label">{topPostsSort === 'likes' ? '👍' : '💬'}</span>
+                    </div>
+                  )}
                 </div>
               ))}
               {topPosts.length === 0 && <div className="ov2-empty">אין נתונים עדיין</div>}

@@ -393,6 +393,7 @@ model Post {
   whatsappEnabled      Boolean      @default(false) @map("whatsapp_enabled")
   whatsappTargets      Json?        @map("whatsapp_targets") // array of { id, type: 'group'|'broadcast', name }
   templateName         String?      @map("template_name")
+  draftData            Json?        @map("draft_data")
   imageUrl             String?      @map("image_url")
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
@@ -549,6 +550,10 @@ model PublicationMetric {
   sharesCount          Int      @default(0) @map("shares_count")
   reachCount           Int      @default(0) @map("reach_count")
   impressionsCount     Int      @default(0) @map("impressions_count")
+  viewsCount           Int      @default(0) @map("views_count")
+  savesCount           Int      @default(0) @map("saves_count")
+  repliesCount         Int      @default(0) @map("replies_count")
+  totalInteractionsCount Int    @default(0) @map("total_interactions_count")
   collectedAt          DateTime @default(now()) @map("collected_at")
 
   publicationHistory PublicationHistory @relation(fields: [publicationHistoryId], references: [id], onDelete: Cascade)

@@ -15,10 +15,16 @@ export default defineConfig({
         "src/routes/scheduler.js",
         "src/routes/instagram.js",
         "src/routes/feedback.js",
+        // External WhatsApp/browser integrations are covered by integration tests,
+        // just like the Facebook automation modules below.
+        "src/routes/whatsapp.js",
+        "src/routes/whatsapp-bot.js",
         "src/utils/facebook-automation.js",
         "src/utils/metrics-scraper.js",
         "src/utils/media-upload.js",
         "src/utils/puppeteer.js",
+        "src/utils/whatsapp-bot-api.js",
+        "src/utils/whatsapp-conversation.js",
         "src/routes/templates.js",
       ],
       thresholds: {

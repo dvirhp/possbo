@@ -2,21 +2,27 @@
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/brand/possbo-mark-black.png" media="(prefers-color-scheme: light)" />
-    <link rel="icon" type="image/png" href="/brand/possbo-mark-white.png" media="(prefers-color-scheme: dark)" />
-    <link rel="apple-touch-icon" href="/brand/possbo-mark-black.png" />
+    <!-- Keep a non-conditional default for browsers that ignore favicon media
+         queries. The version token also replaces previously cached icons. -->
+    <link rel="icon" type="image/png" sizes="512x512" href="/brand/possbo-favicon-dark-v5.png" />
+    <link rel="shortcut icon" type="image/png" href="/brand/possbo-favicon-dark-v5.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/brand/possbo-favicon-light-v5.png" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/brand/possbo-favicon-dark-v5.png" media="(prefers-color-scheme: dark)" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/brand/possbo-favicon-light-v5.png" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="theme-color" content="#667eea" />
+    <meta name="application-name" content="Possbo" />
+    <meta name="apple-mobile-web-app-title" content="Possbo" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
     />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.json?v=possbo-5" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

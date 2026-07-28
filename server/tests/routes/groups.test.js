@@ -167,7 +167,10 @@ describe("GET /api/groups/scrape-my-groups", () => {
     const res = await request(app).get("/api/groups/scrape-my-groups");
 
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe("Network failure");
+    expect(res.body.error).toBe(
+      "לא הצלחנו להשלים את הפעולה כרגע. נסו שוב מאוחר יותר.",
+    );
+    expect(res.body.code).toBe("INTERNAL_ERROR");
   });
 });
 
@@ -235,7 +238,10 @@ describe("GET /api/groups/facebook-screenshot", () => {
       .query({ groupName: "Test" });
 
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe("Crashed");
+    expect(res.body.error).toBe(
+      "לא הצלחנו להשלים את הפעולה כרגע. נסו שוב מאוחר יותר.",
+    );
+    expect(res.body.code).toBe("INTERNAL_ERROR");
   });
 });
 

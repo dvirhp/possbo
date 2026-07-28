@@ -89,6 +89,49 @@ function isBlockedPage(text) {
   return blockedPatterns.some((p) => p.test(text));
 }
 
+/**
+ * Remove Facebook tracking parameters without removing the identifiers that
+ * make story.php/permalink.php URLs point at one specific post.
+ */
+export function normalizeFacebookPostUrl(rawUrl) {
+  if (!rawUrl) return null;
+
+  try {
+    const url = new URL(rawUrl, "https://www.facebook.com");
+    if (!/(^|\.)facebook\.com$/i.test(url.hostname)) return rawUrl;
+
+    url.protocol = "https:";
+    url.hostname = "www.facebook.com";
+    url.hash = "";
+
+    const postId =
+      url.searchParams.get("story_fbid") || url.searchParams.get("fbid");
+    const ownerId = url.searchParams.get("id");
+    const groupFeedPostId = url.searchParams.get("multi_permalinks");
+    const isQueryPermalink = /\/(?:story|permalink)\.php$/i.test(url.pathname);
+    const isPhotoPermalink = /\/photo(?:\.php)?$/i.test(url.pathname);
+    const groupPath = url.pathname.match(/^\/groups\/([^/]+)/i);
+
+    url.search = "";
+    if (groupPath && groupFeedPostId) {
+      url.pathname = `/groups/${groupPath[1]}/posts/${groupFeedPostId}`;
+    } else if (isQueryPermalink && postId) {
+      url.searchParams.set("story_fbid", postId);
+      if (ownerId) url.searchParams.set("id", ownerId);
+    } else if (isPhotoPermalink && postId) {
+      url.searchParams.set("fbid", postId);
+      if (ownerId) url.searchParams.set("id", ownerId);
+    }
+
+    if (url.pathname !== "/") {
+      url.pathname = url.pathname.replace(/\/+$/, "");
+    }
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 async function hasFacebookLoginCookies(context) {
   const cookies = await context.cookies("https://www.facebook.com");
   const names = new Set(cookies.map((cookie) => cookie.name));
@@ -958,6 +1001,65 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       }
     }
 
+    // Capture the links that already exist before publishing. If Facebook's
+    // GraphQL response does not expose the new post ID, this lets the fallback
+    // distinguish the newly-created post from an older post in the feed.
+    const postLinksBeforePublish = new Set(
+      await page
+        .locator(
+          'a[href*="/posts/"], a[href*="/permalink/"], a[href*="story_fbid"]',
+        )
+        .evaluateAll((links) => links.map((link) => link.href))
+        .catch(() => []),
+    );
+
+    // The response listener must be registered before clicking Post. Registering
+    // it afterwards races the Facebook mutation and frequently misses the ID.
+    const postIdPromise = new Promise((resolve) => {
+      const handleResponse = async (response) => {
+        try {
+          const url = response.url();
+          if (
+            response.status() === 200 &&
+            (url.includes("/api/graphql") || url.includes("/graphql"))
+          ) {
+            const requestPayload = response.request().postData() || "";
+            const isComposerMutation =
+              /ComposerStoryCreate|CreateStory|story_create|composer.*create/i.test(
+                requestPayload,
+              );
+            if (!isComposerMutation) return;
+
+            const responseText = await response.text().catch(() => "");
+            const storyMatch = responseText.match(
+              /"story_id"\s*:\s*"(\d+(?:_\d+)?)"/,
+            );
+            const postIdMatch = responseText.match(
+              /"post_id"\s*:\s*"(\d+)"/,
+            );
+            const composerMatch = responseText.match(
+              /"id"\s*:\s*"(\d{10,})".*?"__typename"\s*:\s*"Story"/,
+            );
+            const rawId =
+              storyMatch?.[1] || postIdMatch?.[1] || composerMatch?.[1];
+            const foundId = rawId?.split("_").pop();
+            if (foundId) {
+              clearTimeout(timeout);
+              page.off("response", handleResponse);
+              resolve(foundId);
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+      const timeout = setTimeout(() => {
+        page.off("response", handleResponse);
+        resolve(null);
+      }, 12000);
+      page.on("response", handleResponse);
+    });
+
     // Click the submit/post button
     let posted = false;
 
@@ -1043,37 +1145,7 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       throw new Error("POST_BUTTON_NOT_FOUND");
     }
 
-    // Set up a listener for post creation responses BEFORE waiting
     let postUrl = null;
-    const postIdPromise = new Promise((resolve) => {
-      const timeout = setTimeout(() => resolve(null), 12000);
-      page.on("response", async (response) => {
-        try {
-          const url = response.url();
-          // Facebook GraphQL mutation responses contain the new post ID
-          if (
-            response.status() === 200 &&
-            (url.includes("/api/graphql") || url.includes("/graphql"))
-          ) {
-            const text = await response.text().catch(() => "");
-            // Look for story/post IDs in GraphQL responses
-            const storyMatch = text.match(/"story_id"\s*:\s*"(\d+)"/);
-            const postIdMatch = text.match(/"post_id"\s*:\s*"(\d+)"/);
-            const composerMatch = text.match(
-              /"id"\s*:\s*"(\d{10,})".*?"__typename"\s*:\s*"Story"/,
-            );
-            const foundId =
-              storyMatch?.[1] || postIdMatch?.[1] || composerMatch?.[1];
-            if (foundId) {
-              clearTimeout(timeout);
-              resolve(foundId);
-            }
-          }
-        } catch {
-          /* ignore */
-        }
-      });
-    });
 
     // Wait for the post to be submitted
     log.debug("Waiting for post to be submitted...");
@@ -1098,43 +1170,75 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
         });
         await page.waitForTimeout(4000);
 
-        // Collect ALL links on page that could be post permalinks
-        const allPostLinks = await page.evaluate((gid) => {
-          const links = Array.from(document.querySelectorAll("a[href]"));
-          return links
-            .map((a) => ({ href: a.href }))
-            .filter(
-              (l) =>
-                l.href.includes("/posts/") ||
-                l.href.includes("/permalink/") ||
-                l.href.includes("story_fbid"),
-            )
-            .slice(0, 20);
-        }, groupId);
+        // Prefer a link inside an article containing the published text. For
+        // media-only posts, prefer a permalink that did not exist before the
+        // publish action. Never fall back to an arbitrary old feed link.
+        const allPostLinks = await page.evaluate(
+          ({ publishedText, existingLinks }) => {
+            const isPostLink = (href) =>
+              href.includes("/posts/") ||
+              href.includes("/permalink/") ||
+              href.includes("story_fbid");
+            const normalizePostLink = (href) => {
+              try {
+                const url = new URL(href, window.location.origin);
+                const storyId = url.searchParams.get("story_fbid");
+                return storyId
+                  ? `${url.origin}${url.pathname}?story_fbid=${storyId}`
+                  : `${url.origin}${url.pathname.replace(/\/$/, "")}`;
+              } catch {
+                return href;
+              }
+            };
+            const cleanText = publishedText.replace(/\s+/g, " ").trim();
+            const textNeedle = cleanText.slice(0, 80);
+            const articles = Array.from(
+              document.querySelectorAll('[role="article"]'),
+            );
+            const matchingArticle = textNeedle
+              ? articles.find((article) =>
+                  article.innerText
+                    .replace(/\s+/g, " ")
+                    .includes(textNeedle),
+                )
+              : null;
+            const matchingLink = matchingArticle
+              ? Array.from(matchingArticle.querySelectorAll("a[href]")).find(
+                  (link) => isPostLink(link.href),
+                )
+              : null;
+            if (matchingLink) {
+              return [{ href: matchingLink.href, verified: true }];
+            }
+
+            const existing = new Set(existingLinks.map(normalizePostLink));
+            return Array.from(document.querySelectorAll("a[href]"))
+              .map((link) => ({ href: link.href }))
+              .filter(
+                (link) =>
+                  isPostLink(link.href) &&
+                  !existing.has(normalizePostLink(link.href)),
+              )
+              .slice(0, 20);
+          },
+          {
+            publishedText: text || "",
+            existingLinks: Array.from(postLinksBeforePublish),
+          },
+        );
         log.info("Fallback: post-like links found:", allPostLinks.length);
 
-        const groupLink = allPostLinks.find((l) =>
-          l.href.includes(`/groups/${groupId}/`),
+        const groupLink = allPostLinks.find(
+          (l) =>
+            l.href.includes(`/groups/${groupId}/`) &&
+            (l.verified || !postLinksBeforePublish.has(l.href)),
         );
         if (groupLink) {
           postUrl = groupLink.href;
-        } else if (allPostLinks.length > 0) {
-          postUrl = allPostLinks[0].href;
         }
 
-        // Ensure full URL and clean tracking params
-        if (postUrl && !postUrl.startsWith("http")) {
-          postUrl = `https://www.facebook.com${postUrl}`;
-        }
-        if (postUrl) {
-          try {
-            const u = new URL(postUrl);
-            u.search = "";
-            postUrl = u.toString();
-          } catch {
-            /* keep as-is */
-          }
-        }
+        // Keep post identity parameters (story_fbid/fbid/id), remove tracking.
+        postUrl = normalizeFacebookPostUrl(postUrl);
       } catch (e) {
         log.debug("Fallback URL detection error (non-fatal):", e.message);
       }
@@ -1161,6 +1265,20 @@ export async function publishToGroup(groupUrl, text, imagePath, options = {}) {
       success: true,
       screenshot: screenshot.toString("base64"),
       postUrl,
+      externalPostId:
+        postIdFromResponse ||
+        postUrl?.match(/\/(?:posts|permalink)\/(\d+)/i)?.[1] ||
+        (() => {
+          try {
+            const url = new URL(postUrl);
+            return (
+              url.searchParams.get("story_fbid") ||
+              url.searchParams.get("fbid")
+            );
+          } catch {
+            return null;
+          }
+        })(),
     };
   } finally {
     await browser.close();
@@ -1435,14 +1553,7 @@ export async function publishToProfile(text, imagePath, options = {}) {
         return postLink?.href || null;
       });
       if (topPostLink) {
-        postUrl = topPostLink;
-        try {
-          const u = new URL(postUrl);
-          u.search = "";
-          postUrl = u.toString();
-        } catch {
-          /* keep as-is */
-        }
+        postUrl = normalizeFacebookPostUrl(topPostLink);
       }
     } catch (e) {
       log.debug("Profile post URL detection error (non-fatal):", e.message);

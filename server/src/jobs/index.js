@@ -8,7 +8,9 @@ import { runDailyGroupMetadataRefresh } from "./group-metadata-refresh.js";
 import {
   startMetricsScheduler,
   stopMetricsScheduler,
+  collectRecentInstagramStoryMetrics,
 } from "./metrics-collector.js";
+import { refreshExpiringInstagramTokens } from "./instagram-token-refresh.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("scheduler");
@@ -22,6 +24,9 @@ const INTERVALS = {
   SESSION_KEEPALIVE: 7.5 * 60 * 60 * 1000,
   // Refresh group metadata once a day
   GROUP_METADATA: 24 * 60 * 60 * 1000,
+  // Scan daily; each token refreshes only inside its 30-day expiry window.
+  INSTAGRAM_TOKEN_REFRESH: 24 * 60 * 60 * 1000,
+  INSTAGRAM_STORY_METRICS: 60 * 60 * 1000,
 };
 
 let timers = [];
@@ -73,12 +78,32 @@ export function startScheduler() {
   }, INTERVALS.GROUP_METADATA);
   timers.push(groupMeta);
 
+  const instagramTokenRefresh = setInterval(async () => {
+    try {
+      await refreshExpiringInstagramTokens();
+    } catch (error) {
+      log.error("Error refreshing Instagram tokens", error);
+    }
+  }, INTERVALS.INSTAGRAM_TOKEN_REFRESH);
+  timers.push(instagramTokenRefresh);
+
+  const instagramStoryMetrics = setInterval(async () => {
+    try {
+      await collectRecentInstagramStoryMetrics();
+    } catch (error) {
+      log.error("Error collecting Instagram story metrics", error);
+    }
+  }, INTERVALS.INSTAGRAM_STORY_METRICS);
+  timers.push(instagramStoryMetrics);
+
   // Run job generator immediately on startup to catch any missed schedules
   setTimeout(async () => {
     try {
       await recoverStaleJobs();
       await generateScheduledJobs();
       await processPublicationJobs();
+      await refreshExpiringInstagramTokens();
+      await collectRecentInstagramStoryMetrics();
     } catch (error) {
       log.error("Error on startup run", error);
     }
@@ -91,7 +116,9 @@ export function startScheduler() {
     processJobs: `${INTERVALS.PROCESS_JOBS / 1000}s`,
     generateJobs: `${INTERVALS.GENERATE_JOBS / 1000}s`,
     keepAlive: `${INTERVALS.SESSION_KEEPALIVE / 3600000} hours`,
+    instagramTokenRefresh: "daily scan; refresh within 30 days of expiry",
     metricsCollection: "2x daily (02:00 + random 08:00-20:00)",
+    instagramStoryMetrics: "hourly for the first 26 hours",
   });
 }
 
