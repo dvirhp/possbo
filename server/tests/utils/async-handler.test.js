@@ -34,7 +34,8 @@ describe("asyncHandler", () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
-      error: "Something broke",
+      error: "לא הצלחנו להשלים את הפעולה כרגע. נסו שוב מאוחר יותר.",
+      code: "INTERNAL_ERROR",
     });
   });
 

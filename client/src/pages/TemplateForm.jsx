@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useNavigationGuard } from '../context/NavigationGuard'
 import { templatesService } from '../services/templatesService'
@@ -12,6 +12,8 @@ import BrandLogo from '../components/BrandLogo'
 import { X, ChevronDown, ChevronUp, Eye } from 'lucide-react'
 import '../styles/templates.css'
 import '../styles/create-post.css'
+
+const TEMPLATE_SCHEDULING_ENABLED = false
 
 const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
 
@@ -253,7 +255,18 @@ export default function TemplateForm() {
   const { id } = useParams()
   const isEdit = !!id
   const navigate = useNavigate()
-  const { user, setUser, authChecked, groups: cachedGroups } = useAppData()
+  const routeLocation = useLocation()
+  const generatedContent = routeLocation.state?.generatedContent || ''
+  const returnedDraft = routeLocation.state?.templateDraft || null
+  const {
+    user,
+    setUser,
+    authChecked,
+    groups: cachedGroups,
+    waGroups,
+    waBroadcastLists,
+    loadWaGroups,
+  } = useAppData()
   const { setDirty, isDirty, guardNavigate } = useNavigationGuard()
 
   // Form state
@@ -263,13 +276,18 @@ export default function TemplateForm() {
   const [isAnonymous, setIsAnonymous] = useState(false)
   const [location, setLocation] = useState('')
   const [showLocation, setShowLocation] = useState(false)
-  const [whatsappText, setWhatsappText] = useState('')
+  const [whatsappText, setWhatsappText] = useState(returnedDraft?.whatsappText || user?.whatsappMessage || '')
   const [showWhatsapp, setShowWhatsapp] = useState(false)
   const [waLinking, setWaLinking] = useState(false)
   const [waTempNumber, setWaTempNumber] = useState('')
   const [waTempMessage, setWaTempMessage] = useState('')
   const [waSaving, setWaSaving] = useState(false)
   const [waEditingMsg, setWaEditingMsg] = useState(false)
+  const [selectedWaTargets, setSelectedWaTargets] = useState([])
+  const [waTargetTab, setWaTargetTab] = useState('groups')
+  const [waTargetSearch, setWaTargetSearch] = useState('')
+  const [showWaTargetsPicker, setShowWaTargetsPicker] = useState(false)
+  const [distributionTab, setDistributionTab] = useState('facebook')
 
   // Groups scheduling
   const [scheduleMode, setScheduleMode] = useState('now')
@@ -356,6 +374,28 @@ export default function TemplateForm() {
   // UI
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(isEdit)
+
+  useEffect(() => {
+    if (!returnedDraft) return
+    setName(returnedDraft.name || '')
+    setCampaignTitle(returnedDraft.campaignTitle || '')
+    setContent(generatedContent || returnedDraft.content || '')
+    setIsAnonymous(!!returnedDraft.isAnonymous)
+    setLocation(returnedDraft.location || '')
+    setShowLocation(!!returnedDraft.showLocation)
+    setWhatsappText(returnedDraft.whatsappText || user?.whatsappMessage || '')
+    setShowWhatsapp(!!returnedDraft.showWhatsapp)
+    setSelectedGroupIds(returnedDraft.selectedGroupIds || [])
+    setPublishToProfile(!!returnedDraft.publishToProfile)
+    setInstagramEnabled(!!returnedDraft.instagramEnabled)
+    setInstagramPublishTypes(returnedDraft.instagramPublishTypes || ['FEED'])
+    setStoryMediaMode(returnedDraft.storyMediaMode || 'first')
+    setStoryPickedIndex(returnedDraft.storyPickedIndex || 0)
+    setSelectedWaTargets(returnedDraft.selectedWaTargets || [])
+    setExistingImages(returnedDraft.existingImages || [])
+    setNewImages(returnedDraft.newImages || [])
+    setNewImagePreviews(returnedDraft.newImagePreviews || [])
+  }, []) // restore the form once after returning from the AI generator
   const [error, setError] = useState(null)
   const [showGroupsPicker, setShowGroupsPicker] = useState(false)
   const [showAllSelectedGroups, setShowAllSelectedGroups] = useState(false)
@@ -390,13 +430,14 @@ export default function TemplateForm() {
       if (res.data.success) {
         const t = res.data.template
         setName(t.name)
-        setContent(t.content)
+        setContent(generatedContent || t.content)
         setCampaignTitle(t.campaignTitle || '')
         setIsAnonymous(t.isAnonymous)
         setLocation(t.location || '')
         setShowLocation(!!t.location)
-        setWhatsappText(t.whatsappText || '')
+        setWhatsappText(t.whatsappText || user?.whatsappMessage || '')
         setShowWhatsapp(!!t.whatsappText)
+        setSelectedWaTargets(Array.isArray(t.whatsappTargets) ? t.whatsappTargets : [])
         setScheduleMode(t.scheduleMode || 'now')
         if (t.scheduledDate) {
           const dt = new Date(t.scheduledDate)
@@ -490,36 +531,38 @@ export default function TemplateForm() {
         isAnonymous,
         location: location || null,
         whatsappText: whatsappText || null,
-        scheduleMode,
-        scheduledDate: scheduleMode === 'scheduled' && scheduleDate && scheduleTime ? `${scheduleDate}T${scheduleTime}` : null,
-        recurringDays,
-        recurringStartDate: scheduleMode === 'recurring' ? recurringStartDate || null : null,
-        recurringEndDate: scheduleMode === 'recurring' ? recurringEndDate || null : null,
-        recurringTimes: Object.values(dayTimes).flat().filter(t => t.trim()),
-        dayTimes,
+        scheduleMode: null,
+        scheduledDate: null,
+        recurringDays: [],
+        recurringStartDate: null,
+        recurringEndDate: null,
+        recurringTimes: [],
+        dayTimes: null,
         groupIds: selectedGroupIds,
+        whatsappEnabled: selectedWaTargets.length > 0,
+        whatsappTargets: selectedWaTargets.length > 0 ? selectedWaTargets : null,
         existingImages,
         // Profile scheduling
         publishToProfile,
-        profileScheduleMode,
-        profileScheduleDate: profileScheduleMode === 'scheduled' ? profileScheduleDate || null : null,
-        profileScheduleTime: profileScheduleMode === 'scheduled' ? profileScheduleTime || null : null,
-        profileRecurringDays: profileScheduleMode === 'recurring' ? profileRecurringDays : null,
-        profileDayTimes: profileScheduleMode === 'recurring' ? profileDayTimes : null,
-        profileRecurringStartDate: profileScheduleMode === 'recurring' ? profileRecurringStartDate || null : null,
-        profileRecurringEndDate: profileScheduleMode === 'recurring' ? profileRecurringEndDate || null : null,
+        profileScheduleMode: null,
+        profileScheduleDate: null,
+        profileScheduleTime: null,
+        profileRecurringDays: [],
+        profileDayTimes: null,
+        profileRecurringStartDate: null,
+        profileRecurringEndDate: null,
         // Instagram scheduling
         instagramEnabled,
         instagramPublishTypes: instagramEnabled ? instagramPublishTypes : null,
         storyMediaMode: instagramEnabled && instagramPublishTypes.includes('STORY') ? storyMediaMode : null,
         storyPickedIndex: instagramEnabled && instagramPublishTypes.includes('STORY') && storyMediaMode === 'pick' ? storyPickedIndex : null,
-        igScheduleMode,
-        igScheduleDate: igScheduleMode === 'scheduled' ? igScheduleDate || null : null,
-        igScheduleTime: igScheduleMode === 'scheduled' ? igScheduleTime || null : null,
-        igRecurringDays: igScheduleMode === 'recurring' ? igRecurringDays : null,
-        igDayTimes: igScheduleMode === 'recurring' ? igDayTimes : null,
-        igRecurringStartDate: igScheduleMode === 'recurring' ? igRecurringStartDate || null : null,
-        igRecurringEndDate: igScheduleMode === 'recurring' ? igRecurringEndDate || null : null,
+        igScheduleMode: null,
+        igScheduleDate: null,
+        igScheduleTime: null,
+        igRecurringDays: [],
+        igDayTimes: null,
+        igRecurringStartDate: null,
+        igRecurringEndDate: null,
       }
 
       if (isEdit) {
@@ -543,6 +586,23 @@ export default function TemplateForm() {
   const selectedGroups = groups.filter(g => selectedGroupIds.includes(g.id))
   const totalReach = selectedGroups.reduce((sum, g) => sum + (g.memberCount || 0), 0)
   const visibleSelectedGroups = showAllSelectedGroups ? selectedGroups : selectedGroups.slice(0, 5)
+  const waSearchLower = waTargetSearch.trim().toLowerCase()
+  const waItems = [
+    ...(waGroups || []).map(g => ({ id: g.id, type: 'group', name: g.name, size: g.participants || null })),
+    ...(waBroadcastLists || []).map(list => ({ id: list.id, type: 'broadcast', name: list.name, size: list.members?.length || 0 })),
+  ]
+  const visibleWaItems = waItems.filter(item =>
+    (!waSearchLower ? item.type === (waTargetTab === 'groups' ? 'group' : 'broadcast') : true) &&
+    (!waSearchLower || item.name?.toLowerCase().includes(waSearchLower))
+  )
+  const toggleWaTarget = (item) => {
+    setSelectedWaTargets(prev => {
+      const selected = prev.some(target => target.id === item.id && target.type === item.type)
+      return selected
+        ? prev.filter(target => !(target.id === item.id && target.type === item.type))
+        : [...prev, { id: item.id, type: item.type, name: item.name }]
+    })
+  }
 
   if (!authChecked || !user) return null
   if (loading) return (
@@ -615,10 +675,45 @@ export default function TemplateForm() {
                 value={content}
                 onChange={e => setContent(e.target.value)}
               />
-              <EmojiPicker
-                textareaRef={contentTextareaRef}
-                onSelect={(newText) => setContent(newText)}
-              />
+              <div className="tpl-content-editor-toolbar">
+                <EmojiPicker
+                  textareaRef={contentTextareaRef}
+                  onSelect={(newText) => setContent(newText)}
+                />
+                <button
+                  type="button"
+                  className="cp-ai-generate-btn tpl-ai-generate-btn"
+                  onClick={() => navigate('/generate-post', {
+                    state: {
+                      fromTemplateForm: true,
+                      templateId: id || null,
+                      templateDraft: {
+                        name,
+                        campaignTitle,
+                        content,
+                        isAnonymous,
+                        location,
+                        showLocation,
+                        whatsappText,
+                        showWhatsapp,
+                        selectedGroupIds,
+                        publishToProfile,
+                        instagramEnabled,
+                        instagramPublishTypes,
+                        storyMediaMode,
+                        storyPickedIndex,
+                        selectedWaTargets,
+                        existingImages,
+                        newImages,
+                        newImagePreviews,
+                      },
+                    },
+                  })}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2L12 3Z"/><path d="m19 14-.8 2.2L16 17l2.2.8L19 20l.8-2.2L22 17l-2.2-.8L19 14Z"/></svg>
+                  יצירת תוכן עם AI
+                </button>
+              </div>
               </div>
             </div>
 
@@ -640,12 +735,20 @@ export default function TemplateForm() {
             </button>
             <button
               type="button"
-              className={`tpl-toggle-btn ${showWhatsapp ? 'active' : ''}`}
+              className={`tpl-toggle-btn tpl-toggle-whatsapp ${showWhatsapp ? 'active' : ''}`}
               onClick={() => {
                 const next = !showWhatsapp
                 setShowWhatsapp(next)
                 if (next && !whatsappText) {
-                  setWhatsappText(`היי! ראיתי את הפוסט שלי "${name || 'טמפלייט'}".\nאשמח לפרטים נוספים 🙏`)
+                  setWhatsappText(user?.whatsappMessage || '')
+                }
+                if (next && !user?.whatsappNumber) {
+                  setWaTempNumber('')
+                  setWaTempMessage(whatsappText || user?.whatsappMessage || '')
+                  setWaLinking(true)
+                } else if (!next) {
+                  setWaLinking(false)
+                  setWaEditingMsg(false)
                 }
               }}
             >
@@ -698,9 +801,15 @@ export default function TemplateForm() {
           )}
 
           {showWhatsapp && user?.whatsappNumber && (
-            <div className="cp-whatsapp-wrap cp-whatsapp-active">
-              <div className="cp-whatsapp-row">✓ קישור וואטסאפ יצורף לתוכן הפוסט</div>
-              <div className="cp-whatsapp-row" dir="ltr">wa.me/{user.whatsappNumber.replace(/[^0-9]/g, '')}{whatsappText ? '?text=...' : ''}</div>
+            <div className="cp-whatsapp-wrap cp-whatsapp-active tpl-whatsapp-content-card">
+              <div className="tpl-whatsapp-content-heading">
+                <span className="tpl-whatsapp-content-check">✓</span>
+                <div>
+                  <strong>קישור WhatsApp פעיל</strong>
+                  <span>הקישור יצורף לתוכן הפוסט</span>
+                </div>
+              </div>
+              <div className="cp-whatsapp-row tpl-whatsapp-link-preview" dir="ltr">wa.me/{user.whatsappNumber.replace(/[^0-9]/g, '')}{whatsappText ? '?text=...' : ''}</div>
               {whatsappText && !waEditingMsg && <div className="cp-wa-msg-preview">💬 {whatsappText}</div>}
               {!waEditingMsg ? (
                 <button type="button" className="cp-wa-edit-btn" onClick={() => setWaEditingMsg(true)}>✏️ ערוך הודעה</button>
@@ -761,8 +870,59 @@ export default function TemplateForm() {
           {/* ═══ Section: Distribution ═══ */}
           <div className="tpl-section-card">
             <div className="tpl-section-header">📢 תפוצה</div>
+            <div className="tpl-distribution-tabs" role="tablist" aria-label="בחירת ערוץ תפוצה">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={distributionTab === 'facebook'}
+                className={distributionTab === 'facebook' ? 'active facebook' : ''}
+                onClick={() => setDistributionTab('facebook')}
+              >
+                <svg className="tpl-distribution-tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073c0 6.026 4.388 11.02 10.125 11.927v-8.432H7.078v-3.495h3.047V9.41c0-3.025 1.792-4.696 4.533-4.696 1.312 0 2.686.236 2.686.236v2.971H15.83c-1.491 0-1.956.93-1.956 1.885v2.267h3.328l-.532 3.495h-2.796V24C19.612 23.093 24 18.099 24 12.073z"/>
+                </svg>
+                <span>Facebook</span>
+                {(selectedGroupIds.length > 0 || publishToProfile) && (
+                  <small>{selectedGroupIds.length + (publishToProfile ? 1 : 0)}</small>
+                )}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={distributionTab === 'instagram'}
+                className={distributionTab === 'instagram' ? 'active instagram' : ''}
+                onClick={() => setDistributionTab('instagram')}
+              >
+                <svg className="tpl-distribution-tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="tpl-instagram-tab-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#ffdc80"/>
+                      <stop offset="48%" stopColor="#e1306c"/>
+                      <stop offset="100%" stopColor="#833ab4"/>
+                    </linearGradient>
+                  </defs>
+                  <path fill="url(#tpl-instagram-tab-gradient)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12s.014 3.668.072 4.948c.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24s3.668-.014 4.948-.072c4.354-.2 6.782-2.618 6.979-6.98C23.986 15.668 24 15.259 24 12s-.014-3.667-.072-4.947c-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838A6.162 6.162 0 1 0 12 18.162 6.162 6.162 0 0 0 12 5.838zm0 10.162a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/>
+                </svg>
+                <span>Instagram</span>
+                {instagramEnabled && <small>{instagramPublishTypes.length}</small>}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={distributionTab === 'whatsapp'}
+                className={distributionTab === 'whatsapp' ? 'active whatsapp' : ''}
+                onClick={() => setDistributionTab('whatsapp')}
+              >
+                <svg className="tpl-distribution-tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347M12.05 21.785h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884M20.463 3.488A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/>
+                </svg>
+                <span>WhatsApp</span>
+                {selectedWaTargets.length > 0 && <small>{selectedWaTargets.length}</small>}
+              </button>
+            </div>
 
             {/* ─── Facebook section ─── */}
+            {distributionTab === 'facebook' && (
             <div className="tpl-dist-platform">
               <div className="tpl-dist-platform-header">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
@@ -847,8 +1007,10 @@ export default function TemplateForm() {
                 </label>
               </div>
             </div>
+            )}
 
             {/* ─── Instagram section ─── */}
+            {distributionTab === 'instagram' && (
             <div className="tpl-dist-platform tpl-dist-platform-ig">
               <div className="tpl-dist-platform-header">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#ig-dist-tpl)">
@@ -1000,11 +1162,132 @@ export default function TemplateForm() {
               </>
               )}
             </div>
+            )}
+
+            {/* WhatsApp distribution */}
+            {distributionTab === 'whatsapp' && (
+            <div className="tpl-dist-platform tpl-dist-platform-wa">
+              <div className="tpl-dist-platform-header">
+                <span className="tpl-wa-platform-icon" aria-hidden="true">💬</span>
+                <span className="tpl-dist-platform-title">WhatsApp</span>
+                {selectedWaTargets.length > 0 && (
+                  <span className="tpl-dist-platform-badge">{selectedWaTargets.length} יעדים</span>
+                )}
+              </div>
+
+              {!user?.whatsappSessionConnected ? (
+                <div className="tpl-wa-connect-notice">
+                  <strong>חיבור WhatsApp נדרש</strong>
+                  <span>חברו את WhatsApp כדי לבחור קבוצות ורשימות תפוצה לטמפלייט.</span>
+                  <button type="button" onClick={() => navigate('/dashboard?tab=settings')}>
+                    מעבר להגדרות
+                  </button>
+                </div>
+              ) : (
+                <div className="tpl-platform-section">
+                  {selectedWaTargets.length > 0 && (
+                    <div className="tpl-selected-chips tpl-wa-selected-chips">
+                      {selectedWaTargets.map(target => (
+                        <div key={`${target.type}-${target.id}`} className="tpl-selected-chip">
+                          <span className="tpl-chip-avatar tpl-chip-avatar-fallback">
+                            {target.type === 'group' ? '👥' : '📢'}
+                          </span>
+                          <span className="tpl-chip-name">{target.name}</span>
+                          <button
+                            type="button"
+                            className="tpl-chip-remove"
+                            onClick={() => toggleWaTarget(target)}
+                            aria-label={`הסר את ${target.name}`}
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="tpl-groups-picker-toggle tpl-wa-picker-toggle"
+                    onClick={() => {
+                      const next = !showWaTargetsPicker
+                      setShowWaTargetsPicker(next)
+                      if (next) loadWaGroups()
+                    }}
+                  >
+                    {showWaTargetsPicker ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    {showWaTargetsPicker ? 'סגור בחירת יעדים' : 'בחר יעדי WhatsApp'}
+                  </button>
+
+                  {showWaTargetsPicker && (
+                    <div className="tpl-wa-picker">
+                      <input
+                        type="search"
+                        className="tpl-group-search tpl-wa-search"
+                        placeholder="חפש קבוצה או רשימת תפוצה..."
+                        value={waTargetSearch}
+                        onChange={event => setWaTargetSearch(event.target.value)}
+                        aria-label="חיפוש יעד WhatsApp"
+                      />
+
+                      {!waSearchLower && (
+                        <div className="tpl-wa-tabs" role="tablist" aria-label="סוג יעד WhatsApp">
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={waTargetTab === 'groups'}
+                            className={waTargetTab === 'groups' ? 'active' : ''}
+                            onClick={() => setWaTargetTab('groups')}
+                          >
+                            קבוצות WhatsApp
+                            <span>{waGroups?.length || 0}</span>
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={waTargetTab === 'broadcasts'}
+                            className={waTargetTab === 'broadcasts' ? 'active' : ''}
+                            onClick={() => setWaTargetTab('broadcasts')}
+                          >
+                            רשימות תפוצה
+                            <span>{waBroadcastLists?.length || 0}</span>
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="tpl-wa-target-list">
+                        {visibleWaItems.length > 0 ? visibleWaItems.map(item => {
+                          const selected = selectedWaTargets.some(target => target.id === item.id && target.type === item.type)
+                          return (
+                            <label key={`${item.type}-${item.id}`} className={`tpl-group-item ${selected ? 'selected' : ''}`}>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => toggleWaTarget(item)}
+                                aria-label={`בחר את ${item.name}`}
+                              />
+                              <span className="tpl-wa-target-type">{item.type === 'group' ? '👥' : '📢'}</span>
+                              <span className="tpl-group-name">{item.name}</span>
+                              {item.size != null && <span className="tpl-group-members">{item.size} משתתפים</span>}
+                            </label>
+                          )
+                        }) : (
+                          <div className="tpl-no-groups">
+                            {waSearchLower ? 'לא נמצאו תוצאות בקבוצות או ברשימות תפוצה' : 'אין יעדים להצגה בטאב זה'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            )}
           </div>
 
           {/* ═══ Section: Scheduling ═══ */}
           {/* Schedule Mode */}
-          {(() => {
+          {TEMPLATE_SCHEDULING_ENABLED && (() => {
             const targets = []
             if (selectedGroupIds.length > 0) targets.push('groups')
             if (publishToProfile) targets.push('profile')

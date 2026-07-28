@@ -32,6 +32,7 @@ router.get(
       history,
       publishedCount,
       campaigns,
+      recentDraftPosts,
       fbGroups,
       templates,
       topPostsWithMetrics,
@@ -52,6 +53,7 @@ router.get(
           lastError: true,
           targetType: true,
           platform: true,
+          igPublishType: true,
           postGroup: {
             select: {
               id: true,
@@ -76,6 +78,22 @@ router.get(
           errorMessage: true,
           targetType: true,
           platform: true,
+          publicationJob: { select: { igPublishType: true } },
+          metrics: {
+            orderBy: { collectedAt: "desc" },
+            take: 1,
+            select: {
+              likesCount: true,
+              commentsCount: true,
+              sharesCount: true,
+              reachCount: true,
+              impressionsCount: true,
+              viewsCount: true,
+              savesCount: true,
+              repliesCount: true,
+              totalInteractionsCount: true,
+            },
+          },
         },
         orderBy: { publishedAt: "desc" },
         take: 20,
@@ -135,6 +153,27 @@ router.get(
         orderBy: { createdAt: "desc" },
         take: 30,
       }),
+      // Continue-where-I-left-off must not depend on the general campaign
+      // query's 30-row window.
+      prisma.post.findMany({
+        where: { userId, status: "DRAFT" },
+        include: {
+          media: {
+            orderBy: { orderIndex: "asc" },
+            select: { url: true, orderIndex: true, igType: true, mediaType: true },
+          },
+          postGroups: {
+            include: {
+              group: {
+                select: { id: true, name: true, url: true, pictureUrl: true },
+              },
+              schedules: { where: { isActive: true }, take: 1 },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 4,
+      }),
       // Saved Facebook groups
       prisma.facebookGroup.findMany({
         where: { userId },
@@ -172,14 +211,24 @@ router.get(
             },
           },
           group: { select: { id: true, name: true } },
+          publicationJob: { select: { igPublishType: true } },
           metrics: {
             orderBy: { collectedAt: "desc" },
             take: 1,
-            select: { likesCount: true, commentsCount: true },
+            select: {
+              likesCount: true,
+              commentsCount: true,
+              sharesCount: true,
+              reachCount: true,
+              impressionsCount: true,
+              viewsCount: true,
+              savesCount: true,
+              repliesCount: true,
+              totalInteractionsCount: true,
+            },
           },
         },
         orderBy: { publishedAt: "desc" },
-        take: 50,
       }),
       // Per-post published counts (all statuses, so history always shows)
       prisma.publicationHistory.groupBy({
@@ -223,9 +272,28 @@ router.get(
     const cleanedHistory = history.map((h) => {
       const post = campaignMap.get(h.postId);
       const group = groupMap.get(h.groupId);
+      const igType = h.publicationJob?.igPublishType || null;
+      const isActiveStory =
+        igType === "STORY" &&
+        Date.now() - new Date(h.publishedAt).getTime() < 24 * 60 * 60 * 1000;
+      const metric = h.metrics?.[0];
       return {
         ...h,
-        postUrl: h.externalPostUrl || null,
+        postUrl: igType === "STORY" && !isActiveStory ? null : h.externalPostUrl || null,
+        igType,
+        storyActive: igType === "STORY" ? isActiveStory : null,
+        storyExpiresAt:
+          igType === "STORY"
+            ? new Date(new Date(h.publishedAt).getTime() + 24 * 60 * 60 * 1000)
+            : null,
+        likes: metric?.likesCount || 0,
+        comments: metric?.commentsCount || 0,
+        shares: metric?.sharesCount || 0,
+        reach: metric?.reachCount || 0,
+        views: metric?.viewsCount || metric?.impressionsCount || 0,
+        saves: metric?.savesCount || 0,
+        replies: metric?.repliesCount || 0,
+        interactions: metric?.totalInteractionsCount || 0,
         groupName:
           h.targetType === "INSTAGRAM"
             ? "אינסטגרם"
@@ -353,6 +421,7 @@ router.get(
       dayTimes: p.dayTimes || null,
       recurringStart: p.recurringStart,
       recurringEnd: p.recurringEnd,
+      draftData: p.draftData || null,
       scheduleMode:
         p.campaignType === "BOTH"
           ? "both"
@@ -364,7 +433,7 @@ router.get(
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     });
-    const drafts = campaigns.filter((p) => p.status === "DRAFT").slice(0, 10);
+    const drafts = recentDraftPosts;
     const recentActive = campaigns
       .filter((p) => p.status === "ACTIVE" || p.status === "ARCHIVED")
       .slice(0, 10);
@@ -409,7 +478,10 @@ router.get(
         // Determine IG type (FEED/STORY/REEL) from post's instagramPublishType or externalPostUrl
         let igType = null;
         if (pub.platform === "INSTAGRAM" || pub.targetType === "INSTAGRAM") {
-          const publishType = pub.post?.instagramPublishType || "";
+          const publishType =
+            pub.publicationJob?.igPublishType ||
+            pub.post?.instagramPublishType ||
+            "";
           if (
             publishType.includes("REEL") ||
             pub.externalPostUrl?.includes("/reel/")
@@ -418,6 +490,13 @@ router.get(
           else if (publishType.includes("STORY")) igType = "STORY";
           else igType = "FEED";
         }
+        const platform =
+          pub.targetType === "WHATSAPP"
+            ? "WHATSAPP"
+            : pub.targetType === "INSTAGRAM"
+              ? "INSTAGRAM"
+              : pub.platform || "FACEBOOK";
+
         return {
           id: pub.id,
           postId: pub.post?.id,
@@ -426,13 +505,65 @@ router.get(
           publishedAt: pub.publishedAt,
           likes: m?.likesCount || 0,
           comments: m?.commentsCount || 0,
-          platform: pub.platform || "FACEBOOK",
+          shares: m?.sharesCount || 0,
+          reach: m?.reachCount || 0,
+          views: m?.viewsCount || m?.impressionsCount || 0,
+          saves: m?.savesCount || 0,
+          replies: m?.repliesCount || 0,
+          interactions: m?.totalInteractionsCount || 0,
+          platform,
           targetType: pub.targetType || "GROUP",
           igType,
-          postUrl: pub.externalPostUrl || null,
+          postUrl:
+            igType === "STORY" &&
+            Date.now() - new Date(pub.publishedAt).getTime() >= 24 * 60 * 60 * 1000
+              ? null
+              : pub.externalPostUrl || null,
+          storyActive:
+            igType === "STORY"
+              ? Date.now() - new Date(pub.publishedAt).getTime() < 24 * 60 * 60 * 1000
+              : null,
         };
       })
       .filter(Boolean);
+
+    // Keep the dashboard payload small while retaining every item the UI can
+    // need: WhatsApp is chronological, while Facebook and Instagram are
+    // ranked independently by either likes or comments.
+    const byPublishedAt = (a, b) =>
+      new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
+    const byMetric = (field) => (a, b) =>
+      (b[field] || 0) - (a[field] || 0) ||
+      (b[field === "likes" ? "comments" : "likes"] || 0) -
+        (a[field === "likes" ? "comments" : "likes"] || 0) ||
+      byPublishedAt(a, b);
+
+    const dashboardTopPosts = [];
+    const includedTopPostIds = new Set();
+    const addTopPosts = (items) => {
+      for (const item of items) {
+        if (includedTopPostIds.has(item.id)) continue;
+        includedTopPostIds.add(item.id);
+        dashboardTopPosts.push(item);
+      }
+    };
+
+    addTopPosts(
+      formattedTopPosts
+        .filter((post) => post.platform === "WHATSAPP")
+        .sort(byPublishedAt)
+        .slice(0, 4),
+    );
+
+    for (const platform of ["FACEBOOK", "INSTAGRAM"]) {
+      const platformPosts = formattedTopPosts.filter(
+        (post) => post.platform === platform,
+      );
+      addTopPosts([...platformPosts].sort(byMetric("likes")).slice(0, 4));
+      addTopPosts([...platformPosts].sort(byMetric("comments")).slice(0, 4));
+      addTopPosts([...platformPosts].sort(byMetric("shares")).slice(0, 4));
+      addTopPosts([...platformPosts].sort(byMetric("views")).slice(0, 4));
+    }
 
     const responseData = {
       success: true,
@@ -446,7 +577,7 @@ router.get(
       },
       groups: formattedGroups,
       templates: enrichedTemplates,
-      topPosts: formattedTopPosts,
+      topPosts: dashboardTopPosts,
     };
 
     // Cache for subsequent requests
@@ -880,11 +1011,23 @@ router.post(
       publicationId,
     );
 
+    if (!metrics) {
+      return res.status(422).json({
+        success: false,
+        error: "לא ניתן היה לאמת שהקישור מוביל לפוסט הפייסבוק הנכון",
+      });
+    }
+
     res.json({
       success: true,
       metrics: {
-        likes: metrics?.likes ?? 0,
-        comments: metrics?.comments ?? 0,
+        likes: metrics.likes,
+        comments: metrics.comments,
+        shares: metrics.shares || 0,
+        views: metrics.views || 0,
+        reach: metrics.reach || 0,
+        saves: metrics.saved || 0,
+        replies: metrics.replies || 0,
       },
     });
   }),

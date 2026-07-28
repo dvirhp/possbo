@@ -90,6 +90,7 @@ export function DataProvider({ children }) {
       const lists = broadcastRes.data?.lists || []
       setWaGroups(groups)
       setWaBroadcastLists(lists)
+      setWaError(null)
       waGroupsLoadedRef.current = true
       return { groups, broadcastLists: lists }
     } catch (err) {
@@ -140,7 +141,10 @@ export function DataProvider({ children }) {
 
     if (!isConnected || !authVerifiedRef.current) return
 
-    if (!wasConnected) {
+    // Only a real false -> true transition means the user has just connected.
+    // During initial auth hydration `wasConnected` is undefined, so no
+    // unsolicited background sync should start.
+    if (wasConnected === false) {
       // Just connected — wait for server auto-sync, then trigger full sync
       const timer = setTimeout(() => {
         syncWaGroups()

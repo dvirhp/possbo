@@ -9,6 +9,7 @@ import {
 } from "../utils/facebook-automation.js";
 import { decrypt } from "../utils/encryption.js";
 import { getPublicMediaUrl } from "../utils/media-upload.js";
+import { sendInstagramReconnectEmail } from "../utils/mailer.js";
 import { createLogger } from "../utils/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -257,7 +258,24 @@ async function publishToInstagram(post, user, jobIgPublishType) {
     throw new Error("INSTAGRAM_TOKEN_EXPIRED");
   }
 
-  const accessToken = decrypt(account.accessTokenEncrypted);
+  let accessToken;
+  try {
+    accessToken = decrypt(account.accessTokenEncrypted);
+  } catch (error) {
+    // A changed encryption key makes an existing token impossible to recover.
+    // Treat this as a permanent auth error instead of retrying the publication
+    // for several minutes with a cryptic crypto exception.
+    await prisma.connectedAccount.update({
+      where: { id: account.id },
+      data: { status: "EXPIRED" },
+    });
+    log.warn("Instagram token can no longer be decrypted", {
+      userId: user.id,
+      accountId: account.id,
+      error: error.message,
+    });
+    throw new Error("INSTAGRAM_TOKEN_INVALID");
+  }
 
   // Use 'me' instead of numeric ID to avoid JS Number precision issues with large IDs
   const igPath = "me";
@@ -270,14 +288,20 @@ async function publishToInstagram(post, user, jobIgPublishType) {
       : ["FEED"];
 
   // Strip WhatsApp links from content for Instagram captions
-  const igCaption =
+  const baseCaption =
     (post.content || "").replace(/\n*https?:\/\/wa\.me\/[^\s]*/gi, "").trim() ||
     null;
+  // Instagram Login does not receive the campaign's free-text location
+  // automatically. Preserve it visibly in the caption instead of silently
+  // dropping it.
+  const igCaption = [baseCaption, post.location ? `📍 ${post.location}` : null]
+    .filter(Boolean)
+    .join("\n\n") || null;
 
   // Get media — need publicly accessible URLs for Instagram API
-  const mediaPaths = (post.media || [])
-    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-    .map((m) => m.url);
+  const allMedia = [...(post.media || [])].sort(
+    (a, b) => (a.orderIndex || 0) - (b.orderIndex || 0),
+  );
 
   // Per-story captions (array of strings, one per image)
   const storyCaptions = Array.isArray(post.storyCaptions)
@@ -287,6 +311,14 @@ async function publishToInstagram(post, user, jobIgPublishType) {
   const results = [];
 
   for (const publishType of publishTypes) {
+    // Prefer media uploaded specifically for this Instagram destination.
+    // Fall back to campaign-wide media only when no override exists.
+    const typeMedia = allMedia.filter((media) => media.igType === publishType);
+    const globalMedia = allMedia.filter((media) => !media.igType);
+    const mediaPaths = (typeMedia.length ? typeMedia : globalMedia).map(
+      (media) => media.url,
+    );
+
     if (!mediaPaths[0]) {
       log.warn("Instagram publish skipped — no media", {
         postId: post.id,
@@ -468,8 +500,14 @@ async function publishToInstagram(post, user, jobIgPublishType) {
         containerBody.video_url = mediaUrl;
         if (igCaption) containerBody.caption = igCaption;
       } else {
-        // Single FEED image
-        containerBody.image_url = mediaUrl;
+        // A single Feed item can be either an image or a video. Sending an MP4
+        // as image_url can produce a published black/invalid post.
+        if (mediaUrl.match(/\.(mp4|mov|webm)(?:\?|$)/i)) {
+          containerBody.media_type = "VIDEO";
+          containerBody.video_url = mediaUrl;
+        } else {
+          containerBody.image_url = mediaUrl;
+        }
         if (igCaption) containerBody.caption = igCaption;
       }
 
@@ -913,7 +951,9 @@ export async function processPublicationJobs() {
             externalPostUrl: result?.postUrl || null,
             externalPostId: isInstagramJob
               ? result?.mediaIds?.[0] || null
-              : null,
+              : isWhatsAppJob
+                ? null
+                : result?.externalPostId || null,
             screenshotUrl: result?.screenshot || null,
           },
         });
@@ -987,7 +1027,8 @@ export async function processPublicationJobs() {
         const isInstagramAuthError =
           isInstagramJob &&
           (errorMsg === "INSTAGRAM_NOT_CONNECTED" ||
-            errorMsg === "INSTAGRAM_TOKEN_EXPIRED");
+            errorMsg === "INSTAGRAM_TOKEN_EXPIRED" ||
+            errorMsg === "INSTAGRAM_TOKEN_INVALID");
 
         // Content errors from Instagram that won't be fixed by retrying
         const isInstagramContentError =
@@ -1088,6 +1129,54 @@ export async function processPublicationJobs() {
               message: notificationMsg,
             },
           });
+
+          if (isInstagramAuthError) {
+            const notificationType = "INSTAGRAM_RECONNECT_REQUIRED";
+            const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const alreadyNotified = await prisma.notification.findFirst({
+              where: {
+                userId: user.id,
+                type: notificationType,
+                createdAt: { gte: since },
+              },
+              select: { id: true },
+            });
+
+            log.error(
+              "Instagram publication blocked: reconnect required",
+              new Error(errorMsg),
+              {
+                userId: user.id,
+                postId: post.id,
+                jobId: job.id,
+                publishType: job.igPublishType,
+                notificationAlreadySent: Boolean(alreadyNotified),
+              },
+            );
+
+            if (!alreadyNotified) {
+              await prisma.notification.create({
+                data: {
+                  userId: user.id,
+                  type: notificationType,
+                  title: "נדרש חיבור מחדש ל־Instagram",
+                  message:
+                    "הפרסום ב־Instagram לא בוצע. יש לחבר מחדש את חשבון Instagram בהגדרות החשבון.",
+                },
+              });
+
+              const emailSent = await sendInstagramReconnectEmail(
+                user.email,
+                user.name,
+              );
+              log.info("Instagram reconnect notification dispatched", {
+                userId: user.id,
+                postId: post.id,
+                inAppNotification: true,
+                emailSent,
+              });
+            }
+          }
 
           // If session error, stop processing this user's batch
           if (isSessionError) break;

@@ -154,6 +154,16 @@ router.post(
       igDayTimes,
       igRecurringStartDate,
       igRecurringEndDate,
+      // WhatsApp publishing
+      whatsappEnabled,
+      whatsappTargets,
+      waScheduleMode,
+      waScheduleDate,
+      waScheduleTime,
+      waRecurringDays,
+      waDayTimes,
+      waRecurringStartDate,
+      waRecurringEndDate,
     } = req.body;
 
     if (!name?.trim()) {
@@ -210,6 +220,17 @@ router.post(
         igDayTimes: safeParse(igDayTimes, null),
         igRecurringStartDate: igRecurringStartDate?.trim?.() || null,
         igRecurringEndDate: igRecurringEndDate?.trim?.() || null,
+        // WhatsApp publishing
+        whatsappEnabled:
+          whatsappEnabled === "true" || whatsappEnabled === true,
+        whatsappTargets: safeParse(whatsappTargets, null),
+        waScheduleMode: waScheduleMode || null,
+        waScheduleDate: waScheduleDate?.trim?.() || null,
+        waScheduleTime: waScheduleTime?.trim?.() || null,
+        waRecurringDays: safeParse(waRecurringDays, []),
+        waDayTimes: safeParse(waDayTimes, null),
+        waRecurringStartDate: waRecurringStartDate?.trim?.() || null,
+        waRecurringEndDate: waRecurringEndDate?.trim?.() || null,
       },
     });
 
@@ -266,6 +287,16 @@ router.put(
       igDayTimes,
       igRecurringStartDate,
       igRecurringEndDate,
+      // WhatsApp publishing
+      whatsappEnabled,
+      whatsappTargets,
+      waScheduleMode,
+      waScheduleDate,
+      waScheduleTime,
+      waRecurringDays,
+      waDayTimes,
+      waRecurringStartDate,
+      waRecurringEndDate,
     } = req.body;
 
     const newImageUrls = (req.files || []).map(
@@ -317,6 +348,17 @@ router.put(
         igDayTimes: safeParse(igDayTimes, null),
         igRecurringStartDate: igRecurringStartDate?.trim?.() || null,
         igRecurringEndDate: igRecurringEndDate?.trim?.() || null,
+        // WhatsApp publishing
+        whatsappEnabled:
+          whatsappEnabled === "true" || whatsappEnabled === true,
+        whatsappTargets: safeParse(whatsappTargets, null),
+        waScheduleMode: waScheduleMode || null,
+        waScheduleDate: waScheduleDate?.trim?.() || null,
+        waScheduleTime: waScheduleTime?.trim?.() || null,
+        waRecurringDays: safeParse(waRecurringDays, []),
+        waDayTimes: safeParse(waDayTimes, null),
+        waRecurringStartDate: waRecurringStartDate?.trim?.() || null,
+        waRecurringEndDate: waRecurringEndDate?.trim?.() || null,
       },
     });
 

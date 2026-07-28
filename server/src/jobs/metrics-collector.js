@@ -120,6 +120,10 @@ export async function collectAllMetrics() {
             result.shares || 0,
             result.reach || 0,
             result.impressions || 0,
+            result.views || 0,
+            result.saved || 0,
+            result.replies || 0,
+            result.totalInteractions || 0,
           );
           totalSaved++;
         }
@@ -136,6 +140,58 @@ export async function collectAllMetrics() {
   log.info(
     `Metrics collection done: scraped ${totalScraped}, saved ${totalSaved} new entries`,
   );
+}
+
+/**
+ * Stories are short-lived, so collect them much more frequently than regular
+ * media. The saved snapshots remain available after Instagram expires the
+ * public story and its link.
+ */
+export async function collectRecentInstagramStoryMetrics() {
+  const cutoff = new Date(Date.now() - 26 * 60 * 60 * 1000);
+  const stories = await prisma.publicationHistory.findMany({
+    where: {
+      status: "SUCCESS",
+      platform: "INSTAGRAM",
+      externalPostId: { not: null },
+      publishedAt: { gte: cutoff },
+      publicationJob: { igPublishType: "STORY" },
+    },
+    select: {
+      id: true,
+      userId: true,
+      externalPostId: true,
+      publicationJob: { select: { igPublishType: true } },
+    },
+  });
+
+  const byUser = new Map();
+  for (const story of stories) {
+    if (!byUser.has(story.userId)) byUser.set(story.userId, []);
+    byUser.get(story.userId).push({ ...story, igMediaType: "STORY" });
+  }
+
+  let saved = 0;
+  for (const [userId, publications] of byUser) {
+    const results = await refreshInstagramMetrics(userId, publications);
+    for (const result of results) {
+      await savePublicationMetrics(
+        result.publicationId,
+        result.likes,
+        result.comments,
+        result.shares || 0,
+        result.reach || 0,
+        result.impressions || 0,
+        result.views || 0,
+        result.saved || 0,
+        result.replies || 0,
+        result.totalInteractions || 0,
+      );
+      saved++;
+    }
+  }
+  log.info(`Instagram story metrics collection done: ${saved} snapshots saved`);
+  return saved;
 }
 
 /**

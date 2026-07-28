@@ -18,6 +18,17 @@
   overflow-y: auto;
   transition: width 250ms ease;
 }
+
+/*
+ * Keep sidebar sections at their intended height. On shorter viewports the
+ * flex column used to shrink the logo container while its image stayed 36px
+ * tall, so overflow:hidden clipped the mark. The sidebar already scrolls,
+ * therefore overflowing vertically is preferable to shrinking its sections.
+ */
+.sidebar > * {
+  flex-shrink: 0;
+}
+
 .sidebar-collapsed {
   width: 68px;
 }
@@ -53,7 +64,8 @@
 .sidebar-logo-wordmark {
   position: absolute;
   top: 60%;
-  right: 18px;
+  /* Account for the transparent inset inside the PNG mark. */
+  right: 22px;
   direction: ltr;
   max-width: 0;
   opacity: 0;

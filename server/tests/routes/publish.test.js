@@ -154,7 +154,10 @@ describe("POST /api/publish", () => {
       .send({ groupUrl: "https://facebook.com/groups/123", text: "Hello" });
 
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe("TIMEOUT");
+    expect(res.body.error).toBe(
+      "לא הצלחנו להשלים את הפעולה כרגע. נסו שוב מאוחר יותר.",
+    );
+    expect(res.body.code).toBe("INTERNAL_ERROR");
   });
 
   it("should call publishToGroup with correct args and save post on success", async () => {

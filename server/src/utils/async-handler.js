@@ -21,13 +21,13 @@ export function asyncHandler(fn) {
         });
       }
 
-      // Never expose raw error messages to client in production
-      const isProduction = process.env.NODE_ENV === "production";
+      // Technical exceptions can contain schema details, queries, filesystem
+      // paths and identifiers. Keep them in the server log in every
+      // environment and return only a stable, user-safe response.
       res.status(500).json({
         success: false,
-        error: isProduction
-          ? "Internal server error"
-          : error.message || "Internal server error",
+        error: "לא הצלחנו להשלים את הפעולה כרגע. נסו שוב מאוחר יותר.",
+        code: "INTERNAL_ERROR",
       });
     });
   };

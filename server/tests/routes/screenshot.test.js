@@ -74,7 +74,10 @@ describe("GET /api/screenshot", () => {
 
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
-    expect(res.body.error).toBe("Browser crashed");
+    expect(res.body.error).toBe(
+      "לא הצלחנו להשלים את הפעולה כרגע. נסו שוב מאוחר יותר.",
+    );
+    expect(res.body.code).toBe("INTERNAL_ERROR");
   });
 
   it("should handle empty url parameter", async () => {

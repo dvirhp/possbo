@@ -28,18 +28,43 @@ router.get("/status", requireAuth, async (req, res) => {
       },
     });
 
+    // An ACTIVE database flag is not enough: an encryption-key rotation can
+    // make the stored token unreadable. Never report such an account as
+    // connected, otherwise the client cannot offer a real reconnect flow.
+    let accessToken = null;
+    if (account?.accessTokenEncrypted) {
+      try {
+        accessToken = decrypt(account.accessTokenEncrypted);
+      } catch (error) {
+        await prisma.connectedAccount.update({
+          where: { id: account.id },
+          data: { status: "EXPIRED" },
+        });
+        log.warn("Instagram status found an unreadable token", {
+          userId: req.user.id,
+          accountId: account.id,
+          error: error.message,
+        });
+        return res.json({
+          success: true,
+          connected: false,
+          account: null,
+          reason: "TOKEN_UNREADABLE",
+        });
+      }
+    }
+
     // Backfill avatar from Instagram if user has no profile picture
     let backfilledAvatar = null;
-    if (account?.accessTokenEncrypted) {
+    if (accessToken) {
       const user = await prisma.user.findUnique({
         where: { id: req.user.id },
         select: { profileImage: true, avatarUrl: true },
       });
       if (!user.profileImage && !user.avatarUrl) {
         try {
-          const token = decrypt(account.accessTokenEncrypted);
           const profileRes = await fetch(
-            `https://graph.instagram.com/me?fields=profile_picture_url&access_token=${token}`,
+            `https://graph.instagram.com/me?fields=profile_picture_url&access_token=${accessToken}`,
           );
           const profileData = await profileRes.json();
           if (profileData.profile_picture_url) {
@@ -87,6 +112,8 @@ router.get("/auth-url", requireAuth, (req, res) => {
     return res.status(500).json({ error: "Instagram API not configured" });
   }
 
+  // Insights are required for post, Reel and Story performance reporting.
+  // The permission must also be enabled for the Instagram use case in Meta.
   const scope =
     "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights";
   const authUrl =

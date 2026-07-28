@@ -15,12 +15,20 @@
 
 /* Header */
 .pdt-header {
-  display: flex;
+  display: grid;
   align-items: center;
+  grid-template-columns:
+    minmax(0, 1.35fr)
+    minmax(0, 0.8fr)
+    minmax(0, 0.75fr)
+    minmax(0, 0.85fr)
+    36px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--border);
-  gap: 16px;
+  column-gap: 16px;
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 .pdt-header .pdt-col {
   font-size: 12px;
@@ -34,12 +42,12 @@
 }
 
 /* Columns */
-.pdt-col-post { flex: 2.5; min-width: 0; overflow: hidden; }
+.pdt-col-post { flex: 1.25; min-width: 0; overflow: hidden; }
 .pdt-col-groups { flex: 1; min-width: 0; overflow: hidden; }
-.pdt-col-platform { flex: 0.7; min-width: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.pdt-col-status { flex: 0.7; min-width: 0; flex-shrink: 0; }
+.pdt-col-platform { flex: 0.85; min-width: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.pdt-col-status { flex: 0.85; min-width: 0; flex-shrink: 0; }
 .pdt-col-exposure { flex: 0.8; min-width: 0; display: flex; align-items: center; justify-content: center; }
-.pdt-col-time { flex: 0.9; min-width: 0; flex-shrink: 0; }
+.pdt-col-time { flex: 1; min-width: 0; flex-shrink: 0; }
 .pdt-col-actions { width: 36px; flex-shrink: 0; }
 
 /* Platform tags */
@@ -67,10 +75,16 @@
 
 /* Row */
 .pdt-row {
-  display: flex;
+  display: grid;
   align-items: center;
+  grid-template-columns:
+    minmax(0, 1.35fr)
+    minmax(0, 0.8fr)
+    minmax(0, 0.75fr)
+    minmax(0, 0.85fr)
+    36px;
   padding: 16px 24px;
-  gap: 16px;
+  column-gap: 16px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background 250ms ease;
@@ -78,6 +92,8 @@
   overflow: visible;
   flex-wrap: nowrap;
   position: relative;
+  width: 100%;
+  box-sizing: border-box;
 }
 .pdt-row-menu-open {
   z-index: 80;
@@ -323,17 +339,17 @@
   .pdt-col-exposure {
     display: none;
   }
-  .pdt-col-post { flex: 2; min-width: 0; }
-  .pdt-col-platform { flex: 0 0 50px; min-width: 0; }
-  .pdt-col-status { flex: 0 0 80px; min-width: 0; }
-  .pdt-col-time { flex: 0 0 70px; min-width: 0; }
+  .pdt-col-post { flex: 1.1 1 0; min-width: 0; }
+  .pdt-col-platform { flex: 0.9 1 0; min-width: 76px; }
+  .pdt-col-status { flex: 0.9 1 0; min-width: 92px; }
+  .pdt-col-time { flex: 1 1 0; min-width: 92px; }
   .pdt-col-actions { width: 32px; }
   .pdt-row {
-    gap: 8px;
+    gap: 22px;
     padding: 12px 14px;
   }
   .pdt-header {
-    gap: 8px;
+    gap: 22px;
     padding: 10px 14px;
   }
   .pdt-thumb {
@@ -357,17 +373,26 @@
   .pdt-container {
     border-radius: 12px;
   }
+  .pdt-header,
+  .pdt-row {
+    display: grid !important;
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(54px, auto)
+      minmax(68px, auto)
+      28px;
+    column-gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
   .pdt-header {
-    display: flex !important;
     padding: 8px 12px;
-    gap: 8px;
   }
   .pdt-header .pdt-col {
     font-size: 10px;
   }
   .pdt-row {
     padding: 10px 12px;
-    gap: 8px;
     min-height: 52px;
     border-radius: 0;
     margin: 0;
@@ -488,6 +513,115 @@
   .pdt-col-actions { flex: 0 0 32px !important; }
   .pdt-header .pdt-col-time { display: none !important; }
   .pdt-header .pdt-col { font-size: 9px; letter-spacing: 0; }
+}
+
+/*
+ * The recent-campaigns table lives inside a dashboard card, so its usable
+ * width is often much smaller than the browser viewport. Size its columns
+ * from the card width instead of viewport breakpoints.
+ */
+@container (min-width: 701px) {
+  .pdt-header,
+  .pdt-row {
+    grid-template-columns:
+      minmax(0, 1.35fr)
+      minmax(0, 0.8fr)
+      minmax(0, 0.75fr)
+      minmax(0, 0.85fr)
+      36px;
+    column-gap: clamp(10px, 2cqi, 24px);
+  }
+
+  .pdt-col-post,
+  .pdt-col-platform,
+  .pdt-col-status,
+  .pdt-col-time,
+  .pdt-col-actions {
+    width: 100%;
+  }
+
+  .pdt-col-platform,
+  .pdt-col-status,
+  .pdt-col-time {
+    justify-content: center;
+  }
+}
+
+@container (min-width: 601px) and (max-width: 700px) {
+  .pdt-header,
+  .pdt-row {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(70px, 0.55fr)
+      minmax(78px, 0.6fr)
+      minmax(82px, 0.65fr)
+      32px;
+    column-gap: 10px;
+  }
+
+  .pdt-col-post,
+  .pdt-col-platform,
+  .pdt-col-status,
+  .pdt-col-time,
+  .pdt-col-actions {
+    width: 100%;
+  }
+}
+
+@container (min-width: 501px) and (max-width: 600px) {
+  .pdt-header,
+  .pdt-row {
+    grid-template-columns: minmax(0, 1fr) minmax(68px, auto) minmax(78px, auto) 32px;
+    column-gap: 8px;
+  }
+
+  .pdt-col-post,
+  .pdt-col-platform,
+  .pdt-col-status,
+  .pdt-col-actions {
+    width: 100%;
+  }
+
+  .pdt-col-time {
+    display: none !important;
+  }
+}
+
+@container (max-width: 500px) {
+  .pdt-header,
+  .pdt-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(54px, auto) minmax(68px, auto) 28px;
+    column-gap: 6px;
+  }
+
+  .pdt-col-post,
+  .pdt-col-platform,
+  .pdt-col-status,
+  .pdt-col-actions {
+    width: 100%;
+  }
+
+  .pdt-col-time {
+    display: none !important;
+  }
+}
+
+/*
+ * Keep the mobile four-column layout last in the cascade. On a wide phone in
+ * landscape the card can be wider than 700px, but the time column is still
+ * hidden by the viewport media query and must not leave an empty grid track.
+ */
+@media (max-width: 768px) {
+  .pdt-header,
+  .pdt-row {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(54px, auto)
+      minmax(68px, auto)
+      28px;
+    column-gap: clamp(14px, 3.5vw, 24px);
+  }
 }
 
 /* Confirm Delete Dialog */

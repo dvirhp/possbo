@@ -6,11 +6,20 @@
  * consistent security behaviour across all auth flows.
  */
 import bcrypt from "bcrypt";
+import fs from "fs";
+import path from "path";
 import prisma from "../config/prisma.js";
 import { generateAccessToken, generateRefreshToken } from "./jwt.js";
 
 const SALT_ROUNDS = 12;
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function validImageUrl(value) {
+  if (!value) return null;
+  if (!value.startsWith("/uploads/")) return value;
+  const localPath = path.join(process.cwd(), value.replace(/^\/+/, ""));
+  return fs.existsSync(localPath) ? value : null;
+}
 
 /**
  * Set the refresh-token cookie with secure defaults.
@@ -37,8 +46,8 @@ export function formatUserResponse(user, extras = {}) {
     id: user.id,
     email: user.email,
     name: user.name,
-    profileImage: user.profileImage || null,
-    avatarUrl: user.avatarUrl || null,
+    profileImage: validImageUrl(user.profileImage),
+    avatarUrl: validImageUrl(user.avatarUrl),
     fbSessionValid: user.fbSessionValid || false,
     whatsappNumber: user.whatsappNumber || null,
     whatsappMessage: user.whatsappMessage || null,

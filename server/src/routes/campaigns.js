@@ -49,6 +49,8 @@ router.post(
       storyPickedIndex,
       storyCaptions,
       templateName,
+      draftData,
+      existingImageUrls,
       whatsappEnabled,
       whatsappTargets,
       waScheduleMode,
@@ -88,6 +90,10 @@ router.post(
     if (typeof waRecurringDays === "string")
       waRecurringDays = JSON.parse(waRecurringDays);
     if (typeof waDayTimes === "string") waDayTimes = JSON.parse(waDayTimes);
+    if (typeof draftData === "string") draftData = JSON.parse(draftData);
+    if (typeof existingImageUrls === "string")
+      existingImageUrls = JSON.parse(existingImageUrls);
+    if (!Array.isArray(existingImageUrls)) existingImageUrls = [];
 
     // Normalize: prefer instagramPublishTypes (array from client) over singular
     if (!instagramPublishType && instagramPublishTypes) {
@@ -98,6 +104,64 @@ router.post(
 
     if (!text || !text.trim()) {
       return res.status(400).json({ error: "text is required" });
+    }
+
+    if (instagramEnabled) {
+      const instagramAccount = await prisma.connectedAccount.findFirst({
+        where: { userId, provider: "INSTAGRAM", status: "ACTIVE" },
+        select: { id: true },
+      });
+      if (!instagramAccount) {
+        return res.status(409).json({
+          error: "יש לחבר מחדש את חשבון Instagram לפני יצירת הקמפיין",
+          code: "INSTAGRAM_NOT_CONNECTED",
+        });
+      }
+
+      const selectedIgTypes = Array.isArray(instagramPublishTypes)
+        ? instagramPublishTypes
+        : instagramPublishType
+          ? instagramPublishType.split(",").map((type) => type.trim())
+          : ["FEED"];
+      const sharedFiles = req.files?.images || [];
+      const mediaFor = (type) => {
+        const specificFiles = req.files?.[`igMedia_${type}`] || [];
+        return specificFiles.length ? specificFiles : sharedFiles;
+      };
+      const hasExistingSharedMedia = existingImageUrls.length > 0;
+
+      if (
+        selectedIgTypes.includes("FEED") &&
+        mediaFor("FEED").length === 0 &&
+        !hasExistingSharedMedia
+      ) {
+        return res.status(400).json({
+          error: "יש להוסיף תמונה או סרטון המיועדים לפוסט Instagram",
+          code: "INSTAGRAM_FEED_MEDIA_REQUIRED",
+        });
+      }
+      if (
+        selectedIgTypes.includes("STORY") &&
+        mediaFor("STORY").length === 0 &&
+        !hasExistingSharedMedia
+      ) {
+        return res.status(400).json({
+          error: "יש להוסיף תמונה או סרטון המיועדים לסטורי Instagram",
+          code: "INSTAGRAM_STORY_MEDIA_REQUIRED",
+        });
+      }
+      if (selectedIgTypes.includes("REEL")) {
+        const reelFiles = mediaFor("REEL");
+        const hasReelVideo =
+          reelFiles.some((file) => file.mimetype?.startsWith("video/")) ||
+          existingImageUrls.some((url) => /\.(mp4|mov|webm)(?:\?|$)/i.test(url));
+        if (!hasReelVideo) {
+          return res.status(400).json({
+            error: "יש להוסיף סרטון המיועד לרילס Instagram",
+            code: "INSTAGRAM_REEL_VIDEO_REQUIRED",
+          });
+        }
+      }
     }
 
     // Allow saving without groups (draft only) — unless publishing to profile, Instagram, or WhatsApp
@@ -224,6 +288,7 @@ router.post(
         whatsappTargets:
           whatsappEnabled && whatsappTargets ? whatsappTargets : undefined,
         templateName: templateName || null,
+        draftData: scheduleMode === "draft" ? draftData || null : null,
         campaignType: campaignType || "ONE_TIME",
         recurringDays: recurringDays || [],
         recurringTime: recurringTime || recurringTimes?.[0] || null,
@@ -237,9 +302,21 @@ router.post(
           : null,
         imageUrl: req.files?.images?.length
           ? `/uploads/${req.files.images[0].filename}`
-          : null,
+          : existingImageUrls[0] || null,
       },
     });
+
+    // Reuse media belonging to a restored draft/template.
+    for (let i = 0; i < existingImageUrls.length; i++) {
+      await prisma.postMedia.create({
+        data: {
+          postId: post.id,
+          mediaType: "IMAGE",
+          url: existingImageUrls[i],
+          orderIndex: i,
+        },
+      });
+    }
 
     // Save uploaded images as PostMedia (global)
     if (req.files?.images?.length) {
@@ -251,7 +328,7 @@ router.post(
               ? "VIDEO"
               : "IMAGE",
             url: `/uploads/${req.files.images[i].filename}`,
-            orderIndex: i,
+            orderIndex: existingImageUrls.length + i,
           },
         });
       }
@@ -725,6 +802,21 @@ router.post(
       scheduledJobsCount: results.length,
     });
 
+    // Draft retention is enforced in the database, not only in the UI.
+    if (post.status === "DRAFT") {
+      const expiredDrafts = await prisma.post.findMany({
+        where: { userId, status: "DRAFT" },
+        orderBy: { updatedAt: "desc" },
+        skip: 7,
+        select: { id: true },
+      });
+      if (expiredDrafts.length > 0) {
+        await prisma.post.deleteMany({
+          where: { id: { in: expiredDrafts.map((draft) => draft.id) }, userId },
+        });
+      }
+    }
+
     res.json({
       success: true,
       postId: post.id,
@@ -776,7 +868,7 @@ router.get(
         where: { userId, status: "DRAFT" },
         include: postInclude,
         orderBy: { updatedAt: "desc" },
-        take: 10,
+        take: 4,
       }),
       // Get last 10 completed/active campaigns for "restore from history"
       prisma.post.findMany({
@@ -818,6 +910,7 @@ router.get(
       dayTimes: p.dayTimes || null,
       recurringStart: p.recurringStart,
       recurringEnd: p.recurringEnd,
+      draftData: p.draftData || null,
       scheduleMode:
         p.campaignType === "BOTH"
           ? "both"
@@ -1031,7 +1124,17 @@ router.get(
                 metrics: {
                   orderBy: { collectedAt: "desc" },
                   take: 1,
-                  select: { likesCount: true, commentsCount: true },
+                  select: {
+                    likesCount: true,
+                    commentsCount: true,
+                    sharesCount: true,
+                    reachCount: true,
+                    impressionsCount: true,
+                    viewsCount: true,
+                    savesCount: true,
+                    repliesCount: true,
+                    totalInteractionsCount: true,
+                  },
                 },
               },
             },
@@ -1055,10 +1158,23 @@ router.get(
         targetType: true,
         platform: true,
         publicationJobId: true,
+        publicationJob: {
+          select: { igPublishType: true },
+        },
         metrics: {
           orderBy: { collectedAt: "desc" },
           take: 1,
-          select: { likesCount: true, commentsCount: true },
+          select: {
+            likesCount: true,
+            commentsCount: true,
+            sharesCount: true,
+            reachCount: true,
+            impressionsCount: true,
+            viewsCount: true,
+            savesCount: true,
+            repliesCount: true,
+            totalInteractionsCount: true,
+          },
         },
       },
     });
@@ -1094,6 +1210,9 @@ router.get(
           platform: h.platform || "FACEBOOK",
           likes: h.metrics?.[0]?.likesCount || 0,
           comments: h.metrics?.[0]?.commentsCount || 0,
+          shares: h.metrics?.[0]?.sharesCount || 0,
+          reach: h.metrics?.[0]?.reachCount || 0,
+          views: h.metrics?.[0]?.viewsCount || h.metrics?.[0]?.impressionsCount || 0,
         })),
       ),
       ...directHistory.flatMap((h) => {
@@ -1114,43 +1233,23 @@ router.get(
             },
           ];
         }
-        if (
-          h.platform === "INSTAGRAM" &&
-          post.instagramPublishType?.includes(",")
-        ) {
-          // Multiple IG types - create separate history entries per type
-          const types = post.instagramPublishType.split(",");
-          const typeLabels = {
-            FEED: "אינסטגרם פוסט",
-            STORY: "אינסטגרם סטורי",
-            REEL: "אינסטגרם ריל",
-          };
-          return types.map((type, _idx) => ({
-            id: `${h.id}_${type}`,
-            originalId: h.id,
-            groupId: null,
-            groupName: typeLabels[type] || "אינסטגרם",
-            groupImage: null,
-            status: h.status,
-            publishedAt: h.publishedAt,
-            postUrl: type === "STORY" ? null : h.externalPostUrl || null,
-            targetType: "INSTAGRAM",
-            platform: "INSTAGRAM",
-            igPublishType: type,
-            likes: type === "STORY" ? null : h.metrics?.[0]?.likesCount || 0,
-            comments:
-              type === "STORY" ? null : h.metrics?.[0]?.commentsCount || 0,
-          }));
-        }
         const igType =
           h.platform === "INSTAGRAM"
-            ? post.instagramPublishType || "FEED"
+            ? h.publicationJob?.igPublishType ||
+              post.instagramPublishType?.split(",")[0] ||
+              "FEED"
             : null;
         const typeLabels = {
           FEED: "אינסטגרם פוסט",
           STORY: "אינסטגרם סטורי",
           REEL: "אינסטגרם ריל",
         };
+        const storyExpiresAt =
+          igType === "STORY"
+            ? new Date(new Date(h.publishedAt).getTime() + 24 * 60 * 60 * 1000)
+            : null;
+        const storyActive = storyExpiresAt ? storyExpiresAt > new Date() : false;
+        const metric = h.metrics?.[0];
         return [
           {
             id: h.id,
@@ -1166,13 +1265,25 @@ router.get(
             groupImage: null,
             status: h.status,
             publishedAt: h.publishedAt,
-            postUrl: igType === "STORY" ? null : h.externalPostUrl || null,
+            postUrl:
+              igType === "STORY"
+                ? storyActive
+                  ? h.externalPostUrl || null
+                  : null
+                : h.externalPostUrl || null,
+            storyActive,
+            storyExpiresAt,
             targetType: h.targetType || "INSTAGRAM",
             platform: h.platform || "INSTAGRAM",
             igPublishType: igType,
-            likes: igType === "STORY" ? null : h.metrics?.[0]?.likesCount || 0,
-            comments:
-              igType === "STORY" ? null : h.metrics?.[0]?.commentsCount || 0,
+            likes: metric?.likesCount || 0,
+            comments: metric?.commentsCount || 0,
+            shares: metric?.sharesCount || 0,
+            reach: metric?.reachCount || 0,
+            views: metric?.viewsCount || metric?.impressionsCount || 0,
+            saves: metric?.savesCount || 0,
+            replies: metric?.repliesCount || 0,
+            totalInteractions: metric?.totalInteractionsCount || 0,
           },
         ];
       }),

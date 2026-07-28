@@ -353,8 +353,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  overflow-y: auto;
+  padding:
+    max(12px, env(safe-area-inset-top))
+    12px
+    max(12px, env(safe-area-inset-bottom));
+  overflow: hidden;
   -webkit-overflow-scrolling: touch;
   animation: fadeIn 0.2s ease;
 }
@@ -366,22 +369,109 @@
 
 .fbp-modal-content {
   position: relative;
-  width: min(100%, 420px);
-  max-height: 90vh;
-  overflow-y: auto;
+  width: min(100%, 440px);
+  max-height: calc(100dvh - max(24px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  overflow: hidden;
   -webkit-overflow-scrolling: touch;
   animation: scaleIn 0.2s ease;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+  padding: 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--bg-card, #15171b) 96%, transparent);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
 }
 
 .fbp-modal-content .fbp-phone-frame,
-.fbp-modal-content .igp-phone-frame {
-  width: min(92vw, 380px);
+.fbp-modal-content .igp-phone-frame,
+.fbp-modal-content .wap-phone-frame {
+  width: min(100%, 380px);
   max-width: 380px;
   min-height: 600px;
   margin-inline: auto;
+}
+
+.fbp-modal-toolbar {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 10px;
+  direction: rtl;
+  flex: 0 0 auto;
+}
+
+.fbp-modal-toolbar > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fbp-modal-toolbar strong {
+  color: var(--text-primary, #fff);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.fbp-modal-toolbar span {
+  color: var(--text-muted, #8f98a6);
+  font-size: 11px;
+}
+
+.fbp-modal-stage {
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 2px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) rgba(255, 255, 255, 0.045);
+  overscroll-behavior: contain;
+}
+
+.fbp-modal-stage::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.fbp-modal-stage::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: 999px;
+}
+
+.fbp-modal-stage::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.fbp-modal-stage::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.34);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-theme="light"] .fbp-modal-stage {
+  scrollbar-color: rgba(15, 23, 42, 0.28) rgba(15, 23, 42, 0.055);
+}
+
+[data-theme="light"] .fbp-modal-stage::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.055);
+}
+
+[data-theme="light"] .fbp-modal-stage::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.28);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-theme="light"] .fbp-modal-stage::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.42);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 @keyframes scaleIn {
@@ -390,26 +480,29 @@
 }
 
 .fbp-modal-close {
-  position: absolute;
-  top: -14px;
-  left: -14px;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--bg-card, #23272f);
-  border: 2px solid var(--border, rgba(255,255,255,0.1));
+  position: static;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--bg-elevated, #23272f);
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
   color: var(--text-primary, #fff);
   font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 10;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
 .fbp-modal-close:hover {
   background: #f87171;
   border-color: #f87171;
+}
+
+.fbp-modal-close:active {
+  transform: scale(0.94);
 }
 
 /* ─── Preview button (mobile) ─── */
