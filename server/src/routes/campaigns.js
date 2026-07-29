@@ -1118,9 +1118,11 @@ router.get(
                 status: true,
                 publishedAt: true,
                 externalPostUrl: true,
+                errorMessage: true,
                 groupId: true,
                 targetType: true,
                 platform: true,
+                publicationJobId: true,
                 metrics: {
                   orderBy: { collectedAt: "desc" },
                   take: 1,
@@ -1133,6 +1135,7 @@ router.get(
                     viewsCount: true,
                     savesCount: true,
                     repliesCount: true,
+                    collectedAt: true,
                     totalInteractionsCount: true,
                   },
                 },
@@ -1154,6 +1157,7 @@ router.get(
         status: true,
         publishedAt: true,
         externalPostUrl: true,
+        errorMessage: true,
         groupId: true,
         targetType: true,
         platform: true,
@@ -1173,6 +1177,7 @@ router.get(
             viewsCount: true,
             savesCount: true,
             repliesCount: true,
+            collectedAt: true,
             totalInteractionsCount: true,
           },
         },
@@ -1195,6 +1200,29 @@ router.get(
       .filter((j) => j.status === "SUCCESS" || j.status === "FAILED")
       .reduce((sum, j) => sum + j._count, 0);
 
+    const allJobs = await prisma.publicationJob.findMany({
+      where: { OR: [{ postGroup: { postId } }, { postId }] },
+      orderBy: { scheduledAt: "desc" },
+      select: {
+        id: true,
+        targetType: true,
+        platform: true,
+        igPublishType: true,
+        scheduledAt: true,
+        startedAt: true,
+        completedAt: true,
+        status: true,
+        lastError: true,
+        postGroup: {
+          select: {
+            group: {
+              select: { id: true, name: true, pictureUrl: true },
+            },
+          },
+        },
+      },
+    });
+
     // Build publication history grouped by group
     const publicationHistory = [
       ...post.postGroups.flatMap((pg) =>
@@ -1206,6 +1234,7 @@ router.get(
           status: h.status,
           publishedAt: h.publishedAt,
           postUrl: h.externalPostUrl || null,
+          error: h.errorMessage || null,
           targetType: h.targetType || "GROUP",
           platform: h.platform || "FACEBOOK",
           likes: h.metrics?.[0]?.likesCount || 0,
@@ -1213,6 +1242,7 @@ router.get(
           shares: h.metrics?.[0]?.sharesCount || 0,
           reach: h.metrics?.[0]?.reachCount || 0,
           views: h.metrics?.[0]?.viewsCount || h.metrics?.[0]?.impressionsCount || 0,
+          lastSyncedAt: h.metrics?.[0]?.collectedAt || null,
         })),
       ),
       ...directHistory.flatMap((h) => {
@@ -1271,6 +1301,7 @@ router.get(
                   ? h.externalPostUrl || null
                   : null
                 : h.externalPostUrl || null,
+            error: h.errorMessage || null,
             storyActive,
             storyExpiresAt,
             targetType: h.targetType || "INSTAGRAM",
@@ -1284,10 +1315,53 @@ router.get(
             saves: metric?.savesCount || 0,
             replies: metric?.repliesCount || 0,
             totalInteractions: metric?.totalInteractionsCount || 0,
+            lastSyncedAt: metric?.collectedAt || null,
           },
         ];
       }),
     ];
+
+    const historyJobIds = new Set([
+      ...post.postGroups.flatMap((pg) =>
+        pg.publicationHistory.map((h) => h.publicationJobId).filter(Boolean),
+      ),
+      ...directHistory.map((h) => h.publicationJobId).filter(Boolean),
+    ]);
+    for (const job of allJobs) {
+      if (historyJobIds.has(job.id)) continue;
+      const isInstagram =
+        job.platform === "INSTAGRAM" || job.targetType === "INSTAGRAM";
+      const igLabels = {
+        FEED: "אינסטגרם פוסט",
+        STORY: "אינסטגרם סטורי",
+        REEL: "אינסטגרם ריל",
+      };
+      publicationHistory.push({
+        id: `job-${job.id}`,
+        originalJobId: job.id,
+        groupId: job.postGroup?.group?.id || null,
+        groupName: isInstagram
+          ? igLabels[job.igPublishType] || "אינסטגרם"
+          : job.targetType === "PROFILE"
+            ? "פרופיל אישי"
+            : job.targetType === "WHATSAPP"
+              ? "וואטסאפ"
+              : job.postGroup?.group?.name || "קבוצת פייסבוק",
+        groupImage: job.postGroup?.group?.pictureUrl || null,
+        status: job.status,
+        publishedAt: job.completedAt || job.startedAt || job.scheduledAt,
+        postUrl: null,
+        error: job.lastError || null,
+        targetType: job.targetType,
+        platform: job.platform,
+        igPublishType: job.igPublishType,
+        likes: null,
+        comments: null,
+      });
+    }
+    publicationHistory.sort(
+      (a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0),
+    );
 
     const campaign = {
       id: post.id,

@@ -10,7 +10,7 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 import DashboardOverview from '../components/DashboardOverview'
 import BrandLogo from '../components/BrandLogo'
 
-const API_HOST = 'http://localhost:8000'
+const API_HOST = import.meta.env.VITE_API_ORIGIN || ''
 const IMAGE_EXTENSION_RE = /\.(avif|bmp|gif|jpe?g|png|svg|webp)(\?.*)?$/i
 
 function isRenderableImageUrl(value) {
@@ -38,6 +38,30 @@ function resolveImg(url) {
   if (url.startsWith('/uploads')) return `${API_HOST}${url}`
   if (url.startsWith('uploads/')) return `${API_HOST}/${url}`
   return url
+}
+
+function formatMetricsTimestamp(lastSyncedAt, publishedAt) {
+  const value = lastSyncedAt || publishedAt
+  if (!value) return 'טרם סונכרן'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'טרם סונכרן'
+  if (!lastSyncedAt) {
+    return `טרם סונכרן · פורסם ב־${date.toLocaleString('he-IL', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    })}`
+  }
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
+  if (seconds < 60) return 'סונכרן לאחרונה עכשיו'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `סונכרן לאחרונה לפני ${minutes} דקות`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `סונכרן לאחרונה לפני ${hours} שעות`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `סונכרן לאחרונה לפני ${days} ימים`
+  return `סונכרן לאחרונה ב־${date.toLocaleString('he-IL', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })}`
 }
 
 /** Normalize fancy Unicode text (Mathematical Bold/Italic/Script etc.) to plain ASCII */
@@ -317,7 +341,12 @@ export default function Dashboard() {
               } else {
                 // Done — reload groups with updated metadata
                 groupsService.getSavedGroups().then(savedRes => {
-                  if (savedRes.data?.groups) updateGroups(savedRes.data.groups)
+                  if (savedRes.data?.groups) {
+                    updateGroups(savedRes.data.groups)
+                    window.dispatchEvent(new CustomEvent('possbo-sync-done', {
+                      detail: { success: true, metadataUpdated: true }
+                    }))
+                  }
                 }).catch(() => {})
               }
             }).catch(() => {})
@@ -2921,7 +2950,7 @@ function BestPostingTimesChart({ hourlyData: data }) {
   )
 }
 
-function StatsPanel({ stats, posts = [] }) {
+function StatsPanel({ stats }) {
   const navigate = useNavigate()
   const toDS = (d) => d.toISOString().split('T')[0]
   const defaultRange = useMemo(() => {
@@ -2934,6 +2963,11 @@ function StatsPanel({ stats, posts = [] }) {
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [chartType, setChartType] = useState('area') // 'area' or 'bar'
   const [performancePlatform, setPerformancePlatform] = useState('instagram')
+  const [platformInsights, setPlatformInsights] = useState({
+    instagram: { count: 0, likes: 0, comments: 0, shares: 0, views: 0, reach: 0, formats: [] },
+    facebook: { count: 0, likes: 0, comments: 0, exposure: 0 },
+    whatsapp: { postsSent: 0, groupsReached: 0, peopleReached: 0, totalDistribution: 0 },
+  })
   const [exposureChartRef, exposureChartSize] = useContainerSize()
 
   // Top posts state
@@ -3029,6 +3063,36 @@ function StatsPanel({ stats, posts = [] }) {
     loadExposure(dateRange.from, dateRange.to)
   }, [dateRange, loadExposure])
 
+  const loadPlatformInsights = useCallback(async () => {
+    const res = await groupsService.getWhatsAppStats(dateRange)
+    if (res.data?.instagram && res.data?.facebook && res.data?.whatsapp) {
+      setPlatformInsights({
+        instagram: res.data.instagram,
+        facebook: res.data.facebook,
+        whatsapp: res.data.whatsapp,
+      })
+    }
+  }, [dateRange])
+
+  useEffect(() => {
+    loadPlatformInsights().catch(() => {})
+  }, [loadPlatformInsights])
+
+  useEffect(() => {
+    const refresh = (event) => {
+      if (event?.detail?.success === false) return
+      loadPlatformInsights().catch(() => {})
+    }
+    window.addEventListener('possbo-sync-done', refresh)
+    window.addEventListener('possbo-wa-sync-done', refresh)
+    window.addEventListener('possbo-metrics-updated', refresh)
+    return () => {
+      window.removeEventListener('possbo-sync-done', refresh)
+      window.removeEventListener('possbo-wa-sync-done', refresh)
+      window.removeEventListener('possbo-metrics-updated', refresh)
+    }
+  }, [loadPlatformInsights])
+
   useEffect(() => {
     setTopPostsVisible(10)
     setExpandedPostId(null)
@@ -3055,45 +3119,6 @@ function StatsPanel({ stats, posts = [] }) {
       posts: d.posts,
     }))
   }, [exposure, dateRange])
-
-  const platformInsights = useMemo(() => {
-    const from = new Date(`${dateRange.from}T00:00:00`)
-    const to = new Date(`${dateRange.to}T23:59:59.999`)
-    const periodRows = posts.filter(row => {
-      const date = new Date(row.publishedAt || row.createdAt)
-      return !Number.isNaN(date.getTime()) && date >= from && date <= to && row.status !== 'FAILED'
-    })
-    const platformOf = row => row.platform || (row.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : row.targetType === 'WHATSAPP' ? 'WHATSAPP' : 'FACEBOOK')
-    const instagramRows = periodRows.filter(row => platformOf(row) === 'INSTAGRAM')
-    const facebookRows = periodRows.filter(row => platformOf(row) === 'FACEBOOK')
-    const total = (rows, field) => rows.reduce((sum, row) => sum + Number(row[field] || 0), 0)
-    const formats = ['FEED', 'REEL', 'STORY'].map(type => {
-      const rows = instagramRows.filter(row => (row.igType || 'FEED') === type)
-      return {
-        type,
-        count: rows.length,
-        views: total(rows, 'views'),
-        interactions: rows.reduce((sum, row) => sum + Number(row.likes || 0) + Number(row.comments || 0) + Number(row.shares || 0) + Number(row.replies || 0), 0),
-      }
-    })
-    return {
-      instagram: {
-        count: instagramRows.length,
-        likes: total(instagramRows, 'likes'),
-        comments: total(instagramRows, 'comments'),
-        shares: total(instagramRows, 'shares'),
-        views: total(instagramRows, 'views'),
-        reach: total(instagramRows, 'reach'),
-        formats,
-      },
-      facebook: {
-        count: facebookRows.length,
-        likes: total(facebookRows, 'likes'),
-        comments: total(facebookRows, 'comments'),
-        exposure: total(facebookRows, 'groupMemberCount'),
-      },
-    }
-  }, [posts, dateRange])
 
   return (
     <div className="stats-layout">
@@ -3163,6 +3188,15 @@ function StatsPanel({ stats, posts = [] }) {
           >
             Facebook
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={performancePlatform === 'whatsapp'}
+            className={performancePlatform === 'whatsapp' ? 'active whatsapp' : ''}
+            onClick={() => setPerformancePlatform('whatsapp')}
+          >
+            WhatsApp
+          </button>
         </div>
 
         {performancePlatform === 'instagram' ? (
@@ -3191,7 +3225,7 @@ function StatsPanel({ stats, posts = [] }) {
               })}
             </div>
           </div>
-        ) : (
+        ) : performancePlatform === 'facebook' ? (
           <div role="tabpanel">
             <div className="stats-platform-heading">
               <h4>ביצועי Facebook</h4>
@@ -3204,6 +3238,20 @@ function StatsPanel({ stats, posts = [] }) {
               <div><strong>{formatNumber(platformInsights.facebook.exposure)}</strong><span>חשיפה משוערת</span></div>
             </div>
             <p className="stats-platform-note">צפיות ושיתופים אינם מוצגים בפייסבוק כל עוד אין עבורם נתון אמין מהמקור.</p>
+          </div>
+        ) : (
+          <div role="tabpanel">
+            <div className="stats-platform-heading">
+              <h4>ביצועי WhatsApp</h4>
+              <span>לפי הפרסומים שנשלחו בתקופה שנבחרה</span>
+            </div>
+            <div className="stats-network-kpis stats-network-kpis-whatsapp">
+              <div><strong>{formatNumber(platformInsights.whatsapp.postsSent)}</strong><span>פוסטים שנשלחו</span></div>
+              <div><strong>{formatNumber(platformInsights.whatsapp.groupsReached)}</strong><span>קבוצות</span></div>
+              <div><strong>{formatNumber(platformInsights.whatsapp.peopleReached)}</strong><span>אנשים בקהל</span></div>
+              <div><strong>{formatNumber(platformInsights.whatsapp.totalDistribution)}</strong><span>תפוצה כוללת</span></div>
+            </div>
+            <p className="stats-platform-note">כמות האנשים מחושבת לפי מספר המשתתפים המעודכן בקבוצות ולפי הנמענים ברשימות התפוצה. תפוצה כוללת כוללת גם שליחות חוזרות לאותו קהל.</p>
           </div>
         )}
       </div>
@@ -3325,6 +3373,7 @@ function StatsPanel({ stats, posts = [] }) {
                       setTopPosts(res.data.posts)
                       setTopPostsCache(topPostsSort, dateRange.from, dateRange.to, res.data.posts)
                     }
+                    await loadPlatformInsights()
                     const count = refreshRes.data?.refreshed || 0
                     window.dispatchEvent(new CustomEvent('possbo-op-done', {
                       detail: { id: 'refresh-all-metrics', success: true, msg: `✅ רענון הושלם! עודכנו ${count} פרסומים` }
@@ -3346,6 +3395,18 @@ function StatsPanel({ stats, posts = [] }) {
               </svg>
               {refreshingAll ? 'מרענן...' : 'רענן'}
             </button>
+            <span
+              className="metrics-last-sync"
+              title={topPosts.find(p => p.lastSyncedAt || p.collectedAt)?.lastSyncedAt || topPosts.find(p => p.collectedAt)?.collectedAt || ''}
+            >
+              {(() => {
+                const latest = topPosts
+                  .map(p => p.lastSyncedAt || p.collectedAt)
+                  .filter(Boolean)
+                  .sort((a, b) => new Date(b) - new Date(a))[0]
+                return latest ? formatMetricsTimestamp(latest) : 'טרם בוצע סנכרון מדדים'
+              })()}
+            </span>
             <div className="top-posts-toggle">
               <button className={topPostsSort === 'likes' ? 'active' : ''} onClick={() => setTopPostsSort('likes')}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
@@ -3397,6 +3458,9 @@ function StatsPanel({ stats, posts = [] }) {
                         {p.platform === 'INSTAGRAM' ? (p.igType === 'REEL' ? 'ריל' : p.igType === 'STORY' ? 'סטורי' : 'פוסט IG') : 'Facebook'}
                       </span>
                       {p.groupName ? ` • ${p.groupName}` : ''}
+                    </span>
+                    <span className="metrics-last-sync">
+                      {formatMetricsTimestamp(p.lastSyncedAt || p.collectedAt, p.publishedAt)}
                     </span>
                   </div>
                   <div className="top-post-metrics">
@@ -4630,7 +4694,7 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
   const [location, setLocation] = useState(post.post?.location || '')
   const [newImages, setNewImages] = useState([])
   const existingImages = getRenderableImages(post.post?.images || post.images || [])
-    .map(url => url?.startsWith('/uploads') ? `http://localhost:8000${url}` : url)
+    .map(url => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url)
   const [imagePreviews, setImagePreviews] = useState(existingImages)
 
   const handleImageSelect = (e) => {
@@ -4802,6 +4866,13 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
       window.dispatchEvent(new CustomEvent('possbo-op-done', { detail: { id: `refresh-${pubId}`, success: false, msg: '⚠️ שגיאה ברענון מידע' } }))
     }
     setRefreshingId(null)
+  }
+
+  const historyStatusLabel = (status) => {
+    if (status === 'SUCCESS') return '✓ פורסם'
+    if (status === 'FAILED') return '✕ נכשל'
+    if (status === 'RUNNING') return '⏳ בתהליך'
+    return '🕐 ממתין'
   }
 
   // Edit form state
@@ -5191,8 +5262,8 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                                 </span>
                               </div>
                             </div>
-                            <span className={`detail-history-status ${h.status === 'SUCCESS' ? 'status-success' : 'status-fail'}`}>
-                              {h.status === 'SUCCESS' ? '✓ פורסם' : '✗ נכשל'}
+                            <span className={`detail-history-status ${h.status === 'SUCCESS' ? 'status-success' : h.status === 'FAILED' ? 'status-fail' : 'status-pending'}`}>
+                              {historyStatusLabel(h.status)}
                             </span>
                           </div>
                           <div className="detail-history-card-stats">
@@ -5223,7 +5294,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                             {h.igPublishType === 'STORY' && !h.storyActive && (
                               <span className="detail-history-stat">הסטורי הסתיים · הנתונים נשמרו</span>
                             )}
-                            {h.status === 'SUCCESS' && h.platform !== 'WHATSAPP' && (
+                            {h.status === 'SUCCESS' && h.platform !== 'WHATSAPP' && !String(h.id).startsWith('job-') && (
                               <button
                                 className={`detail-history-stat detail-history-refresh ${refreshingId === (h.originalId || h.id) ? 'refreshing' : ''}`}
                                 title="רענן לייקים ותגובות"
@@ -5235,6 +5306,11 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
                                   <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
                                 </svg>
                               </button>
+                            )}
+                            {h.platform !== 'WHATSAPP' && (
+                              <span className="metrics-last-sync">
+                                {formatMetricsTimestamp(h.lastSyncedAt, h.publishedAt)}
+                              </span>
                             )}
                           </div>
                         </div>

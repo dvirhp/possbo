@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Clock3, CheckCircle2, CircleAlert, FileEdit, MoreVertical, Image, Calendar } from 'lucide-react'
 import { groupsService } from '../services/groupsService'
 
-const API_HOST = 'http://localhost:8000'
+const API_HOST = import.meta.env.VITE_API_ORIGIN || ''
 const IMAGE_EXTENSION_RE = /\.(avif|bmp|gif|jpe?g|png|svg|webp)(\?.*)?$/i
 
 function isRenderableImageUrl(value) {

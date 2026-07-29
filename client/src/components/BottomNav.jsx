@@ -29,7 +29,7 @@ const DRAWER_ITEMS = [
   { path: '/dashboard?tab=stats', icon: BarChart3, label: 'סטטיסטיקות' },
   { path: '/templates', icon: LayoutTemplate, label: 'טמפלייטים' },
   { path: '/reports', icon: History, label: 'דוחות וסיכום' },
-  { path: '/generate-post', icon: Sparkles, label: 'יצירת פוסט AI' },
+  { path: '/generate-post', icon: Sparkles, label: 'יצירת פוסט בעזרת AI' },
   { path: '/feedback', icon: MessageSquareHeart, label: 'פידבק' },
 ]
 

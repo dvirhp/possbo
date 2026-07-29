@@ -86,6 +86,19 @@ function formatTime(dateStr) {
   return new Date(dateStr).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
 }
 
+function formatMetricsTimestamp(lastSyncedAt, publishedAt) {
+  const value = lastSyncedAt || publishedAt
+  if (!value) return 'טרם סונכרן'
+  const date = new Date(value)
+  if (!lastSyncedAt) return `טרם סונכרן · פורסם ${formatTime(value)}`
+  const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000))
+  if (minutes < 1) return 'סונכרן עכשיו'
+  if (minutes < 60) return `סונכרן לפני ${minutes} דקות`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `סונכרן לפני ${hours} שעות`
+  return `סונכרן ${date.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })} ${formatTime(value)}`
+}
+
 function toDateStr(d) {
   return d.toISOString().split('T')[0]
 }
@@ -622,16 +635,18 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
 
   const publishedCount = totalPublished
 
-  // Filter campaigns by date range for the table
+  // "Recent campaigns" is a chronological activity list, not an analytics
+  // report. Keep it independent from the dashboard metrics date range so a
+  // newly-created campaign (including one created by the WhatsApp bot) is
+  // always visible here.
   const filteredCampaigns = useMemo(() => {
     if (!campaigns) return []
-    const from = new Date(dateRange.from)
-    const to = new Date(dateRange.to + 'T23:59:59')
-    return campaigns.filter(c => {
-      const d = new Date(c.nextRunAt || c.createdAt)
-      return d >= from && d <= to
+    return [...campaigns].sort((a, b) => {
+      const aDate = new Date(a.createdAt || a.updatedAt || 0).getTime()
+      const bDate = new Date(b.createdAt || b.updatedAt || 0).getTime()
+      return bDate - aDate
     })
-  }, [campaigns, dateRange])
+  }, [campaigns])
 
   // WhatsApp has no engagement metrics, so it shows the four latest posts.
   // Facebook and Instagram are ranked by the selected engagement metric.
@@ -677,6 +692,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
         targetType: p.targetType || 'GROUP',
         igType: p.igType || null,
         postUrl: p.postUrl || null,
+        lastSyncedAt: p.lastSyncedAt || p.collectedAt || null,
       }))
   }, [stats?.topPosts, topPostsSort, topPostsPlatform])
 
@@ -806,6 +822,11 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
                     </span>
                     {post.platform === 'INSTAGRAM' && (
                       <span className="ov2-top-post-ig-insights">👁 {formatNumber(post.views)} צפיות · ↗ {formatNumber(post.shares)} שיתופים</span>
+                    )}
+                    {post.platform !== 'WHATSAPP' && (
+                      <span className="ov2-top-post-ig-insights">
+                        {formatMetricsTimestamp(post.lastSyncedAt, post.date)}
+                      </span>
                     )}
                   </div>
                   {post.platform !== 'WHATSAPP' && (

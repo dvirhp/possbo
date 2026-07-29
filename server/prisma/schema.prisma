@@ -106,6 +106,7 @@ model User {
   whatsappMessage          String?    @map("whatsapp_message")
   whatsappSessionConnected Boolean    @default(false) @map("whatsapp_session_connected")
   whatsappSessionPhone     String?    @map("whatsapp_session_phone")
+  whatsappBotPhone         String?    @unique @map("whatsapp_bot_phone")
   notificationSettings     Json?      @map("notification_settings")
   emailVerifiedAt          DateTime?  @map("email_verified_at")
   lastLoginAt              DateTime?  @map("last_login_at")
@@ -543,18 +544,18 @@ model PublicationHistory {
 }
 
 model PublicationMetric {
-  id                   String   @id @default(uuid())
-  publicationHistoryId String   @map("publication_history_id")
-  likesCount           Int      @default(0) @map("likes_count")
-  commentsCount        Int      @default(0) @map("comments_count")
-  sharesCount          Int      @default(0) @map("shares_count")
-  reachCount           Int      @default(0) @map("reach_count")
-  impressionsCount     Int      @default(0) @map("impressions_count")
-  viewsCount           Int      @default(0) @map("views_count")
-  savesCount           Int      @default(0) @map("saves_count")
-  repliesCount         Int      @default(0) @map("replies_count")
-  totalInteractionsCount Int    @default(0) @map("total_interactions_count")
-  collectedAt          DateTime @default(now()) @map("collected_at")
+  id                     String   @id @default(uuid())
+  publicationHistoryId   String   @map("publication_history_id")
+  likesCount             Int      @default(0) @map("likes_count")
+  commentsCount          Int      @default(0) @map("comments_count")
+  sharesCount            Int      @default(0) @map("shares_count")
+  reachCount             Int      @default(0) @map("reach_count")
+  impressionsCount       Int      @default(0) @map("impressions_count")
+  viewsCount             Int      @default(0) @map("views_count")
+  savesCount             Int      @default(0) @map("saves_count")
+  repliesCount           Int      @default(0) @map("replies_count")
+  totalInteractionsCount Int      @default(0) @map("total_interactions_count")
+  collectedAt            DateTime @default(now()) @map("collected_at")
 
   publicationHistory PublicationHistory @relation(fields: [publicationHistoryId], references: [id], onDelete: Cascade)
 

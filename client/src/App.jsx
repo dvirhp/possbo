@@ -9,6 +9,8 @@ import { groupsService } from './services/groupsService'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import MarketingSolution from './pages/MarketingSolution'
+import { ResourcesIndex, ResourceArticle } from './pages/Resources'
 import AuthLayout from './components/AuthLayout'
 import ChatBot from './components/ChatBot'
 import AccessibilityWidget from './components/AccessibilityWidget'
@@ -35,11 +37,13 @@ const Guides = lazy(() => import('./pages/Guides'))
 const Subscription = lazy(() => import('./pages/Subscription'))
 const GeneratePost = lazy(() => import('./pages/GeneratePost'))
 const Feedback = lazy(() => import('./pages/Feedback'))
+const BotTargetSelector = lazy(() => import('./pages/BotTargetSelector'))
 
-const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password']
+const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password', '/facebook-groups-automation', '/instagram-scheduling', '/whatsapp-campaigns', '/ai-social-post-generator', '/resources']
 const shouldHideChatBot = (pathname) =>
   pathname === '/create-post' ||
   pathname === '/templates/new' ||
+  pathname.startsWith('/bot-targets/') ||
   /^\/templates\/[^/]+\/edit$/.test(pathname)
 
 function ScrollToTop() {
@@ -48,9 +52,25 @@ function ScrollToTop() {
   return null
 }
 
+function RobotsPolicy() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    const isIndexable = PUBLIC_ROUTES.includes(pathname) || pathname.startsWith('/resources/')
+    if (isIndexable) return
+    let meta = document.head.querySelector('meta[name="robots"]')
+    if (!meta) {
+      meta = document.createElement('meta')
+      meta.name = 'robots'
+      document.head.appendChild(meta)
+    }
+    meta.content = 'noindex, nofollow'
+  }, [pathname])
+  return null
+}
+
 function AuthWidgets() {
   const { pathname } = useLocation()
-  if (PUBLIC_ROUTES.includes(pathname) || shouldHideChatBot(pathname)) return null
+  if (PUBLIC_ROUTES.includes(pathname) || pathname.startsWith('/resources/') || shouldHideChatBot(pathname)) return null
   return (
     <>
       <ChatBot />
@@ -251,6 +271,7 @@ function App() {
     <DataProvider>
       <Router>
         <ScrollToTop />
+        <RobotsPolicy />
         <TopLoader />
         <GlobalPublishBanner />
         <Suspense fallback={null}>
@@ -258,6 +279,12 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/facebook-groups-automation" element={<MarketingSolution type="facebook" />} />
+          <Route path="/instagram-scheduling" element={<MarketingSolution type="instagram" />} />
+          <Route path="/whatsapp-campaigns" element={<MarketingSolution type="whatsapp" />} />
+          <Route path="/ai-social-post-generator" element={<MarketingSolution type="ai" />} />
+          <Route path="/resources" element={<ResourcesIndex />} />
+          <Route path="/resources/:slug" element={<ResourceArticle />} />
           <Route path="/dashboard" element={<AuthLayout><Dashboard /></AuthLayout>} />
           <Route path="/my-groups" element={<Navigate to="/dashboard?tab=groups" replace />} />
           <Route path="/create-post" element={<AuthLayout><CreatePost /></AuthLayout>} />
@@ -281,6 +308,7 @@ function App() {
           <Route path="/cancellation-policy" element={<CancellationPolicy />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/bot-targets/:token" element={<BotTargetSelector />} />
         </Routes>
         </Suspense>
         <AuthWidgets />

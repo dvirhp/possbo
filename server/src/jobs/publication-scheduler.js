@@ -8,7 +8,10 @@ import {
   publishToProfile,
 } from "../utils/facebook-automation.js";
 import { decrypt } from "../utils/encryption.js";
-import { getPublicMediaUrl } from "../utils/media-upload.js";
+import {
+  getPublicMediaUrl,
+  resolveUploadPath,
+} from "../utils/media-upload.js";
 import { sendInstagramReconnectEmail } from "../utils/mailer.js";
 import { createLogger } from "../utils/logger.js";
 
@@ -821,7 +824,7 @@ export async function processPublicationJobs() {
           const mediaPaths = (post.media || [])
             .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
             .filter((m) => !m.igType)
-            .map((m) => path.join(uploadsDir, path.basename(m.url)));
+            .map((m) => resolveUploadPath(m.url));
           const imagePath = mediaPaths[0] || null;
 
           // Strip wa.me links from WhatsApp messages (not relevant in WA context)
@@ -843,7 +846,10 @@ export async function processPublicationJobs() {
               if (target.type === "broadcast") {
                 // Send to all members of the broadcast list
                 const list = await prisma.whatsAppBroadcastList.findFirst({
-                  where: { id: target.id, userId: user.id },
+                  where: {
+                    id: String(target.id || "").replace(/^broadcast_/, ""),
+                    userId: user.id,
+                  },
                 });
                 if (list?.members?.length) {
                   for (const member of list.members) {
@@ -889,7 +895,7 @@ export async function processPublicationJobs() {
           // Get image paths — convert relative URLs to absolute filesystem paths
           const mediaPaths = (post.media || [])
             .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-            .map((m) => path.join(uploadsDir, path.basename(m.url)))
+            .map((m) => resolveUploadPath(m.url))
             .filter((p) => p);
           const imagePath = mediaPaths[0] || null;
 

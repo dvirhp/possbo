@@ -4,10 +4,10 @@ import { useAppData } from '../context/DataProvider'
 import { templatesService } from '../services/templatesService'
 import ConfirmDialog from '../components/ConfirmDialog'
 import BrandLogo from '../components/BrandLogo'
-import { Plus, Pencil, Trash2, Rocket, FileText, Users, Search, LayoutGrid, List, Eye, MoreVertical, X, MapPin, UserX } from 'lucide-react'
+import { Plus, Pencil, Trash2, Rocket, FileText, Users, Search, LayoutGrid, List, Eye, MoreVertical, X, MapPin, UserX, ImageOff } from 'lucide-react'
 import '../styles/templates.css'
 
-const API_HOST = 'http://localhost:8000'
+const API_HOST = import.meta.env.VITE_API_ORIGIN || ''
 const imgSrc = (url) => url?.startsWith('/uploads') ? `${API_HOST}${url}` : url
 function formatNumber(n) {
   if (!n) return '0'
@@ -19,9 +19,16 @@ function formatNumber(n) {
 export default function Templates() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, authChecked, groups: cachedGroups } = useAppData()
-  const [templates, setTemplates] = useState([])
-  const [loading, setLoading] = useState(true)
+  const {
+    user,
+    authChecked,
+    groups: cachedGroups,
+    templates: cachedTemplates,
+    setTemplates: setCachedTemplates,
+    dataReady,
+  } = useAppData()
+  const [templates, setTemplates] = useState(() => cachedTemplates || [])
+  const [loading, setLoading] = useState(() => !dataReady && !cachedTemplates?.length)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState(() => window.innerWidth <= 768 ? 'grid' : 'grid')
@@ -39,13 +46,38 @@ export default function Templates() {
     return () => document.removeEventListener('click', close)
   }, [openMenuId])
 
+  const loadTemplates = useCallback(async ({ showLoader = false } = {}) => {
+    if (showLoader) setLoading(true)
+    try {
+      const res = await templatesService.getAll()
+      if (res.data.success) {
+        const nextTemplates = res.data.templates || []
+        setTemplates(nextTemplates)
+        setCachedTemplates(nextTemplates)
+      }
+    } catch {
+      // Keep the cached list visible when a background refresh fails.
+    } finally {
+      setLoading(false)
+    }
+  }, [setCachedTemplates])
+
   useEffect(() => {
     if (authChecked && !user) {
       navigate('/login')
       return
     }
-    loadTemplates()
-  }, [authChecked, user, location.key])
+    if (!authChecked || !user) return
+    // Dashboard data already contains templates. Show it immediately and
+    // refresh silently so navigating to this page never blocks on the network.
+    loadTemplates({ showLoader: !dataReady && templates.length === 0 })
+  }, [authChecked, user, location.key]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!cachedTemplates) return
+    setTemplates(cachedTemplates)
+    if (dataReady) setLoading(false)
+  }, [cachedTemplates, dataReady])
 
   // Reload templates when publish completes in background
   useEffect(() => {
@@ -54,25 +86,13 @@ export default function Templates() {
     return () => {
       window.removeEventListener('possbo-publish-done', handlePublishDone)
     }
-  }, [])
-
-  const loadTemplates = async () => {
-    try {
-      const res = await templatesService.getAll()
-      if (res.data.success) {
-        setTemplates(res.data.templates)
-      }
-    } catch {
-      // silent
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [loadTemplates])
 
   const handleDelete = async (id) => {
     try {
       await templatesService.delete(id)
       setTemplates(prev => prev.filter(t => t.id !== id))
+      setCachedTemplates(prev => prev.filter(t => t.id !== id))
     } catch {
       // silent
     }
@@ -250,7 +270,7 @@ export default function Templates() {
                   return (
                     <div key={tpl.id} className="tpl-card" onClick={() => { setSelectedTemplate(tpl); setDetailMenuOpen(false) }} style={{ cursor: 'pointer' }}>
                       {/* Image Collage */}
-                      {tpl.imageUrls?.length > 0 && (
+                      {tpl.imageUrls?.length > 0 ? (
                         <div className={`tpl-card-collage tpl-collage-${Math.min(tpl.imageUrls.length, 4)}`}>
                           {tpl.imageUrls.slice(0, 4).map((url, i) => (
                             <img key={i} src={imgSrc(url)} alt="" className="tpl-collage-img" />
@@ -258,6 +278,11 @@ export default function Templates() {
                           {tpl.imageUrls.length > 4 && (
                             <span className="tpl-collage-more">+{tpl.imageUrls.length - 4}</span>
                           )}
+                        </div>
+                      ) : (
+                        <div className="tpl-card-collage tpl-card-image-placeholder" aria-label="אין תמונה לטמפלייט">
+                          <ImageOff size={30} strokeWidth={1.6} aria-hidden="true" />
+                          <span>אין תמונה</span>
                         </div>
                       )}
 

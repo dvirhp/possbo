@@ -286,7 +286,10 @@ function FuturePublications({ item }) {
 
 export default function Reports() {
   const navigate = useNavigate()
-  const { user, authChecked, posts, campaigns, groups, jobs, ensureFresh, forceRefresh } = useAppData()
+  const {
+    user, authChecked, posts, campaigns, groups, jobs, ensureFresh, forceRefresh,
+    waGroups, waBroadcastLists,
+  } = useAppData()
   const [period, setPeriod] = useState('weekly')
   const [platformFilter, setPlatformFilter] = useState('all') // 'all' | 'facebook' | 'instagram' | 'whatsapp'
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
@@ -411,6 +414,50 @@ export default function Reports() {
   // Helper: resolve effective platform from platform + targetType fields
   const getEffectivePlatform = (p) => p.platform || (p.targetType === 'INSTAGRAM' ? 'INSTAGRAM' : p.targetType === 'WHATSAPP' ? 'WHATSAPP' : 'FACEBOOK')
 
+  const matchesPlatformFilter = useCallback((publication) => {
+    const platform = getEffectivePlatform(publication)
+    if (platformFilter === 'facebook') return platform === 'FACEBOOK'
+    if (platformFilter === 'instagram') return platform === 'INSTAGRAM'
+    if (platformFilter === 'whatsapp') return platform === 'WHATSAPP'
+    return true
+  }, [platformFilter])
+
+  const getPublicationDestinations = useCallback((publication) => {
+    const platform = getEffectivePlatform(publication)
+    if (platform === 'INSTAGRAM' || publication.targetType === 'PROFILE') return []
+
+    if (platform === 'WHATSAPP') {
+      const campaign = campaigns?.find(c => c.id === publication.postId)
+      const targets = Array.isArray(publication.whatsappTargets)
+        ? publication.whatsappTargets
+        : Array.isArray(campaign?.whatsappTargets) ? campaign.whatsappTargets : []
+      return targets.map(target => {
+        const isBroadcast = target.type === 'broadcast'
+        const savedTarget = isBroadcast
+          ? waBroadcastLists?.find(list => list.id === target.id || `broadcast_${list.id}` === target.id)
+          : waGroups?.find(group => group.id === target.id)
+        const memberCount = isBroadcast
+          ? (Array.isArray(savedTarget?.members) ? savedTarget.members.length : Number(target.memberCount || 0))
+          : Number(savedTarget?.participants ?? target.participants ?? target.memberCount ?? 0)
+        return {
+          id: `WHATSAPP:${target.id}`,
+          name: target.name || savedTarget?.name || (isBroadcast ? 'רשימת תפוצה' : 'קבוצת וואטסאפ'),
+          memberCount,
+          platform: 'WHATSAPP',
+        }
+      })
+    }
+
+    const groupId = publication.groupId || publication.group?.id
+    if (!groupId) return []
+    return [{
+      id: `FACEBOOK:${groupId}`,
+      name: publication.group?.name || publication.groupName || 'לא ידוע',
+      memberCount: Number(publication.groupMemberCount || publication.group?.memberCount || 0),
+      platform: 'FACEBOOK',
+    }]
+  }, [campaigns, waGroups, waBroadcastLists])
+
   // Compute stats based on period
   const stats = useMemo(() => {
     if (!posts?.length) return { total: 0, success: 0, failed: 0, successRate: 0, groups: 0, exposure: 0, fbCount: 0, igCount: 0, waCount: 0 }
@@ -420,26 +467,20 @@ export default function Reports() {
       return d >= startDate && d <= endDate
     })
 
-    // Apply platform filter
-    if (platformFilter === 'facebook') {
-      filtered = filtered.filter(p => getEffectivePlatform(p) === 'FACEBOOK')
-    } else if (platformFilter === 'instagram') {
-      filtered = filtered.filter(p => getEffectivePlatform(p) === 'INSTAGRAM')
-    } else if (platformFilter === 'whatsapp') {
-      filtered = filtered.filter(p => getEffectivePlatform(p) === 'WHATSAPP')
-    }
+    filtered = filtered.filter(matchesPlatformFilter)
 
     const success = filtered.filter(p => p.status === 'SUCCESS').length
     const failed = filtered.filter(p => p.status === 'FAILED').length
     const total = filtered.length
-    const uniqueGroups = new Set(filtered.map(p => p.groupId).filter(Boolean)).size
-    const exposure = filtered.reduce((sum, p) => sum + (p.groupMemberCount || 0), 0)
+    const destinations = filtered.flatMap(getPublicationDestinations)
+    const uniqueGroups = new Set(destinations.map(destination => destination.id)).size
+    const exposure = destinations.reduce((sum, destination) => sum + destination.memberCount, 0)
     const fbCount = filtered.filter(p => getEffectivePlatform(p) === 'FACEBOOK').length
     const igCount = filtered.filter(p => getEffectivePlatform(p) === 'INSTAGRAM').length
     const waCount = filtered.filter(p => getEffectivePlatform(p) === 'WHATSAPP').length
 
     return { total, success, failed, successRate: total ? Math.round((success / total) * 100) : 0, groups: uniqueGroups, exposure, fbCount, igCount, waCount }
-  }, [posts, startDate, endDate, platformFilter])
+  }, [posts, startDate, endDate, matchesPlatformFilter, getPublicationDestinations])
 
   // Recent activity log
   const recentActivity = useMemo(() => {
@@ -526,9 +567,25 @@ export default function Reports() {
   const activeGroupsList = useMemo(() => {
     if (!posts?.length) return []
     const map = new Map()
-    posts.forEach(p => {
+    posts.filter(matchesPlatformFilter).forEach(p => {
       const d = new Date(p.publishedAt || p.createdAt)
       if (d < startDate || d > endDate) return
+      const destinations = getPublicationDestinations(p)
+      if (destinations.length > 0) {
+        destinations.forEach(destination => {
+          if (!map.has(destination.id)) {
+            map.set(destination.id, {
+              ...destination,
+              count: 0,
+              successCount: 0,
+            })
+          }
+          const destinationStats = map.get(destination.id)
+          destinationStats.count++
+          if (p.status === 'SUCCESS') destinationStats.successCount++
+        })
+        return
+      }
       const gId = p.groupId || p.group?.id
       if (!gId) return
       if (!map.has(gId)) {
@@ -545,14 +602,30 @@ export default function Reports() {
       if (p.status === 'SUCCESS') g.successCount++
     })
     return [...map.values()].sort((a, b) => b.count - a.count)
-  }, [posts, startDate, endDate])
+  }, [posts, startDate, endDate, matchesPlatformFilter, getPublicationDestinations])
 
   const exposureBreakdown = useMemo(() => {
     if (!posts?.length) return []
     const map = new Map()
-    posts.forEach(p => {
+    posts.filter(matchesPlatformFilter).forEach(p => {
       const d = new Date(p.publishedAt || p.createdAt)
       if (d < startDate || d > endDate) return
+      const destinations = getPublicationDestinations(p)
+      if (destinations.length > 0) {
+        destinations.forEach(destination => {
+          if (!map.has(destination.id)) {
+            map.set(destination.id, {
+              ...destination,
+              pubCount: 0,
+              totalExposure: 0,
+            })
+          }
+          const destinationStats = map.get(destination.id)
+          destinationStats.pubCount++
+          destinationStats.totalExposure += destination.memberCount
+        })
+        return
+      }
       const gId = p.groupId || p.group?.id
       if (!gId) return
       const mc = p.groupMemberCount || p.group?.memberCount || 0
@@ -570,7 +643,7 @@ export default function Reports() {
       g.totalExposure += mc
     })
     return [...map.values()].sort((a, b) => b.totalExposure - a.totalExposure)
-  }, [posts, startDate, endDate])
+  }, [posts, startDate, endDate, matchesPlatformFilter, getPublicationDestinations])
 
   // Upcoming scheduled — combine pending jobs + scheduled campaigns
   const upcoming = useMemo(() => {
@@ -953,6 +1026,7 @@ export default function Reports() {
                       <thead>
                         <tr>
                           <th>קבוצה</th>
+                          <th>פלטפורמה</th>
                           <th>חשיפה לפרסום</th>
                           <th>פרסומים</th>
                           <th>סה"כ חשיפה</th>
@@ -962,6 +1036,7 @@ export default function Reports() {
                         {exposureBreakdown.map(g => (
                           <tr key={g.id}>
                             <td className="reports-cell-campaign">{g.name}</td>
+                            <td><span className={`reports-platform-tag ${g.platform === 'WHATSAPP' ? 'rpt-wa' : 'rpt-fb'}`}>{g.platform === 'WHATSAPP' ? 'וואטסאפ' : 'פייסבוק'}</span></td>
                             <td>{formatNumber(g.memberCount)}</td>
                             <td>{g.pubCount}</td>
                             <td><strong>{formatNumber(g.totalExposure)}</strong></td>
@@ -971,6 +1046,7 @@ export default function Reports() {
                       <tfoot>
                         <tr>
                           <td><strong>סה"כ</strong></td>
+                          <td></td>
                           <td></td>
                           <td><strong>{exposureBreakdown.reduce((s, g) => s + g.pubCount, 0)}</strong></td>
                           <td><strong>{formatNumber(exposureBreakdown.reduce((s, g) => s + g.totalExposure, 0))}</strong></td>
@@ -987,6 +1063,7 @@ export default function Reports() {
                     <thead>
                       <tr>
                         <th>שם קבוצה</th>
+                        <th>פלטפורמה</th>
                         <th>פרסומים</th>
                         <th>הצליחו</th>
                         <th>חברים</th>
@@ -996,6 +1073,7 @@ export default function Reports() {
                       {activeGroupsList.map(g => (
                         <tr key={g.id}>
                           <td className="reports-cell-campaign">{g.name}</td>
+                          <td><span className={`reports-platform-tag ${g.platform === 'WHATSAPP' ? 'rpt-wa' : 'rpt-fb'}`}>{g.platform === 'WHATSAPP' ? 'וואטסאפ' : 'פייסבוק'}</span></td>
                           <td>{g.count}</td>
                           <td>{g.successCount}</td>
                           <td>{g.memberCount ? formatNumber(g.memberCount) : '—'}</td>
@@ -1074,7 +1152,7 @@ export default function Reports() {
             {/* Images */}
             {selectedItem.images?.length > 0 && (
               <div className="reports-detail-images">
-                <img src={selectedItem.images[0]?.startsWith('/uploads') ? `http://localhost:8000${selectedItem.images[0]}` : selectedItem.images[0]} alt="" />
+                <img src={selectedItem.images[0]?.startsWith('/uploads') ? `${import.meta.env.VITE_API_ORIGIN || ''}${selectedItem.images[0]}` : selectedItem.images[0]} alt="" />
                 {selectedItem.images.length > 1 && (
                   <span className="reports-detail-img-count">+{selectedItem.images.length - 1}</span>
                 )}

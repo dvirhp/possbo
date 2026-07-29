@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+.tools/
+.tmp-responsive-check/
 
 # Environment
 .env
@@ -47,3 +49,7 @@ npm-debug.log*
 # Coverage
 coverage/
 server/nul
+.tmp-responsive-check/
+/facebook-page.png
+/home-desktop.png
+/home-mobile.png

@@ -8,17 +8,53 @@
 import bcrypt from "bcrypt";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
 import { generateAccessToken, generateRefreshToken } from "./jwt.js";
 
 const SALT_ROUNDS = 12;
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 
 function validImageUrl(value) {
   if (!value) return null;
   if (!value.startsWith("/uploads/")) return value;
-  const localPath = path.join(process.cwd(), value.replace(/^\/+/, ""));
+  const localPath = path.join(uploadsDir, value.replace(/^\/uploads\/+/, ""));
   return fs.existsSync(localPath) ? value : null;
+}
+
+function findLatestUploadedAvatar(userId) {
+  if (!userId || !fs.existsSync(uploadsDir)) return null;
+  const prefix = `avatar-${userId}-`;
+  const latest = fs
+    .readdirSync(uploadsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.startsWith(prefix))
+    .map((entry) => ({
+      name: entry.name,
+      modifiedAt: fs.statSync(path.join(uploadsDir, entry.name)).mtimeMs,
+    }))
+    .sort((a, b) => b.modifiedAt - a.modifiedAt)[0];
+  return latest ? `/uploads/${latest.name}` : null;
+}
+
+export async function ensureStoredProfileImage(user) {
+  if (!user) return user;
+  const storedProfileImage = validImageUrl(user.profileImage);
+  if (storedProfileImage) {
+    return storedProfileImage === user.profileImage
+      ? user
+      : { ...user, profileImage: storedProfileImage };
+  }
+
+  const recoveredProfileImage = findLatestUploadedAvatar(user.id);
+  if (!recoveredProfileImage) return { ...user, profileImage: null };
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { profileImage: recoveredProfileImage },
+  });
+  return { ...user, profileImage: recoveredProfileImage };
 }
 
 /**
@@ -42,11 +78,13 @@ export function setRefreshCookie(res, token, req) {
  * Every auth endpoint should return this structure to keep the frontend simple.
  */
 export function formatUserResponse(user, extras = {}) {
+  const recoveredProfileImage =
+    validImageUrl(user.profileImage) || findLatestUploadedAvatar(user.id);
   return {
     id: user.id,
     email: user.email,
     name: user.name,
-    profileImage: validImageUrl(user.profileImage),
+    profileImage: recoveredProfileImage,
     avatarUrl: validImageUrl(user.avatarUrl),
     fbSessionValid: user.fbSessionValid || false,
     whatsappNumber: user.whatsappNumber || null,
@@ -69,6 +107,7 @@ export function formatUserResponse(user, extras = {}) {
  *  - extraUserFields     {object}  — extra fields merged into user response
  */
 export async function issueTokens(res, user, req, opts = {}) {
+  user = await ensureStoredProfileImage(user);
   const accessToken = generateAccessToken(user.id);
   const refreshToken = generateRefreshToken(user.id);
   const refreshTokenHash = await bcrypt.hash(refreshToken, SALT_ROUNDS);

@@ -94,14 +94,14 @@ export async function collectAllMetrics() {
           fbPublications,
         );
         for (const result of results) {
-          if (result.likes > 0 || result.comments > 0) {
-            await savePublicationMetrics(
-              result.publicationId,
-              result.likes,
-              result.comments,
-            );
-            totalSaved++;
-          }
+          // A verified zero is still a successful synchronization and should
+          // advance the UI's last-synced timestamp.
+          await savePublicationMetrics(
+            result.publicationId,
+            result.likes,
+            result.comments,
+          );
+          totalSaved++;
         }
         totalScraped += results.length;
       }

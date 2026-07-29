@@ -8,6 +8,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 const log = createLogger("media-upload");
 
+export function resolveUploadPath(mediaUrl) {
+  const value = String(mediaUrl || "");
+  const relativePath = value
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/?uploads\/?/i, "")
+    .replace(/^[/\\]+/, "");
+  const resolved = path.resolve(uploadsDir, relativePath);
+  const uploadsRoot = `${path.resolve(uploadsDir)}${path.sep}`;
+  if (resolved !== path.resolve(uploadsDir) && !resolved.startsWith(uploadsRoot)) {
+    throw new Error("Invalid media path");
+  }
+  return resolved;
+}
+
 /**
  * Get a publicly accessible URL for a local media file.
  * Uses MEDIA_PUBLIC_URL env var if set (e.g., ngrok URL).
@@ -24,7 +38,7 @@ export async function getPublicMediaUrl(localPath) {
   }
 
   // Upload to a public host that Instagram can access
-  const absolutePath = path.join(uploadsDir, path.basename(localPath));
+  const absolutePath = resolveUploadPath(localPath);
   if (!fs.existsSync(absolutePath)) {
     throw new Error(`Media file not found: ${absolutePath}`);
   }
