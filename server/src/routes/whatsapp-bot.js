@@ -7,19 +7,42 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
+import { invalidateDashboardCache } from "./analytics.js";
 import { createLogger } from "../utils/logger.js";
 import {
   sendText,
+  sendImage,
   sendButtons,
   sendList,
   markAsRead,
 } from "../utils/whatsapp-bot-api.js";
 
-// Resolve number input to button ID
+function normalizeMenuText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u200e\u200f\u202a-\u202e]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLocaleLowerCase("he");
+}
+
+// Resolve a numeric reply, a WhatsApp button/list ID, or the visible option
+// title typed manually by the user to the same internal action ID.
 function resolveInput(input, conv) {
-  const num = parseInt(input);
+  const normalizedInput = normalizeMenuText(input);
+  const num = Number.parseInt(normalizedInput, 10);
   const opts = conv?.menuOptions;
-  if (num >= 1 && opts && num <= opts.length) return opts[num - 1];
+  if (
+    Number.isInteger(num) &&
+    String(num) === normalizedInput &&
+    num >= 1 &&
+    opts &&
+    num <= opts.length
+  ) {
+    return opts[num - 1];
+  }
+  const actionFromTitle = conv?.menuOptionLabels?.[normalizedInput];
+  if (actionFromTitle) return actionFromTitle;
   return input;
 }
 
@@ -39,22 +62,75 @@ const MAIN_MENU_INPUTS = new Set([
 ]);
 
 async function interactiveMenu(phone, text, options) {
-  if (options.length <= 3) {
-    await sendButtons(phone, text, options);
-    return;
+  const currentStep = getConversation(phone)?.step;
+  const menuOptions = [...options];
+  if (
+    getAuthenticatedUser(phone) &&
+    currentStep !== "MAIN_MENU" &&
+    !menuOptions.some((option) => option.id === "main_menu")
+  ) {
+    menuOptions.push({ id: "main_menu", title: "תפריט ראשי" });
   }
-  await sendList(phone, text, "פתח רשימה", [
-    {
-      title: "אפשרויות",
-      rows: options.slice(0, 10).map((option) => ({
-        id: option.id,
-        title: option.title.slice(0, 24),
-        description: option.description?.slice(0, 72),
-      })),
-    },
-  ]);
+
+  setConversation(phone, {
+    menuOptions: menuOptions.map((option) => option.id),
+    menuOptionLabels: Object.fromEntries(
+      menuOptions.map((option) => [
+        normalizeMenuText(option.title),
+        option.id,
+      ]),
+    ),
+  });
+
+  const sendInteractive = async () => {
+    if (menuOptions.length <= 3) {
+      await sendButtons(phone, text, menuOptions);
+      return;
+    }
+    await sendList(phone, text, "פתח רשימה", [
+      {
+        title: "אפשרויות",
+        rows: menuOptions.slice(0, 10).map((option) => ({
+          id: option.id,
+          title: option.title.slice(0, 24),
+          description: option.description?.slice(0, 72),
+        })),
+      },
+    ]);
+  };
+
+  try {
+    await sendInteractive();
+  } catch (err) {
+    if (err.message?.includes("(#131056)")) {
+      log.warn("Interactive message rate limited; retrying", {
+        optionCount: menuOptions.length,
+      });
+      for (const delayMs of [15_000, 20_000]) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        try {
+          await sendInteractive();
+          return;
+        } catch (retryError) {
+          if (!retryError.message?.includes("(#131056)")) throw retryError;
+        }
+      }
+      throw err;
+    }
+    log.warn("Interactive message failed; using numbered text fallback", {
+      error: err.message,
+      optionCount: menuOptions.length,
+    });
+    const numberedOptions = menuOptions
+      .map((option, index) => `${index + 1}. ${option.title}`)
+      .join("\n");
+    await sendText(phone, `${text}\n\n${numberedOptions}\n\nהשב עם מספר האפשרות.`);
+  }
 }
-import { sendVerificationEmail } from "../utils/mailer.js";
+import {
+  sendVerificationEmail,
+  sendContactEmail,
+} from "../utils/mailer.js";
 import {
   getConversation,
   setConversation,
@@ -69,6 +145,18 @@ const log = createLogger("whatsapp-bot");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "../../uploads");
 const AUTH_DB_TIMEOUT_MS = 5_000;
+const SUPPORT_EMAIL =
+  process.env.CONTACT_EMAIL || process.env.SMTP_USER || "support@possbo-app.co.il";
+const TARGET_SELECTOR_TTL_MS = 30 * 60 * 1000;
+const targetSelectorSessions = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of targetSelectorSessions) {
+    if (session.expiresAt < now || session.completed) {
+      targetSelectorSessions.delete(token);
+    }
+  }
+}, 5 * 60 * 1000).unref();
 
 function withTimeout(promise, ms, message) {
   return Promise.race([
@@ -77,6 +165,13 @@ function withTimeout(promise, ms, message) {
       setTimeout(() => reject(new Error(message)), ms),
     ),
   ]);
+}
+
+async function sendInputPrompt(phone, text) {
+  const menuHint = getAuthenticatedUser(phone)
+    ? "\n\nאפשר לכתוב תפריט כדי לחזור לתפריט הראשי."
+    : "";
+  await sendText(phone, `${text}${menuHint}`);
 }
 
 // ─── Webhook verification ───────────────────────────────────────────────────
@@ -124,6 +219,61 @@ router.post("/", async (req, res) => {
   }
 });
 
+router.get("/selection/:token", async (req, res) => {
+  const session = targetSelectorSessions.get(req.params.token);
+  if (!session || session.expiresAt < Date.now() || session.completed) {
+    targetSelectorSessions.delete(req.params.token);
+    return res.status(404).json({
+      error: "קישור הבחירה אינו תקף או שפג תוקפו. חזור לבוט ובקש קישור חדש.",
+    });
+  }
+  try {
+    const data = await buildExternalTargetSelection(session);
+    res.json(data);
+  } catch (err) {
+    log.error("Failed to load bot target selector", err);
+    res.status(500).json({ error: "לא ניתן לטעון את היעדים כרגע." });
+  }
+});
+
+router.post("/selection/:token", async (req, res) => {
+  const session = targetSelectorSessions.get(req.params.token);
+  if (!session || session.expiresAt < Date.now() || session.completed) {
+    targetSelectorSessions.delete(req.params.token);
+    return res.status(404).json({
+      error: "קישור הבחירה אינו תקף או שפג תוקפו. חזור לבוט ובקש קישור חדש.",
+    });
+  }
+  const selectedIds = Array.isArray(req.body?.selectedIds)
+    ? [...new Set(req.body.selectedIds.filter((id) => typeof id === "string"))]
+    : null;
+  if (!selectedIds || selectedIds.length > 2000) {
+    return res.status(400).json({ error: "הבחירה שנשלחה אינה תקינה." });
+  }
+  try {
+    const selection = await buildExternalTargetSelection(session);
+    const allowed = new Map(selection.items.map((item) => [item.id, item]));
+    const selectedItems = selectedIds
+      .map((id) => allowed.get(id))
+      .filter(Boolean);
+    session.completed = true;
+    await applyExternalTargetSelection(session, selectedItems);
+    targetSelectorSessions.delete(req.params.token);
+    res.json({ success: true, selectedCount: selectedItems.length });
+  } catch (err) {
+    session.completed = false;
+    log.error("Failed to save bot target selector", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "לא ניתן לשמור את הבחירה כרגע." });
+    } else {
+      await sendText(
+        session.phone,
+        "שמירת היעדים נכשלה. חזור לבוט ובקש קישור בחירה חדש.",
+      );
+    }
+  }
+});
+
 function extractInput(msg) {
   if (msg.type === "text") return msg.text?.body?.trim();
   if (msg.type === "interactive") {
@@ -139,11 +289,38 @@ function extractInput(msg) {
 
 // ─── Router ─────────────────────────────────────────────────────────────────
 async function route(phone, input) {
-  const conv = getConversation(phone);
-  const userId = getAuthenticatedUser(phone);
+  let conv = getConversation(phone);
+  let userId = getAuthenticatedUser(phone);
+
+  // Conversation steps are intentionally short-lived, but authentication
+  // must survive a restart, another server process, or an expired in-memory
+  // session. Restore the verified user from the database before falling back
+  // to the public welcome flow.
+  if (!userId) {
+    try {
+      const persistedUser = await withTimeout(
+        prisma.user.findUnique({
+          where: { whatsappBotPhone: phone },
+          select: { id: true },
+        }),
+        AUTH_DB_TIMEOUT_MS,
+        "BOT_AUTH_RESTORE_TIMEOUT",
+      );
+      if (persistedUser) {
+        userId = persistedUser.id;
+        setConversation(phone, { userId, step: "MAIN_MENU" });
+        conv = getConversation(phone);
+      }
+    } catch (err) {
+      log.error("Failed to restore persisted bot authentication", err, {
+        phone,
+      });
+    }
+  }
 
   if (userId && MAIN_MENU_INPUTS.has(input)) {
     setConversation(phone, { step: "MAIN_MENU", draft: undefined });
+    invalidateDashboardCache(userId);
     await mainMenu(phone);
     return;
   }
@@ -155,6 +332,16 @@ async function route(phone, input) {
 
   const step = conv?.step || "MAIN_MENU";
   if (input === "disconnect") {
+    await prisma.user
+      .update({
+        where: { id: userId },
+        data: { whatsappBotPhone: null },
+      })
+      .catch((err) =>
+        log.error("Failed to clear persisted bot authentication", err, {
+          userId,
+        }),
+      );
     clearConversation(phone);
     await sendText(phone, "התנתקת בהצלחה. שלח הודעה כדי להתחבר מחדש.");
     return;
@@ -180,6 +367,13 @@ async function route(phone, input) {
     }
   } catch (err) {
     log.error(`Step ${step} error`, err);
+    if (err.message?.includes("(#131056)")) {
+      log.warn("Meta pair rate limit reached; suppressing misleading reply", {
+        phone,
+        step,
+      });
+      return;
+    }
     await sendText(phone, "אירעה שגיאה. שלח 'תפריט' לחזור.");
   }
 }
@@ -192,11 +386,61 @@ async function authFlow(phone, input, conv) {
   log.info("Auth flow", { phone, step: step || "WELCOME" });
 
   if (!step || step === "WELCOME") {
-    setConversation(phone, { step: "AWAITING_ID" });
+    setConversation(phone, { step: "WELCOME_MENU" });
     await sendText(
       phone,
-      "שלום! אני פוסבוט.\n\nכדי להתחבר, שלח את מספר תעודת הזהות שלך (9 ספרות).",
+      "היי! 👋 אני פוסבוט, העוזר הבוטי של אתר פוסבו 💜\nאני כאן כדי לעזור לך להכיר את המערכת, ליצור ולנהל פרסומים גם ישירות מתוך WhatsApp.",
     );
+    await interactiveMenu(phone, "נעים להכיר! איך תרצה להתחיל?", [
+      { id: "welcome_login", title: "התחברות" },
+      { id: "welcome_about", title: "ספרו לי על האתר" },
+    ]);
+    return;
+  }
+
+  if (step === "WELCOME_MENU") {
+    if (input === "welcome_login") {
+      setConversation(phone, { step: "AWAITING_ID" });
+      await sendInputPrompt(
+        phone,
+        "כדי להתחבר, שלח את מספר תעודת הזהות שלך (9 ספרות).",
+      );
+      return;
+    }
+    if (input === "welcome_about") {
+      await showPublicAbout(phone);
+      return;
+    }
+    await interactiveMenu(phone, "איך תרצה להתחיל?", [
+      { id: "welcome_login", title: "התחברות" },
+      { id: "welcome_about", title: "ספרו לי על האתר" },
+    ]);
+    return;
+  }
+
+  if (step === "WELCOME_ABOUT") {
+    if (input === "welcome_login") {
+      setConversation(phone, { step: "AWAITING_ID" });
+      await sendInputPrompt(
+        phone,
+        "כדי להתחבר, שלח את מספר תעודת הזהות שלך (9 ספרות).",
+      );
+      return;
+    }
+    if (input === "welcome_register") {
+      const clientUrl = String(process.env.CLIENT_URL || "").replace(/\/+$/, "");
+      const hasPublicClientUrl =
+        clientUrl && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(clientUrl);
+      await sendText(
+        phone,
+        hasPublicClientUrl
+          ? `להרשמה ל-Possbo:\n${clientUrl}/register\n\nלאחר ההרשמה חזור לכאן ולחץ על התחברות.`
+          : `להרשמה יש לפתוח את אתר Possbo ולעבור לעמוד הרשמה.\nאם דרושה עזרה, אפשר לפנות אלינו: ${SUPPORT_EMAIL}\n\nלאחר ההרשמה חזור לכאן ולחץ על התחברות.`,
+      );
+      await showPublicAboutActions(phone);
+      return;
+    }
+    await showPublicAboutActions(phone);
     return;
   }
 
@@ -259,6 +503,21 @@ async function authFlow(phone, input, conv) {
       await sendText(phone, "קוד שגוי או שפג תוקפו.");
       return;
     }
+    // A WhatsApp number may authenticate only one account at a time. Clear a
+    // stale link first, then persist the newly verified association.
+    await prisma.$transaction([
+      prisma.user.updateMany({
+        where: {
+          whatsappBotPhone: phone,
+          id: { not: result.userId },
+        },
+        data: { whatsappBotPhone: null },
+      }),
+      prisma.user.update({
+        where: { id: result.userId },
+        data: { whatsappBotPhone: phone },
+      }),
+    ]);
     setConversation(phone, { userId: result.userId, step: "MAIN_MENU" });
     await sendText(phone, `מחובר! שלום ${conv?.pendingName || ""}`);
     await mainMenu(phone);
@@ -270,10 +529,14 @@ async function authFlow(phone, input, conv) {
 // MAIN MENU
 // ═══════════════════════════════════════════════════════════════════════════════
 async function mainMenu(phone) {
+  setConversation(phone, { step: "MAIN_MENU" });
   await interactiveMenu(phone, "מה תרצה לעשות?", [
     { id: "create_campaign", title: "צור קמפיין" },
+    { id: "create_new_template", title: "צור טמפלייט" },
     { id: "my_campaigns", title: "הקמפיינים שלי" },
     { id: "status", title: "סטטוס" },
+    { id: "tutorials", title: "הדרכות ועזרה" },
+    { id: "contact_support", title: "יש לך שאלות?" },
   ]);
 }
 
@@ -299,10 +562,472 @@ const steps = {
       return;
     }
     if (input === "3" || input === "status" || input === "סטטוס") {
-      await showStatus(phone, userId);
+      await showStatusPeriodMenu(phone);
+      return;
+    }
+    if (input === "create_new_template" || input === "צור טמפלייט") {
+      await startTemplateCreation(phone);
+      return;
+    }
+    if (input === "tutorials" || input === "הדרכות ועזרה") {
+      await showTutorialMenu(phone);
+      return;
+    }
+    if (input === "contact_support" || input === "יש לך שאלות?") {
+      await showContactMenu(phone);
       return;
     }
     await mainMenu(phone);
+  },
+
+  TEMPLATE_NAME: async (phone, userId, input) => {
+    if (input.trim().length < 2) {
+      await sendText(phone, "יש לתת לטמפלייט שם של לפחות 2 תווים.");
+      return;
+    }
+    updateDraft(phone, { templateName: input.trim() });
+    setConversation(phone, { step: "TEMPLATE_CONTENT" });
+    await sendInputPrompt(phone, "כתוב את תוכן הטמפלייט:");
+  },
+
+  TEMPLATE_CONTENT: async (phone, userId, input) => {
+    if (input.trim().length < 3) {
+      await sendText(phone, "יש לכתוב תוכן של לפחות 3 תווים.");
+      return;
+    }
+    updateDraft(phone, { content: input.trim() });
+    setConversation(phone, { step: "TEMPLATE_TITLE_CHOICE" });
+    await interactiveMenu(
+      phone,
+      "האם תרצה להגדיר גם שם קמפיין שיופיע כברירת מחדל? זה לא חובה.",
+      [
+        { id: "tpl_title_add", title: "כן, הוסף שם קמפיין" },
+        { id: "tpl_title_skip", title: "דלג" },
+      ],
+    );
+  },
+
+  TEMPLATE_TITLE_CHOICE: async (phone, userId, input) => {
+    if (input === "tpl_title_add") {
+      setConversation(phone, { step: "TEMPLATE_TITLE" });
+      await sendInputPrompt(phone, "מה יהיה שם הקמפיין שייווצר מהטמפלייט?");
+      return;
+    }
+    if (input === "tpl_title_skip") {
+      await askTemplateAnonymous(phone);
+      return;
+    }
+    await steps.TEMPLATE_CONTENT(phone, userId, getConversation(phone)?.draft?.content || "");
+  },
+
+  TEMPLATE_TITLE: async (phone, userId, input) => {
+    updateDraft(phone, { title: input.trim() || null });
+    await askTemplateAnonymous(phone);
+  },
+
+  TEMPLATE_ANONYMOUS: async (phone, userId, input) => {
+    if (!["tpl_anon_yes", "tpl_anon_no"].includes(input)) {
+      await askTemplateAnonymous(phone);
+      return;
+    }
+    updateDraft(phone, { isAnonymous: input === "tpl_anon_yes" });
+    setConversation(phone, { step: "TEMPLATE_LOCATION_CHOICE" });
+    await interactiveMenu(phone, "להוסיף מיקום לטמפלייט? לא חובה.", [
+      { id: "tpl_location_add", title: "כן, הוסף מיקום" },
+      { id: "tpl_location_skip", title: "דלג" },
+    ]);
+  },
+
+  TEMPLATE_LOCATION_CHOICE: async (phone, userId, input) => {
+    if (input === "tpl_location_add") {
+      setConversation(phone, { step: "TEMPLATE_LOCATION" });
+      await sendInputPrompt(phone, "כתוב את המיקום:");
+      return;
+    }
+    if (input === "tpl_location_skip") {
+      await askTemplateWhatsAppLink(phone, userId);
+      return;
+    }
+    await interactiveMenu(phone, "להוסיף מיקום לטמפלייט? לא חובה.", [
+      { id: "tpl_location_add", title: "כן, הוסף מיקום" },
+      { id: "tpl_location_skip", title: "דלג" },
+    ]);
+  },
+
+  TEMPLATE_LOCATION: async (phone, userId, input) => {
+    updateDraft(phone, { location: input.trim() || null });
+    await askTemplateWhatsAppLink(phone, userId);
+  },
+
+  TEMPLATE_WHATSAPP_LINK: async (phone, userId, input) => {
+    if (input === "tpl_wa_skip") {
+      updateDraft(phone, { whatsappText: null });
+      await askTemplateImages(phone);
+      return;
+    }
+    if (input === "tpl_wa_default") {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { whatsappMessage: true },
+      });
+      updateDraft(phone, { whatsappText: user?.whatsappMessage || "" });
+      await askTemplateImages(phone);
+      return;
+    }
+    if (input === "tpl_wa_custom") {
+      setConversation(phone, { step: "TEMPLATE_WHATSAPP_TEXT" });
+      await sendInputPrompt(
+        phone,
+        "כתוב את ההודעה שתיפתח למי שילחץ על קישור ה-WhatsApp:",
+      );
+      return;
+    }
+    await askTemplateWhatsAppLink(phone, userId);
+  },
+
+  TEMPLATE_WHATSAPP_TEXT: async (phone, userId, input) => {
+    updateDraft(phone, { whatsappText: input.trim() });
+    await askTemplateImages(phone);
+  },
+
+  TEMPLATE_IMAGES_CHOICE: async (phone, userId, input) => {
+    if (input === "tpl_images_add") {
+      setConversation(phone, { step: "TEMPLATE_IMAGES_WAIT" });
+      await sendInputPrompt(
+        phone,
+        "שלח עד 12 תמונות. לאחר שסיימת כתוב סיום.",
+      );
+      return;
+    }
+    if (input === "tpl_images_skip") {
+      await askTemplateTargets(phone);
+      return;
+    }
+    await askTemplateImages(phone);
+  },
+
+  TEMPLATE_IMAGES_WAIT: async (phone, userId, input) => {
+    if (["סיום", "done", "finish"].includes(input.toLowerCase())) {
+      await askTemplateTargets(phone);
+      return;
+    }
+    await sendText(phone, "שלח תמונה נוספת או כתוב סיום.");
+  },
+
+  TEMPLATE_TARGETS_CHOICE: async (phone, userId, input) => {
+    if (input === "tpl_targets_add") {
+      updateDraft(phone, { creatingTemplate: true });
+      await askPlatform(phone, []);
+      return;
+    }
+    if (input === "tpl_targets_skip") {
+      await showNewTemplateSummary(phone);
+      return;
+    }
+    await askTemplateTargets(phone);
+  },
+
+  TEMPLATE_SUMMARY: async (phone, userId, input) => {
+    if (input === "tpl_save") {
+      await saveNewTemplate(phone, userId);
+      return;
+    }
+    if (input === "tpl_restart") {
+      await startTemplateCreation(phone);
+      return;
+    }
+    await showNewTemplateSummary(phone);
+  },
+
+  CONTACT_MENU: async (phone, userId, input) => {
+    if (input === "contact_write") {
+      setConversation(phone, { step: "CONTACT_MESSAGE" });
+      await sendInputPrompt(phone, "כתוב את ההודעה שתרצה להעביר לצוות Possbo:");
+      return;
+    }
+    if (input === "contact_email_only") {
+      await sendText(phone, `המייל שלנו ליצירת קשר:\n${SUPPORT_EMAIL}`);
+      await mainMenu(phone);
+      return;
+    }
+    await showContactMenu(phone);
+  },
+
+  CONTACT_MESSAGE: async (phone, userId, input) => {
+    const message = input.trim();
+    if (message.length < 3) {
+      await sendText(phone, "ההודעה קצרה מדי. כתוב לפחות 3 תווים.");
+      return;
+    }
+    if (message.length > 5000) {
+      await sendText(phone, "ההודעה ארוכה מדי. ניתן לשלוח עד 5,000 תווים.");
+      return;
+    }
+    await sendBotContactRequest(phone, userId, message);
+  },
+
+  TUTORIAL_MENU: async (phone, userId, input) => {
+    if (input === "tutorial_back") {
+      await mainMenu(phone);
+      return;
+    }
+    const topicId = input.replace(/^tutorial_/, "");
+    if (BOT_TUTORIALS[topicId]) {
+      await showTutorialTopic(phone, topicId);
+      return;
+    }
+    await showTutorialMenu(phone);
+  },
+
+  TUTORIAL_TOPIC: async (phone, userId, input) => {
+    if (input === "tutorial_topics") {
+      await showTutorialMenu(phone);
+      return;
+    }
+    if (input === "contact_support") {
+      await showContactMenu(phone);
+      return;
+    }
+    await showTutorialTopic(
+      phone,
+      getConversation(phone)?.tutorialTopic || "getting-started",
+    );
+  },
+
+  CAMP_CREATE_MODE: async (phone, userId, input) => {
+    if (input === "create_manual" || normalizeMenuText(input) === "יצירה עצמאית") {
+      await startManualCampaign(phone);
+      return;
+    }
+    if (input === "create_template" || normalizeMenuText(input) === "יצירה מתבנית") {
+      await showTemplateList(phone, userId, 0);
+      return;
+    }
+    if (input === "create_back") {
+      setConversation(phone, { step: "MAIN_MENU", draft: undefined });
+      await mainMenu(phone);
+      return;
+    }
+    await showCampaignCreationOptions(phone);
+  },
+
+  CAMP_TEMPLATE_LIST: async (phone, userId, input, conv) => {
+    if (input === "template_back") {
+      await showCampaignCreationOptions(phone);
+      return;
+    }
+    if (input === "template_next") {
+      await showTemplateList(phone, userId, (conv?.templatePage || 0) + 1);
+      return;
+    }
+    if (input === "template_prev") {
+      await showTemplateList(
+        phone,
+        userId,
+        Math.max(0, (conv?.templatePage || 0) - 1),
+      );
+      return;
+    }
+    if (input.startsWith("template_pick_")) {
+      await loadTemplateDraft(phone, userId, input.slice("template_pick_".length));
+      return;
+    }
+    await showTemplateList(phone, userId, conv?.templatePage || 0);
+  },
+
+  CAMP_TEMPLATE_REVIEW: async (phone, userId, input) => {
+    if (input === "template_use") {
+      await showPreview(phone);
+      return;
+    }
+    if (input === "template_edit_title") {
+      setConversation(phone, { step: "CAMP_TEMPLATE_EDIT_TITLE" });
+      const currentTitle =
+        getConversation(phone)?.draft?.title || "לא הוגדר שם";
+      await sendInputPrompt(
+        phone,
+        `שם הקמפיין הנוכחי:\n${currentTitle}\n\nלאיזה שם תרצה להחליף?`,
+      );
+      return;
+    }
+    if (input === "template_edit_content") {
+      setConversation(phone, { step: "CAMP_TEMPLATE_EDIT_CONTENT" });
+      const currentContent =
+        getConversation(phone)?.draft?.content || "לא הוגדר תוכן";
+      await sendInputPrompt(
+        phone,
+        `תוכן הפוסט הנוכחי:\n${currentContent}\n\nשלח את התוכן החדש:`,
+      );
+      return;
+    }
+    if (input === "template_edit_images") {
+      setConversation(phone, { step: "CAMP_TEMPLATE_IMAGES" });
+      await showTemplateImageOptions(phone);
+      return;
+    }
+    if (input === "template_edit_targets") {
+      await showTemplateTargetActions(phone);
+      return;
+    }
+    if (input === "template_choose_other") {
+      await showTemplateList(phone, userId, 0);
+      return;
+    }
+    await showTemplateReview(phone);
+  },
+
+  CAMP_TEMPLATE_EDIT_TITLE: async (phone, userId, input) => {
+    if (input.trim().length < 2) {
+      await sendText(phone, "השם קצר מדי. שלח שם חדש:");
+      return;
+    }
+    updateDraft(phone, { title: input.trim() });
+    await showTemplateReview(phone);
+  },
+
+  CAMP_TEMPLATE_EDIT_CONTENT: async (phone, userId, input) => {
+    if (input.trim().length < 3) {
+      await sendText(phone, "התוכן קצר מדי. שלח לפחות 3 תווים:");
+      return;
+    }
+    updateDraft(phone, { content: input.trim() });
+    await showTemplateReview(phone);
+  },
+
+  CAMP_TEMPLATE_IMAGES: async (phone, userId, input) => {
+    if (input === "template_images_back") {
+      await showTemplateReview(phone);
+      return;
+    }
+    if (input === "template_images_remove_all") {
+      updateDraft(phone, { images: [], templateImageUrls: [] });
+      await showTemplateReview(phone);
+      return;
+    }
+    if (input === "template_images_add") {
+      updateDraft(phone, { returnToTemplateReview: true });
+      setConversation(phone, { step: "CAMP_IMAGES_WAIT" });
+      await sendInputPrompt(phone, "שלח עד 12 תמונות. כשסיימת כתוב 'סיום'.");
+      return;
+    }
+    if (input === "template_images_replace") {
+      updateDraft(phone, {
+        images: [],
+        templateImageUrls: [],
+        returnToTemplateReview: true,
+      });
+      setConversation(phone, { step: "CAMP_IMAGES_WAIT" });
+      await sendInputPrompt(
+        phone,
+        "התמונות הקיימות הוסרו. שלח תמונות חדשות, וכשסיימת כתוב סיום.",
+      );
+      return;
+    }
+    await showTemplateImageOptions(phone);
+  },
+
+  CAMP_TEMPLATE_TARGET_ACTIONS: async (phone, userId, input) => {
+    if (input === "template_targets_back") {
+      await showTemplateReview(phone);
+      return;
+    }
+    if (input === "template_targets_remove") {
+      await showTemplateTargetPlatformMenu(phone, "remove");
+      return;
+    }
+    if (input === "template_targets_add") {
+      await showTemplateTargetPlatformMenu(phone, "add");
+      return;
+    }
+    if (input === "template_targets_replace") {
+      updateDraft(phone, {
+        platforms: [],
+        groupIds: [],
+        groupNames: [],
+        publishToProfile: false,
+        igEnabled: false,
+        instagramPublishTypes: [],
+        waEnabled: false,
+        whatsappTargets: [],
+        returnToTemplateReviewAfterTargets: true,
+      });
+      await sendText(phone, "כל יעדי הפרסום הקיימים הוסרו. כעת בחר יעדים חדשים.");
+      await askPlatform(phone, []);
+      return;
+    }
+    await showTemplateTargetActions(phone);
+  },
+
+  CAMP_TEMPLATE_TARGET_PLATFORM: async (phone, userId, input, conv) => {
+    const mode = conv?.templateTargetMode;
+    if (input === "template_target_platform_done") {
+      await showTemplateTargetActions(phone);
+      return;
+    }
+    const match = input.match(/^template_target_(add|remove)_(facebook|instagram|whatsapp)$/);
+    if (!match || match[1] !== mode) {
+      await showTemplateTargetPlatformMenu(phone, mode);
+      return;
+    }
+    await showTemplateTargetItems(phone, userId, mode, match[2], 0);
+  },
+
+  CAMP_TEMPLATE_TARGET_ITEMS: async (phone, userId, input, conv) => {
+    const mode = conv?.templateTargetMode;
+    const platform = conv?.templateTargetPlatform;
+    const page = conv?.templateTargetPage || 0;
+    if (input === "template_target_items_done") {
+      await showTemplateTargetPlatformMenu(phone, mode);
+      return;
+    }
+    if (input === "template_target_items_prev") {
+      await showTemplateTargetItems(phone, userId, mode, platform, page - 1);
+      return;
+    }
+    if (input === "template_target_items_next") {
+      await showTemplateTargetItems(phone, userId, mode, platform, page + 1);
+      return;
+    }
+    if (input.startsWith("template_target_item_")) {
+      const index = Number(input.slice("template_target_item_".length));
+      const item = conv?.templateTargetPageItems?.[index];
+      if (item) {
+        applyTemplateTargetChange(phone, mode, item);
+        await showTemplateTargetChangeConfirmation(
+          phone,
+          mode,
+          platform,
+          item,
+        );
+        return;
+      }
+      await showTemplateTargetItems(phone, userId, mode, platform, page);
+      return;
+    }
+    await showTemplateTargetItems(phone, userId, mode, platform, page);
+  },
+
+  CAMP_TEMPLATE_TARGET_CONTINUE: async (phone, userId, input, conv) => {
+    if (input === "template_target_change_more") {
+      await showTemplateTargetItems(
+        phone,
+        userId,
+        conv?.templateTargetMode,
+        conv?.templateTargetPlatform,
+        0,
+      );
+      return;
+    }
+    if (input === "template_target_change_done") {
+      await showTemplateTargetPlatformMenu(phone, conv?.templateTargetMode);
+      return;
+    }
+    await showTemplateTargetChangeConfirmation(
+      phone,
+      conv?.templateTargetMode,
+      conv?.templateTargetPlatform,
+      conv?.templateTargetLastItem,
+    );
   },
 
   // ── Campaign: Name ──
@@ -313,7 +1038,7 @@ const steps = {
     }
     updateDraft(phone, { title: input });
     setConversation(phone, { step: "CAMP_CONTENT" });
-    await sendText(phone, "כתוב את תוכן הפוסט:");
+    await sendInputPrompt(phone, "כתוב את תוכן הפוסט:");
   },
 
   // ── Campaign: Content ──
@@ -370,7 +1095,7 @@ const steps = {
   // ── Campaign: Images ──
   CAMP_IMAGES: async (phone, userId, input) => {
     if (input === "img_yes") {
-      await sendText(
+      await sendInputPrompt(
         phone,
         "שלח עד 12 תמונות (ביחד בהודעה אחת).\nכשסיימת שלח 'סיום'.",
       );
@@ -391,6 +1116,11 @@ const steps = {
   // ── Campaign: Waiting for images ──
   CAMP_IMAGES_WAIT: async (phone, userId, input) => {
     if (input === "סיום" || input === "done" || input === "המשך") {
+      if (getConversation(phone)?.draft?.returnToTemplateReview) {
+        updateDraft(phone, { returnToTemplateReview: false });
+        await showTemplateReview(phone);
+        return;
+      }
       setConversation(phone, { step: "CAMP_PREVIEW" });
       await showPreview(phone);
       return;
@@ -402,11 +1132,15 @@ const steps = {
   CAMP_PREVIEW: async (phone, userId, input) => {
     if (input === "preview_publish") {
       setConversation(phone, { step: "CAMP_PLATFORM" });
-      await askPlatform(phone, []);
+      await askPlatform(phone, getConversation(phone)?.draft?.platforms || []);
       return;
     }
     if (input === "preview_edit") {
-      await startCampaign(phone);
+      if (getConversation(phone)?.draft?.templateId) {
+        await showTemplateReview(phone);
+      } else {
+        await startManualCampaign(phone);
+      }
       return;
     }
     await showPreview(phone);
@@ -422,15 +1156,11 @@ const steps = {
         await askPlatform(phone, selected);
         return;
       }
-      await askSchedule(phone);
+      await finishTargetSelection(phone);
       return;
     }
     if (input === "plat_facebook") {
-      setConversation(phone, { step: "CAMP_FB_TYPE" });
-      await interactiveMenu(phone, "פרסום בפייסבוק:", [
-        { id: "fb_profile", title: "פרופיל אישי" },
-        { id: "fb_groups", title: "קבוצות" },
-      ]);
+      await openExternalTargetSelector(phone, userId, "facebook", "campaign");
       return;
     }
     if (input === "plat_instagram") {
@@ -439,8 +1169,7 @@ const steps = {
       return;
     }
     if (input === "plat_whatsapp") {
-      setConversation(phone, { step: "CAMP_WA_TARGETS" });
-      await showWhatsAppTargets(phone, userId);
+      await openExternalTargetSelector(phone, userId, "whatsapp", "campaign");
       return;
     }
     await askPlatform(phone, selected);
@@ -607,7 +1336,11 @@ const steps = {
       const id = input.slice("wa_target_".length);
       const target = available.find((item) => item.id === id);
       if (target) {
-        const index = targets.findIndex((item) => item.id === target.id);
+        const index = targets.findIndex(
+          (item) =>
+            item.type === target.type &&
+            normalizeBroadcastId(item.id) === normalizeBroadcastId(target.id),
+        );
         if (index >= 0) targets.splice(index, 1);
         else targets.push(target);
         updateDraft(phone, { whatsappTargets: targets });
@@ -618,7 +1351,11 @@ const steps = {
       for (const index of selectedIndexes) {
         const target = available[index];
         if (!target) continue;
-        const existing = targets.findIndex((item) => item.id === target.id);
+        const existing = targets.findIndex(
+          (item) =>
+            item.type === target.type &&
+            normalizeBroadcastId(item.id) === normalizeBroadcastId(target.id),
+        );
         if (existing >= 0) targets.splice(existing, 1);
         else targets.push(target);
       }
@@ -721,7 +1458,7 @@ const steps = {
       return;
     }
     if (input === "more_no") {
-      await askSchedule(phone);
+      await finishTargetSelection(phone);
       return;
     }
   },
@@ -735,7 +1472,7 @@ const steps = {
     }
     if (input === "sched_later") {
       setConversation(phone, { step: "CAMP_DATE" });
-      await sendText(phone, "שלח תאריך (DD/MM/YYYY):");
+      await sendInputPrompt(phone, "שלח תאריך (DD/MM/YYYY):");
       return;
     }
     if (input === "sched_recurring") {
@@ -754,7 +1491,7 @@ const steps = {
         return;
       }
       setConversation(phone, { step: "CAMP_RECURRING_TIME" });
-      await sendText(phone, "שלח שעת פרסום בפורמט HH:MM");
+      await sendInputPrompt(phone, "שלח שעת פרסום בפורמט HH:MM");
       return;
     }
     if (input.startsWith("day_")) {
@@ -774,7 +1511,7 @@ const steps = {
     }
     updateDraft(phone, { recurringTime: input.padStart(5, "0") });
     setConversation(phone, { step: "CAMP_RECURRING_START" });
-    await sendText(phone, "שלח תאריך התחלה בפורמט DD/MM/YYYY");
+    await sendInputPrompt(phone, "שלח תאריך התחלה בפורמט DD/MM/YYYY");
   },
 
   CAMP_RECURRING_START: async (phone, userId, input) => {
@@ -785,7 +1522,7 @@ const steps = {
     }
     updateDraft(phone, { recurringStartDate: value });
     setConversation(phone, { step: "CAMP_RECURRING_END" });
-    await sendText(phone, "שלח תאריך סיום בפורמט DD/MM/YYYY");
+    await sendInputPrompt(phone, "שלח תאריך סיום בפורמט DD/MM/YYYY");
   },
 
   CAMP_RECURRING_END: async (phone, userId, input, conv) => {
@@ -815,7 +1552,7 @@ const steps = {
       scheduleDate: `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`,
     });
     setConversation(phone, { step: "CAMP_TIME" });
-    await sendText(phone, "שלח שעה (HH:MM):");
+    await sendInputPrompt(phone, "שלח שעה (HH:MM):");
   },
 
   // ── Time ──
@@ -854,13 +1591,443 @@ const steps = {
     }
     await mainMenu(phone);
   },
+
+  TARGET_SELECTOR_WAIT: async (phone, userId, input, conv) => {
+    if (input === "selector_new_link") {
+      await openExternalTargetSelector(
+        phone,
+        userId,
+        conv?.selectorPlatform,
+        conv?.selectorContext,
+      );
+      return;
+    }
+    await interactiveMenu(
+      phone,
+      "פתח את הקישור שנשלח, בחר יעדים ולחץ שמירה. לאחר השמירה אמשיך איתך כאן באופן אוטומטי.",
+      [{ id: "selector_new_link", title: "צור קישור חדש" }],
+    );
+  },
+
+  STATUS_PERIOD: async (phone, userId, input) => {
+    const periods = {
+      status_today: { days: 0, label: "היום" },
+      status_week: { days: 7, label: "7 הימים האחרונים" },
+      status_month: { days: 30, label: "30 הימים האחרונים" },
+    };
+    const selected = periods[input];
+    if (!selected) {
+      await showStatusPeriodMenu(phone);
+      return;
+    }
+    await showStatusReport(phone, userId, selected);
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+async function showPublicAbout(phone) {
+  await sendText(
+    phone,
+    [
+      "נעים מאוד, אנחנו Possbo 💜",
+      "",
+      "Possbo מרכזת במקום אחד את יצירת התוכן, בחירת הקהלים, התזמון והמעקב אחר פרסומים.",
+      "",
+      "מה אפשר לעשות במערכת?",
+      "• ליצור קמפיינים באופן עצמאי או מתוך טמפלייט",
+      "• ליצור תוכן בעזרת AI ולערוך אותו",
+      "• לפרסם בפייסבוק לפרופיל ולקבוצות",
+      "• לפרסם באינסטגרם לפיד, לסטורי ולרילס",
+      "• לשלוח לקבוצות ולרשימות תפוצה ב-WhatsApp",
+      "• לתזמן פרסום מיידי, חד-פעמי או חוזר",
+      "• לשמור טמפלייטים לשימוש חוזר",
+      "• לעקוב אחר סטטוסים, הצלחות, כשלים ומדדי פעילות",
+      "• לנהל קמפיינים גם דרך פוסבוט ב-WhatsApp",
+    ].join("\n"),
+  );
+  await showPublicAboutActions(phone);
+}
+
+async function showPublicAboutActions(phone) {
+  setConversation(phone, { step: "WELCOME_ABOUT" });
+  await interactiveMenu(phone, "רוצה להצטרף או שכבר יש לך חשבון?", [
+    { id: "welcome_register", title: "הרשמה" },
+    { id: "welcome_login", title: "התחברות" },
+  ]);
+}
+
+async function startTemplateCreation(phone) {
+  setConversation(phone, {
+    step: "TEMPLATE_NAME",
+    draft: {
+      creatingTemplate: true,
+      templateName: "",
+      content: "",
+      title: null,
+      isAnonymous: false,
+      location: null,
+      whatsappText: null,
+      images: [],
+      platforms: [],
+      groupIds: [],
+      groupNames: [],
+      publishToProfile: false,
+      igEnabled: false,
+      instagramPublishTypes: [],
+      waEnabled: false,
+      whatsappTargets: [],
+    },
+  });
+  await sendInputPrompt(
+    phone,
+    "יצירת טמפלייט חדש 📝\n\nתחילה, איזה שם תרצה לתת לטמפלייט?\nשם ותוכן הם שדות החובה היחידים.",
+  );
+}
+
+async function askTemplateAnonymous(phone) {
+  setConversation(phone, { step: "TEMPLATE_ANONYMOUS" });
+  await interactiveMenu(
+    phone,
+    "האם פרסומים מהטמפלייט יוגדרו כאנונימיים כברירת מחדל?",
+    [
+      { id: "tpl_anon_no", title: "לא" },
+      { id: "tpl_anon_yes", title: "כן" },
+    ],
+  );
+}
+
+async function askTemplateWhatsAppLink(phone, userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { whatsappNumber: true, whatsappMessage: true },
+  });
+  setConversation(phone, { step: "TEMPLATE_WHATSAPP_LINK" });
+  if (!user?.whatsappNumber) {
+    await interactiveMenu(
+      phone,
+      "לא מוגדר בחשבון מספר לקישור WhatsApp. ניתן להמשיך בלי קישור ולחבר אותו בהגדרות האתר.",
+      [{ id: "tpl_wa_skip", title: "המשך בלי קישור" }],
+    );
+    return;
+  }
+  await interactiveMenu(
+    phone,
+    "להוסיף לטמפלייט קישור WhatsApp ליצירת קשר? לא חובה.",
+    [
+      { id: "tpl_wa_default", title: "כן, הודעת ברירת מחדל" },
+      { id: "tpl_wa_custom", title: "כן, הודעה אחרת" },
+      { id: "tpl_wa_skip", title: "לא, דלג" },
+    ],
+  );
+}
+
+async function askTemplateImages(phone) {
+  setConversation(phone, { step: "TEMPLATE_IMAGES_CHOICE" });
+  await interactiveMenu(phone, "להוסיף תמונות לטמפלייט? לא חובה.", [
+    { id: "tpl_images_add", title: "הוסף תמונות" },
+    { id: "tpl_images_skip", title: "דלג" },
+  ]);
+}
+
+async function askTemplateTargets(phone) {
+  setConversation(phone, { step: "TEMPLATE_TARGETS_CHOICE" });
+  await interactiveMenu(
+    phone,
+    "להגדיר יעדי פרסום קבועים לטמפלייט? אפשר גם לבחור אותם רק בעת יצירת קמפיין.",
+    [
+      { id: "tpl_targets_add", title: "כן, בחר יעדים" },
+      { id: "tpl_targets_skip", title: "לא, שמור ללא יעדים" },
+    ],
+  );
+}
+
+async function showNewTemplateSummary(phone) {
+  const draft = getConversation(phone)?.draft || {};
+  const imageCount = draft.images?.length || 0;
+  setConversation(phone, { step: "TEMPLATE_SUMMARY" });
+  await sendText(
+    phone,
+    [
+      "סיכום הטמפלייט החדש:",
+      "",
+      `שם הטמפלייט: ${draft.templateName}`,
+      `תוכן: ${draft.content}`,
+      `שם קמפיין: ${draft.title || "לא הוגדר"}`,
+      `פרסום אנונימי: ${draft.isAnonymous ? "כן" : "לא"}`,
+      `מיקום: ${draft.location || "לא הוגדר"}`,
+      `קישור WhatsApp: ${draft.whatsappText != null ? "כן" : "לא"}`,
+      `תמונות: ${imageCount}`,
+      formatTargetSummary(draft),
+      "",
+      "התזמון ייבחר בעת יצירת הקמפיין ואינו נשמר בטמפלייט.",
+    ].join("\n"),
+  );
+  await interactiveMenu(phone, "לשמור את הטמפלייט?", [
+    { id: "tpl_save", title: "שמור טמפלייט" },
+    { id: "tpl_restart", title: "התחל מחדש" },
+  ]);
+}
+
+async function saveNewTemplate(phone, userId) {
+  const draft = getConversation(phone)?.draft || {};
+  if (!draft.templateName?.trim() || !draft.content?.trim()) {
+    await sendText(phone, "חסרים שם או תוכן. נתחיל מחדש.");
+    await startTemplateCreation(phone);
+    return;
+  }
+  await sendText(phone, "שומר את הטמפלייט...");
+  try {
+    const uploaded = [];
+    for (const mediaId of draft.images || []) {
+      const file = await downloadBotMedia(mediaId, "templates");
+      uploaded.push(`/uploads/templates/${file.filename}`);
+    }
+    const template = await prisma.postTemplate.create({
+      data: {
+        userId,
+        name: draft.templateName.trim(),
+        content: draft.content.trim(),
+        campaignTitle: draft.title?.trim() || null,
+        isAnonymous: Boolean(draft.isAnonymous),
+        location: draft.location?.trim() || null,
+        whatsappText:
+          draft.whatsappText == null ? null : String(draft.whatsappText),
+        groupIds: draft.groupIds || [],
+        imageUrls: uploaded,
+        publishToProfile: Boolean(draft.publishToProfile),
+        instagramEnabled: Boolean(draft.igEnabled),
+        instagramPublishTypes: draft.igEnabled
+          ? draft.instagramPublishTypes || []
+          : [],
+        storyMediaMode:
+          draft.igEnabled &&
+          draft.instagramPublishTypes?.includes("STORY")
+            ? "first"
+            : null,
+        whatsappEnabled: Boolean(draft.waEnabled),
+        whatsappTargets: draft.waEnabled
+          ? draft.whatsappTargets || []
+          : null,
+      },
+    });
+    invalidateDashboardCache(userId);
+    setConversation(phone, { step: "MAIN_MENU", draft: undefined });
+    await sendText(
+      phone,
+      `הטמפלייט ${template.name} נוצר ונשמר בהצלחה! ✅\nהוא זמין כעת בעמוד הטמפלייטים וגם ביצירת קמפיין דרך הבוט.`,
+    );
+    await mainMenu(phone);
+  } catch (err) {
+    log.error("Failed to create template from WhatsApp bot", err, { userId });
+    await sendText(
+      phone,
+      "לא הצלחתי לשמור את הטמפלייט כרגע. הפרטים נשמרו בשיחה ואפשר לנסות שוב.",
+    );
+    await showNewTemplateSummary(phone);
+  }
+}
+
+async function showContactMenu(phone) {
+  setConversation(phone, { step: "CONTACT_MENU" });
+  await sendText(
+    phone,
+    `אנחנו כאן לעזור 😊\nהמייל של צוות Possbo:\n${SUPPORT_EMAIL}`,
+  );
+  await interactiveMenu(phone, "תרצה לצרף הודעה כדי שהצוות יחזור אליך?", [
+    { id: "contact_write", title: "כן, כתוב הודעה" },
+    { id: "contact_email_only", title: "לא, הצג רק את המייל" },
+  ]);
+}
+
+async function sendBotContactRequest(phone, userId, message) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, phone: true },
+  });
+  if (!user?.email) {
+    await sendText(
+      phone,
+      `לא מוגדרת כתובת אימייל בחשבון. ניתן לפנות אלינו ישירות:\n${SUPPORT_EMAIL}`,
+    );
+    await mainMenu(phone);
+    return;
+  }
+  try {
+    await sendContactEmail({
+      name: user.name || "משתמש Possbo",
+      email: user.email,
+      phone: user.phone || phone,
+      subject: "פנייה מפוסבוט ב-WhatsApp",
+      message,
+      accountUser: { id: user.id, name: user.name, email: user.email },
+    });
+    await sendText(
+      phone,
+      "ההודעה נשלחה בהצלחה לצוות Possbo ✅\nנחזור אליך באמצעות פרטי הקשר שבחשבון.",
+    );
+  } catch (err) {
+    log.error("Bot contact request failed", err, { userId });
+    await sendText(
+      phone,
+      `שליחת ההודעה נכשלה כרגע. אפשר לפנות אלינו ישירות:\n${SUPPORT_EMAIL}`,
+    );
+  }
+  await mainMenu(phone);
+}
+
+const BOT_TUTORIALS = {
+  "getting-started": {
+    title: "התחלה מהירה ודפי האתר",
+    text: `Possbo מרכזת את כל תהליך הפרסום:
+
+1. כתיבת תוכן והוספת מדיה, כותרת ומיקום.
+2. בחירת יעדים בפייסבוק, אינסטגרם ו-WhatsApp.
+3. פרסום מיידי, מתוזמן או חוזר.
+4. בדיקת הסיכום ואישור הפרסום.
+
+דפי האתר:
+• דשבורד — סיכום, סטטיסטיקות, לוח שנה וקבוצות.
+• קבוצות פייסבוק — סנכרון וניהול קבוצות.
+• קמפיינים — כל הפרסומים והסטטוסים.
+• יומן — הפרסומים המתוזמנים.
+• סטטיסטיקות — חשיפה ומעורבות.
+• טמפלייטים — תבניות לשימוש חוזר.
+• יצירת פוסט בעזרת AI.
+• דוחות וסיכום — היסטוריה וייצוא PDF.
+• פידבק — שליחת משוב.`,
+  },
+  campaigns: {
+    title: "קמפיינים והתקדמות פרסום",
+    text: `קמפיין כולל תוכן, מדיה, יעדי הפצה, תזמונים וסטטוס לכל יעד.
+
+כל קבוצת Facebook, פרופיל, סוג Instagram ויעד WhatsApp הם משימת פרסום נפרדת. מוצגת התקדמות לפי מספר היעדים, והקמפיין מסתיים רק לאחר שכל המשימות הסתיימו.
+
+אפשר לראות הצלחות, כשלים, היסטוריית פרסום וקישורים לתוצאות. קישור לסטורי זמין כל עוד הסטורי פעיל, בדרך כלל עד 24 שעות.`,
+  },
+  platforms: {
+    title: "Facebook, Instagram ו-WhatsApp",
+    text: `Facebook:
+• פרסום לפרופיל אישי, לקבוצות או לשניהם.
+• מסנכרנים קבוצות מהאתר ובוחרים אותן בקמפיין.
+
+Instagram:
+• נדרש חשבון Business או Creator מחובר.
+• פיד דורש תמונה או וידאו.
+• סטורי הוא בעיקר מדיה וניתן לבחור קובץ ראשון, הכול או קובץ מסוים.
+• ריל דורש וידאו.
+
+WhatsApp:
+• מחברים ומסנכרנים דרך ההגדרות.
+• אפשר לבחור קבוצות ורשימות תפוצה.
+• אפשר לשמור מספר והודעת ברירת מחדל לקישור WhatsApp.
+
+לכל פלטפורמה ניתן להגדיר תזמון עצמאי.`,
+  },
+  templates: {
+    title: "טמפלייטים ויצירת תוכן ב-AI",
+    text: `טמפלייט הוא תבנית מוכנה לפרסום מהיר עם תוכן, מדיה ויעדי תפוצה.
+
+אפשר ליצור טמפלייט באתר או ישירות דרך פוסבוט. התזמון אינו נשמר בטמפלייט ונבחר ביצירת הקמפיין.
+
+כלי ה-AI:
+1. בוחרים סוג פוסט.
+2. ממלאים מוצר או שירות, קהל ויתרון.
+3. בוחרים טון וקריאה לפעולה.
+4. מייצרים ועורכים את התוצאה.
+
+לתוצאה טובה כדאי להיות ספציפיים, להגדיר קהל מדויק, לציין יתרון ייחודי ולהוסיף מחיר, מבצע או תאריך. אפשר להשתמש בפוסט לדוגמה כהשראה ולייצר גרסה נוספת.`,
+  },
+  scheduling: {
+    title: "תזמון פרסומים",
+    text: `קיימים שלושה מצבים:
+• מיידי — פרסום עכשיו.
+• מתוזמן — תאריך ושעה מסוימים.
+• חוזר — טווח תאריכים, ימים ושעה אחת או יותר.
+
+קבוצות Facebook, הפרופיל האישי ו-WhatsApp יכולים לצאת בזמנים שונים. גם פיד, סטורי וריל ב-Instagram יכולים לקבל תזמון נפרד.
+
+השעות המומלצות במערכת מבוססות על הנתונים הזמינים בחשבון.`,
+  },
+  analytics: {
+    title: "סטטיסטיקות, מדדים ודוחות",
+    text: `עמוד הסטטיסטיקות מציג חשיפה ומעורבות לפי תקופה.
+
+Instagram: פרסומים, צפיות, לייקים, תגובות, שיתופים וחשיפה בחלוקה לפיד, רילס וסטוריז.
+Facebook: פרסומים, לייקים, תגובות וחשיפה משוערת לפי הנתונים האמינים הזמינים.
+
+בדוחות מוצגים סך פרסומים, הצלחות, כשלים, אחוז הצלחה, פעילות אחרונה ותזמונים קרובים. ניתן לסנן ולייצא PDF.`,
+  },
+  settings: {
+    title: "חיבורים והגדרות",
+    text: `בהגדרות ניתן לנהל:
+• פרופיל ופרטי התחברות.
+• התראות.
+• חיבור Facebook.
+• חיבור Instagram מאובטח דרך Meta OAuth.
+• חיבור WhatsApp, סנכרון קבוצות ורשימות תפוצה והודעת קישור.
+• ערכת נושא בהירה או כהה.
+
+אם חיבור פלטפורמה אינו פעיל, יש להתחבר מחדש ולסנכרן את היעדים.`,
+  },
+  troubleshoot: {
+    title: "פתרון בעיות נפוצות",
+    text: `• Facebook נכשל — בדוק את החיבור והתחבר מחדש אם צריך.
+• Instagram נכשל — ודא שמחובר Business/Creator ושהמדיה מתאימה.
+• סנכרון קבוצות נכשל — בדוק חיבור Facebook ונסה שוב.
+• תזמון לא יצא — בדוק את סטטוס היעדים ואת החיבורים.
+• מדיה לא עולה — נסה קובץ נתמך ובגודל סביר; ריל דורש וידאו.
+• יעדי WhatsApp לא מופיעים — ודא שהחיבור פעיל ובצע סנכרון מחדש.
+• Instagram נראה מחובר אך נכשל — בצע חיבור מחדש כדי לחדש הרשאה.`,
+  },
+};
+
+async function showTutorialMenu(phone) {
+  setConversation(phone, { step: "TUTORIAL_MENU" });
+  await interactiveMenu(phone, "מרכז ההדרכות של Possbo — בחר נושא:", [
+    { id: "tutorial_getting-started", title: "התחלה מהירה ודפי האתר" },
+    { id: "tutorial_campaigns", title: "קמפיינים וסטטוסים" },
+    { id: "tutorial_platforms", title: "פלטפורמות פרסום" },
+    { id: "tutorial_templates", title: "טמפלייטים ו-AI" },
+    { id: "tutorial_scheduling", title: "תזמון פרסומים" },
+    { id: "tutorial_analytics", title: "סטטיסטיקות ודוחות" },
+    { id: "tutorial_settings", title: "חיבורים והגדרות" },
+    { id: "tutorial_troubleshoot", title: "פתרון בעיות" },
+    { id: "tutorial_back", title: "חזרה" },
+  ]);
+}
+
+async function showTutorialTopic(phone, topicId) {
+  const topic = BOT_TUTORIALS[topicId] || BOT_TUTORIALS["getting-started"];
+  setConversation(phone, { step: "TUTORIAL_TOPIC", tutorialTopic: topicId });
+  await sendText(phone, `${topic.title}\n\n${topic.text}`);
+  await interactiveMenu(phone, "מה תרצה לעשות עכשיו?", [
+    { id: "tutorial_topics", title: "נושא הדרכה אחר" },
+    { id: "contact_support", title: "צור קשר" },
+  ]);
+}
+
 async function startCampaign(phone) {
+  setConversation(phone, {
+    step: "CAMP_CREATE_MODE",
+    draft: undefined,
+    templatePage: 0,
+  });
+  await showCampaignCreationOptions(phone);
+}
+
+async function showCampaignCreationOptions(phone) {
+  setConversation(phone, { step: "CAMP_CREATE_MODE" });
+  await interactiveMenu(phone, "איך תרצה ליצור את הקמפיין?", [
+    { id: "create_template", title: "יצירה מתבנית" },
+    { id: "create_manual", title: "יצירה עצמאית" },
+    { id: "create_back", title: "חזרה לתפריט" },
+  ]);
+}
+
+async function startManualCampaign(phone) {
   setConversation(phone, {
     step: "CAMP_NAME",
     draft: { groupIds: [], groupNames: [], platforms: [], images: [] },
@@ -868,6 +2035,694 @@ async function startCampaign(phone) {
   await sendText(
     phone,
     "יצירת קמפיין חדש\n\nשלח את שם הקמפיין (רק עבורך, אינו מפורסם):",
+  );
+}
+
+async function showTemplateList(phone, userId, requestedPage = 0) {
+  // Six templates leave room for previous/next/back and the global main-menu
+  // action while staying within WhatsApp's 10-row list limit.
+  const pageSize = 6;
+  const total = await prisma.postTemplate.count({ where: { userId } });
+  if (!total) {
+    await sendText(
+      phone,
+      "עדיין אין לך תבניות שמורות. אפשר ליצור תבניות בעמוד התבניות באתר.",
+    );
+    await showCampaignCreationOptions(phone);
+    return;
+  }
+
+  const lastPage = Math.max(0, Math.ceil(total / pageSize) - 1);
+  const page = Math.min(Math.max(0, requestedPage), lastPage);
+  const templates = await prisma.postTemplate.findMany({
+    where: { userId },
+    orderBy: [{ usageCount: "desc" }, { updatedAt: "desc" }],
+    skip: page * pageSize,
+    take: pageSize,
+    select: { id: true, name: true },
+  });
+
+  const options = templates.map((template) => ({
+    id: `template_pick_${template.id}`,
+    title: template.name,
+  }));
+  if (page > 0) options.push({ id: "template_prev", title: "תבניות קודמות" });
+  if (page < lastPage) options.push({ id: "template_next", title: "תבניות נוספות" });
+  options.push({ id: "template_back", title: "חזרה" });
+
+  setConversation(phone, { step: "CAMP_TEMPLATE_LIST", templatePage: page });
+  await interactiveMenu(phone, "בחר תבנית:", options);
+}
+
+function templatePlatforms(template) {
+  const platforms = [];
+  if (template.publishToProfile) platforms.push("fb_profile");
+  if (template.groupIds?.length) platforms.push("fb_groups");
+  if (template.instagramEnabled) platforms.push("instagram");
+  if (template.whatsappEnabled) platforms.push("whatsapp");
+  return platforms;
+}
+
+async function loadTemplateDraft(phone, userId, templateId) {
+  const [template, user] = await Promise.all([
+    prisma.postTemplate.findFirst({
+      where: { id: templateId, userId },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { whatsappNumber: true },
+    }),
+  ]);
+  if (!template) {
+    await sendText(phone, "התבנית לא נמצאה או אינה זמינה.");
+    await showTemplateList(phone, userId, 0);
+    return;
+  }
+
+  const savedGroups = template.groupIds?.length
+    ? await prisma.facebookGroup.findMany({
+        where: { userId, groupId: { in: template.groupIds } },
+        select: { groupId: true, groupName: true },
+      })
+    : [];
+  const groupNameMap = new Map(
+    savedGroups.map((group) => [group.groupId, group.groupName]),
+  );
+  const groupNames = (template.groupIds || []).map(
+    (groupId) => groupNameMap.get(groupId) || groupId,
+  );
+
+  let content = template.content;
+  let hasWhatsApp = false;
+  if (template.whatsappText != null && user?.whatsappNumber) {
+    const phoneNumber = user.whatsappNumber.replace(/[^0-9]/g, "");
+    const waLink = `https://wa.me/${phoneNumber}${
+      template.whatsappText
+        ? `?text=${encodeURIComponent(template.whatsappText)}`
+        : ""
+    }`;
+    if (!content.includes("wa.me/")) content = `${content}\n\n${waLink}`;
+    hasWhatsApp = true;
+  }
+
+  setConversation(phone, {
+    step: "CAMP_TEMPLATE_REVIEW",
+    draft: {
+      templateId: template.id,
+      templateName: template.name,
+      title: template.campaignTitle || template.name,
+      content,
+      hasWhatsApp,
+      isAnonymous: template.isAnonymous,
+      location: template.location,
+      groupIds: template.groupIds || [],
+      groupNames,
+      platforms: templatePlatforms(template),
+      images: [],
+      templateImageUrls: template.imageUrls || [],
+      publishToProfile: template.publishToProfile,
+      igEnabled: template.instagramEnabled,
+      instagramPublishTypes:
+        template.instagramPublishTypes?.length > 0
+          ? template.instagramPublishTypes
+          : ["FEED"],
+      waEnabled: template.whatsappEnabled,
+      whatsappTargets: template.whatsappTargets || [],
+    },
+  });
+  await prisma.postTemplate.update({
+    where: { id: template.id },
+    data: { usageCount: { increment: 1 } },
+  });
+  await showTemplateReview(phone);
+}
+
+async function showTemplateReview(phone) {
+  const draft = getConversation(phone)?.draft || {};
+  const imageCount =
+    (draft.templateImageUrls?.length || 0) + (draft.images?.length || 0);
+  const targetSummary = formatTargetSummary(draft);
+  const reviewText = (
+    `תבנית: ${draft.templateName || "ללא שם"}\n\n` +
+    `שם הקמפיין: ${draft.title || "לא הוגדר"}\n` +
+    `תוכן: ${draft.content || "לא הוגדר"}\n` +
+    `תמונות: ${imageCount}\n` +
+    `${targetSummary}\n\n` +
+    "אפשר להמשיך עם התבנית או לשנות כל חלק. מה תרצה לעשות?"
+  ).slice(0, 900);
+
+  setConversation(phone, { step: "CAMP_TEMPLATE_REVIEW" });
+  await interactiveMenu(
+    phone,
+    reviewText,
+    [
+      { id: "template_use", title: "המשך עם התבנית" },
+      { id: "template_edit_title", title: "שינוי שם" },
+      { id: "template_edit_content", title: "שינוי תוכן" },
+      { id: "template_edit_images", title: "שינוי תמונות" },
+      { id: "template_edit_targets", title: "שינוי יעדים" },
+      { id: "template_choose_other", title: "בחירת תבנית אחרת" },
+    ],
+  );
+}
+
+async function showTemplateImageOptions(phone) {
+  const draft = getConversation(phone)?.draft || {};
+  const count =
+    (draft.templateImageUrls?.length || 0) + (draft.images?.length || 0);
+  if (count > 0) {
+    await sendDraftPreviewImages(phone, draft);
+  }
+  await interactiveMenu(
+    phone,
+    count > 0
+      ? `מוצגות ${Math.min(count, 4)} מתוך ${count} תמונות קיימות. מה תרצה לעשות?`
+      : "אין כרגע תמונות בתבנית. מה תרצה לעשות?",
+    [
+      { id: "template_images_add", title: "הוסף על הקיימות" },
+      { id: "template_images_remove_all", title: "הסר את כולן" },
+      { id: "template_images_replace", title: "החלף בתמונות חדשות" },
+      { id: "template_images_back", title: "חזרה לסקירה" },
+    ],
+  );
+}
+
+async function showTemplateTargetActions(phone) {
+  const draft = getConversation(phone)?.draft || {};
+  setConversation(phone, { step: "CAMP_TEMPLATE_TARGET_ACTIONS" });
+  const options = [];
+  if (hasAnyPublishTarget(draft)) {
+    options.push({
+      id: "template_targets_remove",
+      title: "הסר יעד מסוים",
+    });
+  }
+  options.push(
+    { id: "template_targets_add", title: "הוסף על הקיימים" },
+    { id: "template_targets_replace", title: "החלף את כל היעדים" },
+    { id: "template_targets_back", title: "חזרה לסקירת התבנית" },
+  );
+  const summary = formatTargetSummary(draft);
+  const menuText =
+    summary.length > 720
+      ? `${summary.slice(0, 720)}\nיעדים נוספים אינם מוצגים כאן.\n\nכיצד תרצה לשנות את יעדי הפרסום?`
+      : `${summary}\n\nכיצד תרצה לשנות את יעדי הפרסום?`;
+  await interactiveMenu(
+    phone,
+    menuText,
+    options,
+  );
+}
+
+async function openExternalTargetSelector(
+  phone,
+  userId,
+  platform,
+  context = "campaign",
+) {
+  const publicBase = String(process.env.WA_BOT_PUBLIC_URL || "").replace(
+    /\/+$/,
+    "",
+  );
+  if (!publicBase) {
+    await sendText(
+      phone,
+      "כתובת הפיתוח הציבורית אינה זמינה כרגע. ודא שמנהרת Cloudflare פעילה.",
+    );
+    return;
+  }
+  for (const [token, session] of targetSelectorSessions) {
+    if (
+      session.phone === phone &&
+      session.platform === platform &&
+      !session.completed
+    ) {
+      targetSelectorSessions.delete(token);
+    }
+  }
+  const token = crypto.randomBytes(32).toString("hex");
+  targetSelectorSessions.set(token, {
+    phone,
+    userId,
+    platform,
+    context,
+    completed: false,
+    expiresAt: Date.now() + TARGET_SELECTOR_TTL_MS,
+  });
+  setConversation(phone, {
+    step: "TARGET_SELECTOR_WAIT",
+    selectorPlatform: platform,
+    selectorContext: context,
+  });
+  const platformName = platform === "facebook" ? "Facebook" : "WhatsApp";
+  await sendText(
+    phone,
+    `בחירת יעדי ${platformName} נפתחת במסך מאובטח עם חיפוש ובחירה מרובה.\n\nפתח את הקישור:\n${publicBase}/bot-targets/${token}\n\nהקישור תקף ל-30 דקות ולשימוש אחד בלבד. לאחר הלחיצה על שמירה אמשיך איתך כאן אוטומטית.`,
+  );
+  await interactiveMenu(phone, "אם הקישור פג, אפשר ליצור קישור חדש:", [
+    { id: "selector_new_link", title: "צור קישור חדש" },
+  ]);
+}
+
+async function buildExternalTargetSelection(session) {
+  const conv = getConversation(session.phone);
+  if (!conv || getAuthenticatedUser(session.phone) !== session.userId) {
+    throw new Error("BOT_SELECTOR_CONVERSATION_EXPIRED");
+  }
+  const draft = conv.draft || {};
+  if (session.platform === "facebook") {
+    const memberships = await prisma.userGroup.findMany({
+      where: { userId: session.userId },
+      include: {
+        group: {
+          select: {
+            id: true,
+            externalGroupId: true,
+            name: true,
+            memberCount: true,
+          },
+        },
+      },
+      orderBy: { group: { name: "asc" } },
+    });
+    const items = [
+      {
+        id: "profile",
+        name: "פרופיל אישי",
+        type: "profile",
+        description: "פרסום בפרופיל Facebook האישי",
+      },
+      ...memberships.map(({ group }) => ({
+        id: `group:${group.externalGroupId || group.id}`,
+        name: group.name,
+        type: "group",
+        description: group.memberCount
+          ? `${group.memberCount.toLocaleString("he-IL")} חברים`
+          : "קבוצת Facebook",
+      })),
+    ];
+    return {
+      platform: "facebook",
+      title: "בחירת יעדי Facebook",
+      subtitle: "בחר פרופיל אישי וקבוצות. אפשר לחפש ולסמן כמה יעדים.",
+      items,
+      selectedIds: [
+        ...(draft.publishToProfile ? ["profile"] : []),
+        ...(draft.groupIds || []).map((id) => `group:${id}`),
+      ],
+    };
+  }
+
+  const [groups, broadcasts] = await Promise.all([
+    prisma.whatsAppContact.findMany({
+      where: { userId: session.userId, isGroup: true },
+      orderBy: { name: "asc" },
+      select: { waId: true, name: true, participantCount: true },
+    }),
+    prisma.whatsAppBroadcastList.findMany({
+      where: { userId: session.userId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, members: true },
+    }),
+  ]);
+  return {
+    platform: "whatsapp",
+    title: "בחירת יעדי WhatsApp",
+    subtitle: "בחר קבוצות ורשימות תפוצה. אפשר לחפש ולסמן כמה יעדים.",
+    items: [
+      ...groups.map((group) => ({
+        id: `group:${group.waId}`,
+        name: group.name || "קבוצת WhatsApp",
+        type: "group",
+        description: group.participantCount
+          ? `${group.participantCount.toLocaleString("he-IL")} משתתפים`
+          : "קבוצת WhatsApp",
+      })),
+      ...broadcasts.map((list) => ({
+        id: `broadcast:${list.id}`,
+        name: list.name,
+        type: "broadcast",
+        description: `${Array.isArray(list.members) ? list.members.length : 0} נמענים`,
+      })),
+    ],
+    selectedIds: (draft.whatsappTargets || []).map(
+      (target) =>
+        `${target.type}:${normalizeBroadcastId(target.id)}`,
+    ),
+  };
+}
+
+async function applyExternalTargetSelection(session, selectedItems) {
+  const conv = getConversation(session.phone);
+  if (!conv || getAuthenticatedUser(session.phone) !== session.userId) {
+    throw new Error("BOT_SELECTOR_CONVERSATION_EXPIRED");
+  }
+  const draft = conv.draft || {};
+  const platforms = [...(draft.platforms || [])];
+  const setPlatform = (name, enabled) => {
+    const index = platforms.indexOf(name);
+    if (enabled && index < 0) platforms.push(name);
+    if (!enabled && index >= 0) platforms.splice(index, 1);
+  };
+
+  if (session.platform === "facebook") {
+    const profile = selectedItems.some((item) => item.id === "profile");
+    const groups = selectedItems.filter((item) => item.type === "group");
+    setPlatform("fb_profile", profile);
+    setPlatform("fb_groups", groups.length > 0);
+    updateDraft(session.phone, {
+      platforms,
+      publishToProfile: profile,
+      groupIds: groups.map((item) => item.id.slice("group:".length)),
+      groupNames: groups.map((item) => item.name),
+    });
+  } else {
+    const targets = selectedItems.map((item) => {
+      const separator = item.id.indexOf(":");
+      return {
+        type: item.id.slice(0, separator),
+        id: item.id.slice(separator + 1),
+        name: item.name,
+      };
+    });
+    setPlatform("whatsapp", targets.length > 0);
+    updateDraft(session.phone, {
+      platforms,
+      waEnabled: targets.length > 0,
+      whatsappTargets: targets,
+    });
+  }
+
+  if (session.context === "template_edit") {
+    await showTemplateTargetActions(session.phone);
+    return;
+  }
+  const updated = getConversation(session.phone)?.draft || {};
+  await askMorePlatforms(session.phone, updated.platforms || []);
+}
+
+function hasTemplateTargetsForPlatform(draft, platform) {
+  if (platform === "facebook") {
+    return Boolean(draft.publishToProfile || draft.groupIds?.length);
+  }
+  if (platform === "instagram") {
+    return Boolean(draft.igEnabled && draft.instagramPublishTypes?.length);
+  }
+  return Boolean(draft.waEnabled && draft.whatsappTargets?.length);
+}
+
+async function showTemplateTargetPlatformMenu(phone, mode) {
+  const draft = getConversation(phone)?.draft || {};
+  const labels = {
+    add: "לאיזו פלטפורמה תרצה להוסיף יעד?",
+    remove: "מאיזו פלטפורמה תרצה להסיר יעד?",
+  };
+  const options = ["facebook", "instagram", "whatsapp"]
+    .filter(
+      (platform) =>
+        mode === "add" || hasTemplateTargetsForPlatform(draft, platform),
+    )
+    .map((platform) => ({
+      id: `template_target_${mode}_${platform}`,
+      title:
+        platform === "facebook"
+          ? "פייסבוק"
+          : platform === "instagram"
+            ? "אינסטגרם"
+            : "וואטסאפ",
+    }));
+  options.push({
+    id: "template_target_platform_done",
+    title: mode === "remove" ? "סיום הסרת יעדים" : "סיום הוספת יעדים",
+  });
+  setConversation(phone, {
+    step: "CAMP_TEMPLATE_TARGET_PLATFORM",
+    templateTargetMode: mode,
+  });
+  await interactiveMenu(phone, labels[mode], options);
+}
+
+function normalizeBroadcastId(id) {
+  return String(id || "").replace(/^broadcast_/, "");
+}
+
+async function buildTemplateTargetItems(userId, mode, platform, draft) {
+  if (platform === "facebook") {
+    if (mode === "remove") {
+      const items = [];
+      if (draft.publishToProfile) {
+        items.push({ kind: "fb_profile", value: "profile", label: "פרופיל אישי" });
+      }
+      (draft.groupIds || []).forEach((id, index) => {
+        items.push({
+          kind: "fb_group",
+          value: id,
+          label: `קבוצה: ${draft.groupNames?.[index] || id}`,
+        });
+      });
+      return items;
+    }
+    const groups = await prisma.facebookGroup.findMany({
+      where: { userId },
+      orderBy: { groupName: "asc" },
+      select: { groupId: true, groupName: true },
+    });
+    const selectedIds = new Set(draft.groupIds || []);
+    return [
+      ...(!draft.publishToProfile
+        ? [{ kind: "fb_profile", value: "profile", label: "פרופיל אישי" }]
+        : []),
+      ...groups
+        .filter((group) => !selectedIds.has(group.groupId))
+        .map((group) => ({
+          kind: "fb_group",
+          value: group.groupId,
+          label: `קבוצה: ${group.groupName}`,
+        })),
+    ];
+  }
+
+  if (platform === "instagram") {
+    const labels = { FEED: "פיד", STORY: "סטורי", REEL: "רילס" };
+    const selected = new Set(draft.instagramPublishTypes || []);
+    return ["FEED", "STORY", "REEL"]
+      .filter((type) => (mode === "remove" ? selected.has(type) : !selected.has(type)))
+      .map((type) => ({ kind: "ig_type", value: type, label: labels[type] }));
+  }
+
+  if (mode === "remove") {
+    return (draft.whatsappTargets || []).map((target) => ({
+      kind: "wa_target",
+      value: `${target.type}:${target.id}`,
+      label: `${target.type === "broadcast" ? "רשימת תפוצה" : "קבוצה"}: ${
+        target.name || target.id
+      }`,
+    }));
+  }
+  const [groups, broadcasts] = await Promise.all([
+    prisma.whatsAppContact.findMany({
+      where: { userId, isGroup: true },
+      orderBy: { name: "asc" },
+      select: { waId: true, name: true },
+    }),
+    prisma.whatsAppBroadcastList.findMany({
+      where: { userId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const selected = new Set(
+    (draft.whatsappTargets || []).map(
+      (target) => `${target.type}:${normalizeBroadcastId(target.id)}`,
+    ),
+  );
+  return [
+    ...groups
+      .filter((group) => !selected.has(`group:${group.waId}`))
+      .map((group) => ({
+        kind: "wa_target",
+        value: `group:${group.waId}`,
+        label: `קבוצה: ${group.name || "קבוצת WhatsApp"}`,
+      })),
+    ...broadcasts
+      .filter((list) => !selected.has(`broadcast:${list.id}`))
+      .map((list) => ({
+        kind: "wa_target",
+        value: `broadcast:${list.id}`,
+        label: `רשימת תפוצה: ${list.name}`,
+      })),
+  ];
+}
+
+function applyTemplateTargetChange(phone, mode, item) {
+  const draft = getConversation(phone)?.draft || {};
+  const adding = mode === "add";
+  const platforms = [...(draft.platforms || [])];
+  const addPlatform = (value) => {
+    if (!platforms.includes(value)) platforms.push(value);
+  };
+  const removePlatform = (value) => {
+    const index = platforms.indexOf(value);
+    if (index >= 0) platforms.splice(index, 1);
+  };
+
+  if (item.kind === "fb_profile") {
+    if (adding) addPlatform("fb_profile");
+    else removePlatform("fb_profile");
+    updateDraft(phone, { platforms, publishToProfile: adding });
+    return;
+  }
+  if (item.kind === "fb_group") {
+    const groupIds = [...(draft.groupIds || [])];
+    const groupNames = [...(draft.groupNames || [])];
+    if (adding) {
+      groupIds.push(item.value);
+      groupNames.push(item.label.replace(/^קבוצה:\s*/, ""));
+      addPlatform("fb_groups");
+    } else {
+      const index = groupIds.indexOf(item.value);
+      if (index >= 0) {
+        groupIds.splice(index, 1);
+        groupNames.splice(index, 1);
+      }
+      if (!groupIds.length) removePlatform("fb_groups");
+    }
+    updateDraft(phone, { platforms, groupIds, groupNames });
+    return;
+  }
+  if (item.kind === "ig_type") {
+    const types = [...(draft.instagramPublishTypes || [])];
+    if (adding && !types.includes(item.value)) types.push(item.value);
+    if (!adding) {
+      const index = types.indexOf(item.value);
+      if (index >= 0) types.splice(index, 1);
+    }
+    if (types.length) addPlatform("instagram");
+    else removePlatform("instagram");
+    updateDraft(phone, {
+      platforms,
+      igEnabled: types.length > 0,
+      instagramPublishTypes: types,
+    });
+    return;
+  }
+  const targets = [...(draft.whatsappTargets || [])];
+  const separator = item.value.indexOf(":");
+  const type = item.value.slice(0, separator);
+  const id = item.value.slice(separator + 1);
+  if (adding) {
+    targets.push({
+      type,
+      id,
+      name: item.label.replace(/^(קבוצה|רשימת תפוצה):\s*/, ""),
+    });
+  } else {
+    const index = targets.findIndex(
+      (target) =>
+        target.type === type &&
+        normalizeBroadcastId(target.id) === normalizeBroadcastId(id),
+    );
+    if (index >= 0) targets.splice(index, 1);
+  }
+  if (targets.length) addPlatform("whatsapp");
+  else removePlatform("whatsapp");
+  updateDraft(phone, {
+    platforms,
+    waEnabled: targets.length > 0,
+    whatsappTargets: targets,
+  });
+}
+
+async function showTemplateTargetChangeConfirmation(
+  phone,
+  mode,
+  platform,
+  item,
+) {
+  const remaining = await buildTemplateTargetItems(
+    getAuthenticatedUser(phone),
+    mode,
+    platform,
+    getConversation(phone)?.draft || {},
+  );
+  setConversation(phone, {
+    step: "CAMP_TEMPLATE_TARGET_CONTINUE",
+    templateTargetMode: mode,
+    templateTargetPlatform: platform,
+    templateTargetLastItem: item,
+  });
+  const action = mode === "remove" ? "הוסר" : "נוסף";
+  const actionName = mode === "remove" ? "להסרה" : "להוספה";
+  const finishName = mode === "remove" ? "סיום הסרה" : "סיום הוספה";
+  const options = [];
+  if (remaining.length) {
+    options.push({
+      id: "template_target_change_more",
+      title: `בחר יעד נוסף ${actionName}`,
+    });
+  }
+  options.push({
+    id: "template_target_change_done",
+    title: finishName,
+  });
+  await interactiveMenu(
+    phone,
+    `${item?.label || "היעד"} ${action} בהצלחה. ${
+      remaining.length
+        ? `באפשרותך לבחור יעד נוסף ${actionName} או ${finishName}.`
+        : `לא נשארו יעדים נוספים ${actionName}.`
+    }`,
+    options,
+  );
+}
+
+async function showTemplateTargetItems(phone, userId, mode, platform, page = 0) {
+  if (["facebook", "whatsapp"].includes(platform)) {
+    await openExternalTargetSelector(
+      phone,
+      userId,
+      platform,
+      "template_edit",
+    );
+    return;
+  }
+  const draft = getConversation(phone)?.draft || {};
+  const items = await buildTemplateTargetItems(userId, mode, platform, draft);
+  if (!items.length) {
+    await showTemplateTargetPlatformMenu(phone, mode);
+    return;
+  }
+  const pageSize = 6;
+  const lastPage = Math.max(0, Math.ceil(items.length / pageSize) - 1);
+  const safePage = Math.max(0, Math.min(page, lastPage));
+  const pageItems = items.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const options = pageItems.map((item, index) => ({
+    id: `template_target_item_${index}`,
+    title: item.label,
+  }));
+  if (safePage > 0) {
+    options.push({ id: "template_target_items_prev", title: "הקודמים" });
+  }
+  if (safePage < lastPage) {
+    options.push({ id: "template_target_items_next", title: "הבאים" });
+  }
+  options.push({
+    id: "template_target_items_done",
+    title: mode === "remove" ? "סיום הסרה" : "סיום הוספה",
+  });
+  setConversation(phone, {
+    step: "CAMP_TEMPLATE_TARGET_ITEMS",
+    templateTargetMode: mode,
+    templateTargetPlatform: platform,
+    templateTargetPage: safePage,
+    templateTargetPageItems: pageItems,
+  });
+  await interactiveMenu(
+    phone,
+    mode === "remove"
+      ? "בחר יעד להסרה. לאחר ההסרה תוכל לבחור יעד נוסף:"
+      : "בחר יעד להוספה. לאחר ההוספה תוכל לבחור יעד נוסף:",
+    options,
   );
 }
 
@@ -884,6 +2739,53 @@ function hasAnyPublishTarget(draft = {}) {
     draft.igEnabled ||
     draft.waEnabled,
   );
+}
+
+function formatTargetSummary(draft = {}) {
+  const lines = ["יעדים:"];
+  const facebookParts = [];
+  if (draft.publishToProfile) facebookParts.push("פרופיל אישי");
+  if (draft.groupIds?.length) {
+    const names = draft.groupNames?.length
+      ? draft.groupNames
+      : draft.groupIds;
+    facebookParts.push(`קבוצות: ${names.join(", ")}`);
+  }
+  if (facebookParts.length) {
+    lines.push(`פייסבוק: ${facebookParts.join(" + ")}`);
+  }
+
+  if (draft.igEnabled) {
+    const typeNames = {
+      STORY: "סטורי",
+      FEED: "פיד",
+      REEL: "רילס",
+    };
+    const types = (draft.instagramPublishTypes || ["FEED"]).map(
+      (type) => typeNames[type] || type,
+    );
+    lines.push(`אינסטגרם: ${types.join(", ")}`);
+  }
+
+  if (draft.waEnabled) {
+    const targets = draft.whatsappTargets || [];
+    const groups = targets
+      .filter((target) => target.type === "group")
+      .map((target) => target.name || target.id);
+    const broadcasts = targets
+      .filter((target) => target.type === "broadcast")
+      .map((target) => target.name || target.id);
+    if (groups.length) lines.push(`וואטסאפ — קבוצות: ${groups.join(", ")}`);
+    if (broadcasts.length) {
+      lines.push(`וואטסאפ — רשימות תפוצה: ${broadcasts.join(", ")}`);
+    }
+    if (!groups.length && !broadcasts.length) {
+      lines.push("וואטסאפ: לא נבחרו יעדים");
+    }
+  }
+
+  if (lines.length === 1) lines.push("לא הוגדרו יעדי פרסום");
+  return lines.join("\n");
 }
 
 function parseSelectionInput(input, max) {
@@ -924,15 +2826,56 @@ async function askSchedule(phone) {
   ]);
 }
 
+async function sendDraftPreviewImages(phone, draft) {
+  const publicBase = (
+    process.env.WA_BOT_PUBLIC_URL ||
+    process.env.MEDIA_PUBLIC_URL ||
+    ""
+  ).replace(/\/+$/, "");
+  const previewImages = [
+    ...(draft.templateImageUrls || []).map((url) => ({
+      link: /^https?:\/\//i.test(url)
+        ? url
+        : publicBase
+          ? `${publicBase}${url}`
+          : null,
+      fallbackUrl: publicBase ? `${publicBase}${url}` : url,
+    })),
+    ...(draft.images || []).map((id) => ({ id })),
+  ].slice(0, 4);
+
+  for (const image of previewImages) {
+    if (!image.id && !image.link) {
+      if (image.fallbackUrl) {
+        await sendText(phone, `קישור לתמונה: ${image.fallbackUrl}`);
+      }
+      continue;
+    }
+    try {
+      await sendImage(phone, image);
+    } catch (err) {
+      log.warn("Failed to send preview image", { error: err.message });
+      if (image.fallbackUrl) {
+        await sendText(phone, `לא ניתן להציג את התמונה. קישור: ${image.fallbackUrl}`);
+      }
+    }
+  }
+}
+
 async function showPreview(phone) {
   const conv = getConversation(phone);
   const draft = conv?.draft || {};
-  const imgCount = (draft.images || []).length;
+  const imgCount =
+    (draft.images?.length || 0) + (draft.templateImageUrls?.length || 0);
+  setConversation(phone, { step: "CAMP_PREVIEW" });
 
   let preview = "תצוגה מקדימה:\n\n";
   preview += draft.content || "(ללא תוכן)";
   if (imgCount > 0) preview += `\n\n[${imgCount} תמונות]`;
   if (draft.hasWhatsApp) preview += "\n\n[קישור וואטסאפ מצורף]";
+  preview += `\n\n${formatTargetSummary(draft)}`;
+
+  await sendDraftPreviewImages(phone, draft);
 
   await sendText(phone, preview);
   await interactiveMenu(phone, "מה לעשות?", [
@@ -979,7 +2922,7 @@ async function askMorePlatforms(phone, selected) {
   const hasMore = allPlatforms.some((p) => !selected.includes(p));
 
   if (!hasMore) {
-    await askSchedule(phone);
+    await finishTargetSelection(phone);
     return;
   }
 
@@ -1164,7 +3107,7 @@ async function showWhatsAppTargets(phone, userId) {
       description: "קבוצה",
     })),
     ...broadcasts.map((list) => ({
-      id: `broadcast_${list.id}`,
+      id: list.id,
       type: "broadcast",
       name: list.name,
       description: "רשימת תפוצה",
@@ -1209,7 +3152,7 @@ async function showWhatsAppTargets(phone, userId) {
 
 async function handleImage(phone, msg) {
   const conv = getConversation(phone);
-  if (conv?.step !== "CAMP_IMAGES_WAIT") return;
+  if (!["CAMP_IMAGES_WAIT", "TEMPLATE_IMAGES_WAIT"].includes(conv?.step)) return;
 
   const draft = conv?.draft || {};
   const images = draft.images || [];
@@ -1219,7 +3162,7 @@ async function handleImage(phone, msg) {
     updateDraft(phone, { images });
     await sendText(
       phone,
-      `תמונה ${images.length} נשמרה. שלח עוד או כתוב 'סיום'.`,
+      `תמונה ${images.length} נשמרה. שלח עוד או כתוב סיום.`,
     );
   } else if (images.length >= 12) {
     await sendText(phone, "הגעת למקסימום 12 תמונות. כתוב 'סיום' להמשיך.");
@@ -1242,6 +3185,9 @@ async function createCampaign(phone, userId) {
         title:
           draft.title ||
           `קמפיין WA - ${new Date().toLocaleDateString("he-IL")}`,
+        isAnonymous: draft.isAnonymous || false,
+        location: draft.location || null,
+        templateName: draft.templateName || null,
         status: draft.scheduleMode === "now" ? "ACTIVE" : "SCHEDULED",
         publishToProfile: draft.publishToProfile || false,
         instagramEnabled: draft.igEnabled || false,
@@ -1271,6 +3217,18 @@ async function createCampaign(phone, userId) {
       },
     });
 
+    const templateImageUrls = draft.templateImageUrls || [];
+    for (let index = 0; index < templateImageUrls.length; index++) {
+      await prisma.postMedia.create({
+        data: {
+          postId: post.id,
+          mediaType: "IMAGE",
+          url: templateImageUrls[index],
+          orderIndex: index,
+        },
+      });
+    }
+
     for (let index = 0; index < (draft.images || []).length; index++) {
       const media = await downloadBotMedia(draft.images[index]);
       await prisma.postMedia.create({
@@ -1278,7 +3236,7 @@ async function createCampaign(phone, userId) {
           postId: post.id,
           mediaType: "IMAGE",
           url: `/uploads/${media.filename}`,
-          orderIndex: index,
+          orderIndex: templateImageUrls.length + index,
         },
       });
     }
@@ -1412,6 +3370,10 @@ async function createCampaign(phone, userId) {
       jobCount++;
     }
 
+    // The website dashboard caches its combined payload. Invalidate it as
+    // soon as the bot finishes creating the campaign so the next refresh
+    // includes the new campaign immediately.
+    invalidateDashboardCache(userId);
     setConversation(phone, { step: "MAIN_MENU", draft: undefined });
 
     const platforms = [];
@@ -1454,7 +3416,17 @@ async function showCampaigns(phone, userId) {
       content: true,
       status: true,
       createdAt: true,
-      postGroups: { select: { id: true } },
+      publishToProfile: true,
+      instagramEnabled: true,
+      instagramPublishType: true,
+      whatsappEnabled: true,
+      whatsappTargets: true,
+      postGroups: {
+        select: {
+          groupId: true,
+          group: { select: { name: true } },
+        },
+      },
     },
   });
   if (campaigns.length === 0) {
@@ -1472,32 +3444,276 @@ async function showCampaigns(phone, userId) {
     PAUSED: "מושהה",
     DRAFT: "טיוטה",
   };
-  let text = "הקמפיינים שלך:\n\n";
-  campaigns.forEach((c, i) => {
-    const preview = (c.title || c.content || "").slice(0, 30);
-    text += `${i + 1}. [${statusMap[c.status] || c.status}] ${preview}${preview.length >= 30 ? "..." : ""} (${c.postGroups.length} קבוצות)\n`;
+  const campaignBlocks = campaigns.map((campaign, index) => {
+    const title = (campaign.title || "קמפיין ללא שם").trim();
+    const content = (campaign.content || "").replace(/\s+/g, " ").trim();
+    const preview =
+      content.length > 80 ? `${content.slice(0, 80).trim()}…` : content;
+    const createdAt = new Intl.DateTimeFormat("he-IL", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(campaign.createdAt);
+    const targetSummary = formatTargetSummary({
+      publishToProfile: campaign.publishToProfile,
+      groupIds: campaign.postGroups.map((postGroup) => postGroup.groupId),
+      groupNames: campaign.postGroups.map(
+        (postGroup) => postGroup.group?.name || postGroup.groupId,
+      ),
+      igEnabled: campaign.instagramEnabled,
+      instagramPublishTypes: campaign.instagramPublishType
+        ? campaign.instagramPublishType.split(",").filter(Boolean)
+        : campaign.instagramEnabled
+          ? ["FEED"]
+          : [],
+      waEnabled: campaign.whatsappEnabled,
+      whatsappTargets: Array.isArray(campaign.whatsappTargets)
+        ? campaign.whatsappTargets
+        : [],
+    });
+    return [
+      `*${index + 1}. ${title}*`,
+      `סטטוס: ${statusMap[campaign.status] || campaign.status}`,
+      `נוצר בתאריך: ${createdAt}`,
+      targetSummary,
+      preview ? `תוכן: ${preview}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
   });
+  const text = `📋 *הקמפיינים שלי*\n\n${campaignBlocks.join(
+    "\n\n──────────\n\n",
+  )}`;
   await sendText(phone, text);
   await mainMenu(phone);
 }
 
-async function showStatus(phone, userId) {
-  const [active, published, pending] = await Promise.all([
-    prisma.post.count({ where: { userId, status: "ACTIVE" } }),
-    prisma.publicationHistory.count({ where: { userId, status: "SUCCESS" } }),
-    prisma.publicationJob.count({
-      where: {
-        postGroup: { userId },
-        status: "PENDING",
-        scheduledAt: { gt: new Date() },
-      },
-    }),
+async function showStatusPeriodMenu(phone) {
+  setConversation(phone, { step: "STATUS_PERIOD" });
+  await interactiveMenu(phone, "עבור איזו תקופה להציג סטטוס?", [
+    { id: "status_today", title: "היום" },
+    { id: "status_week", title: "7 ימים אחרונים" },
+    { id: "status_month", title: "30 ימים אחרונים" },
   ]);
-  await sendText(
-    phone,
-    `סטטוס:\n\nקמפיינים פעילים: ${active}\nפרסומים שבוצעו: ${published}\nממתינים: ${pending}`,
+}
+
+async function finishTargetSelection(phone) {
+  const draft = getConversation(phone)?.draft || {};
+  if (draft.creatingTemplate) {
+    updateDraft(phone, { creatingTemplate: false });
+    await showNewTemplateSummary(phone);
+    return;
+  }
+  if (draft.returnToTemplateReviewAfterTargets) {
+    updateDraft(phone, { returnToTemplateReviewAfterTargets: false });
+    await showTemplateReview(phone);
+    return;
+  }
+  await askSchedule(phone);
+}
+
+function statusPeriodStart(days) {
+  const start = new Date();
+  if (days === 0) {
+    start.setHours(0, 0, 0, 0);
+  } else {
+    start.setTime(Date.now() - days * 24 * 60 * 60 * 1000);
+  }
+  return start;
+}
+
+function formatStatusNumber(value) {
+  return Number(value || 0).toLocaleString("he-IL");
+}
+
+async function showStatusReport(phone, userId, period) {
+  const start = statusPeriodStart(period.days);
+  const now = new Date();
+  const [activeCampaigns, createdCampaigns, publications, pendingJobs] =
+    await Promise.all([
+      prisma.post.count({
+        where: {
+          userId,
+          status: "ACTIVE",
+          isPaused: false,
+        },
+      }),
+      prisma.post.count({
+        where: { userId, createdAt: { gte: start, lte: now } },
+      }),
+      prisma.publicationHistory.findMany({
+        where: { userId, publishedAt: { gte: start, lte: now } },
+        select: {
+          postId: true,
+          groupId: true,
+          status: true,
+          platform: true,
+          targetType: true,
+          post: { select: { whatsappTargets: true } },
+          publicationJob: { select: { igPublishType: true } },
+          metrics: {
+            orderBy: { collectedAt: "desc" },
+            take: 1,
+            select: {
+              likesCount: true,
+              commentsCount: true,
+              sharesCount: true,
+              reachCount: true,
+              impressionsCount: true,
+              viewsCount: true,
+              savesCount: true,
+              repliesCount: true,
+              totalInteractionsCount: true,
+            },
+          },
+        },
+      }),
+      prisma.publicationJob.count({
+        where: {
+          status: { in: ["PENDING", "RUNNING"] },
+          OR: [{ post: { userId } }, { postGroup: { userId } }],
+        },
+      }),
+    ]);
+
+  const successful = publications.filter(
+    (publication) => publication.status === "SUCCESS",
   );
-  await mainMenu(phone);
+  const failed = publications.filter(
+    (publication) => publication.status === "FAILED",
+  );
+  const uniqueCampaigns = new Set(publications.map((item) => item.postId)).size;
+  const platformCounts = { FACEBOOK: 0, INSTAGRAM: 0, WHATSAPP: 0 };
+  const instagramTypes = { FEED: 0, STORY: 0, REEL: 0 };
+  const facebookGroups = new Set();
+  let facebookProfile = 0;
+
+  for (const publication of successful) {
+    const platform =
+      publication.platform ||
+      (publication.targetType === "INSTAGRAM"
+        ? "INSTAGRAM"
+        : publication.targetType === "WHATSAPP"
+          ? "WHATSAPP"
+          : "FACEBOOK");
+    if (Object.hasOwn(platformCounts, platform)) platformCounts[platform]++;
+    if (platform === "FACEBOOK") {
+      if (publication.targetType === "PROFILE") facebookProfile++;
+      else if (publication.groupId) facebookGroups.add(publication.groupId);
+    }
+    if (platform === "INSTAGRAM") {
+      const type = publication.publicationJob?.igPublishType || "FEED";
+      if (Object.hasOwn(instagramTypes, type)) instagramTypes[type]++;
+    }
+  }
+
+  const whatsappPosts = new Map();
+  for (const publication of publications) {
+    if (
+      (publication.platform === "WHATSAPP" ||
+        publication.targetType === "WHATSAPP") &&
+      Array.isArray(publication.post?.whatsappTargets)
+    ) {
+      whatsappPosts.set(publication.postId, publication.post.whatsappTargets);
+    }
+  }
+  const whatsappTargets = [...whatsappPosts.values()].flat();
+  const whatsappGroups = new Set(
+    whatsappTargets
+      .filter((target) => target.type === "group")
+      .map((target) => target.id),
+  ).size;
+  const broadcastLists = new Set(
+    whatsappTargets
+      .filter((target) => target.type === "broadcast")
+      .map((target) => target.id),
+  ).size;
+
+  const totals = publications.reduce(
+    (sum, publication) => {
+      const metric = publication.metrics?.[0];
+      if (!metric) return sum;
+      sum.likes += metric.likesCount || 0;
+      sum.comments += metric.commentsCount || 0;
+      sum.shares += metric.sharesCount || 0;
+      sum.reach += metric.reachCount || 0;
+      sum.impressions += metric.impressionsCount || 0;
+      sum.views += metric.viewsCount || 0;
+      sum.saves += metric.savesCount || 0;
+      sum.replies += metric.repliesCount || 0;
+      sum.interactions +=
+        metric.totalInteractionsCount ||
+        (metric.likesCount || 0) +
+          (metric.commentsCount || 0) +
+          (metric.sharesCount || 0) +
+          (metric.savesCount || 0) +
+          (metric.repliesCount || 0);
+      return sum;
+    },
+    {
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      reach: 0,
+      impressions: 0,
+      views: 0,
+      saves: 0,
+      replies: 0,
+      interactions: 0,
+    },
+  );
+
+  const successRate = publications.length
+    ? Math.round((successful.length / publications.length) * 100)
+    : 0;
+  const report = [
+    `📊 *דוח פעילות — ${period.label}*`,
+    "",
+    "📌 *קמפיינים*",
+    `קמפיינים פעילים כעת: ${formatStatusNumber(activeCampaigns)}`,
+    `קמפיינים שנוצרו בתקופה: ${formatStatusNumber(createdCampaigns)}`,
+    `קמפיינים עם פעילות בתקופה: ${formatStatusNumber(uniqueCampaigns)}`,
+    `משימות ממתינות או פעילות: ${formatStatusNumber(pendingJobs)}`,
+    "",
+    "✅ *תוצאות פרסום*",
+    `כל ניסיונות הפרסום: ${formatStatusNumber(publications.length)}`,
+    `פרסומים שהצליחו: ${formatStatusNumber(successful.length)}`,
+    `פרסומים שנכשלו: ${formatStatusNumber(failed.length)}`,
+    `אחוז הצלחה: ${formatStatusNumber(successRate)}%`,
+    "",
+    "🌐 *חלוקה לפי פלטפורמה — פרסומים מוצלחים*",
+    `פייסבוק: ${formatStatusNumber(platformCounts.FACEBOOK)}`,
+    `• פרופיל אישי: ${formatStatusNumber(facebookProfile)}`,
+    `• קבוצות שונות: ${formatStatusNumber(facebookGroups.size)}`,
+    `אינסטגרם: ${formatStatusNumber(platformCounts.INSTAGRAM)}`,
+    `• פיד: ${formatStatusNumber(instagramTypes.FEED)}`,
+    `• סטורי: ${formatStatusNumber(instagramTypes.STORY)}`,
+    `• רילס: ${formatStatusNumber(instagramTypes.REEL)}`,
+    `וואטסאפ: ${formatStatusNumber(platformCounts.WHATSAPP)}`,
+    `• קבוצות שנבחרו: ${formatStatusNumber(whatsappGroups)}`,
+    `• רשימות תפוצה: ${formatStatusNumber(broadcastLists)}`,
+    "",
+    "📈 *חשיפה ומעורבות מתועדות*",
+    `חשיפה: ${formatStatusNumber(totals.reach)}`,
+    `הופעות: ${formatStatusNumber(totals.impressions)}`,
+    `צפיות: ${formatStatusNumber(totals.views)}`,
+    `לייקים: ${formatStatusNumber(totals.likes)}`,
+    `תגובות: ${formatStatusNumber(totals.comments)}`,
+    `שיתופים: ${formatStatusNumber(totals.shares)}`,
+    `שמירות: ${formatStatusNumber(totals.saves)}`,
+    `תגובות לסטורי: ${formatStatusNumber(totals.replies)}`,
+    `סך מעורבויות: ${formatStatusNumber(totals.interactions)}`,
+    "",
+    "המדדים מבוססים על הנתונים האחרונים שנאספו מהפלטפורמות.",
+  ].join("\n");
+
+  await sendText(phone, report);
+  setConversation(phone, { step: "STATUS_PERIOD" });
+  await interactiveMenu(phone, "בחר תקופה אחרת או חזור לתפריט:", [
+    { id: "status_today", title: "היום" },
+    { id: "status_week", title: "7 ימים אחרונים" },
+    { id: "status_month", title: "30 ימים אחרונים" },
+  ]);
 }
 
 function maskEmail(email) {
@@ -1508,7 +3724,7 @@ function maskEmail(email) {
     : `${l[0]}${l[1]}${"*".repeat(Math.min(l.length - 2, 5))}@${d}`;
 }
 
-async function downloadBotMedia(mediaId) {
+async function downloadBotMedia(mediaId, subdirectory = "") {
   const headers = {
     Authorization: `Bearer ${process.env.WA_BOT_ACCESS_TOKEN}`,
   };
@@ -1534,9 +3750,12 @@ async function downloadBotMedia(mediaId) {
   if (!extension) throw new Error("BOT_MEDIA_TYPE_NOT_ALLOWED");
   const buffer = Buffer.from(await mediaResponse.arrayBuffer());
   if (buffer.length > 15 * 1024 * 1024) throw new Error("BOT_MEDIA_TOO_LARGE");
-  await fs.mkdir(uploadsDir, { recursive: true });
+  const targetDirectory = subdirectory
+    ? path.join(uploadsDir, subdirectory)
+    : uploadsDir;
+  await fs.mkdir(targetDirectory, { recursive: true });
   const filename = `wa-bot-${crypto.randomUUID()}${extension}`;
-  await fs.writeFile(path.join(uploadsDir, filename), buffer);
+  await fs.writeFile(path.join(targetDirectory, filename), buffer);
   return { filename };
 }
 

@@ -23,38 +23,32 @@ router.get(
   "/",
   requireAuth,
   asyncHandler(async (req, res) => {
-    // Fetch templates and all user's groups in parallel to reduce DB round-trips
-    const [templates, userGroups] = await Promise.all([
+    // Template targets use the saved Facebook group ID. Reading that compact
+    // per-user table is substantially cheaper than traversing publication and
+    // membership relations every time the templates page opens.
+    const [templates, savedGroups] = await Promise.all([
       prisma.postTemplate.findMany({
         where: { userId: req.user.id },
         orderBy: { updatedAt: "desc" },
       }),
-      prisma.group.findMany({
-        where: {
-          OR: [
-            { userGroups: { some: { userId: req.user.id } } },
-            { postGroups: { some: { userId: req.user.id } } },
-          ],
-        },
-        select: {
-          id: true,
-          externalGroupId: true,
-          url: true,
-          memberCount: true,
-        },
-      }),
+      prisma.facebookGroup?.findMany
+        ? prisma.facebookGroup.findMany({
+            where: { userId: req.user.id },
+            select: {
+              groupId: true,
+              memberCount: true,
+            },
+          })
+        : Promise.resolve([]),
     ]);
 
-    // Build map keyed by id, externalGroupId, and extracted URL ID
     const memberMap = {};
-    for (const g of userGroups) {
-      memberMap[g.id] = g.memberCount || 0;
-      if (g.externalGroupId) memberMap[g.externalGroupId] = g.memberCount || 0;
-      const urlId = g.url?.match(/groups\/([^/?]+)/)?.[1];
-      if (urlId) memberMap[urlId] = g.memberCount || 0;
+    for (const group of savedGroups) {
+      memberMap[group.groupId] = group.memberCount || 0;
     }
 
-    // For any template groupIds not found via user's groups, do a targeted lookup
+    // Legacy templates may contain an internal Group ID. Resolve only those
+    // exceptional IDs with a small indexed lookup.
     const allGroupIds = [
       ...new Set(templates.flatMap((t) => t.groupIds || [])),
     ];
@@ -72,7 +66,6 @@ router.get(
         select: {
           id: true,
           externalGroupId: true,
-          url: true,
           memberCount: true,
         },
       });
@@ -80,8 +73,6 @@ router.get(
         memberMap[g.id] = g.memberCount || 0;
         if (g.externalGroupId)
           memberMap[g.externalGroupId] = g.memberCount || 0;
-        const urlId = g.url?.match(/groups\/([^/?]+)/)?.[1];
-        if (urlId) memberMap[urlId] = g.memberCount || 0;
       }
     }
 

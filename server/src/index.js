@@ -26,11 +26,18 @@ import {
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDistDir = path.join(__dirname, "..", "..", "client", "dist");
 
 // Initialize Express
 const app = express();
 const PORT = process.env.PORT || 5000;
 const log = createLogger("server");
+
+// Hosting platforms terminate TLS at a reverse proxy. This keeps req.ip,
+// rate-limiting and secure-cookie detection correct behind one trusted hop.
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
 
 // Security headers
 app.use(
@@ -121,9 +128,33 @@ app.use("/api/instagram", instagramRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/webhooks/whatsapp", whatsappBotRoutes);
 
+// Public, token-protected WhatsApp target selector UI.
+app.use("/assets", express.static(path.join(clientDistDir, "assets")));
+app.get("/bot-targets/:token", (_req, res, next) => {
+  const indexFile = path.join(clientDistDir, "index.html");
+  if (!fs.existsSync(indexFile)) return next();
+  res.sendFile(indexFile);
+});
+
+// Liveness does not depend on external services and is safe for process probes.
+app.get("/health/live", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
+// Readiness verifies the dependency required by every authenticated workflow.
+app.get("/health/ready", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ready" });
+  } catch (error) {
+    log.error("Readiness check failed", error);
+    res.status(503).json({ status: "not_ready" });
+  }
+});
+
 // Basic route
-app.get("/", (req, res) => {
-  res.json({ message: "Possbo API is running", user: req.user });
+app.get("/", (_req, res) => {
+  res.json({ message: "Possbo API is running" });
 });
 
 // Error handling middleware

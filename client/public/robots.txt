@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /create-post
+Disallow: /scheduled
+Disallow: /templates
+Disallow: /reports
+Disallow: /generate-post
+Disallow: /oauth/
+Disallow: /bot-targets/
+
+Sitemap: https://possbo.com/sitemap.xml

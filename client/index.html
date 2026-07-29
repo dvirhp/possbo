@@ -15,6 +15,17 @@
     />
     <meta name="theme-color" content="#667eea" />
     <meta name="application-name" content="Possbo" />
+    <meta name="description" content="Possbo מאפשרת ליצור, לתזמן ולמדוד קמפיינים בפייסבוק, אינסטגרם ווואטסאפ ממקום אחד — עם AI, תבניות, אוטומציה ודוחות." />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://possbo.com/" />
+    <meta property="og:locale" content="he_IL" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Possbo" />
+    <meta property="og:title" content="Possbo | קמפיין אחד לפייסבוק, אינסטגרם ווואטסאפ" />
+    <meta property="og:description" content="יוצרים תוכן עם AI, בוחרים קהלים ומתזמנים פרסום בכל הערוצים ממערכת אחת." />
+    <meta property="og:url" content="https://possbo.com/" />
+    <meta property="og:image" content="https://possbo.com/brand/possbo-hero-automation-v1.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="apple-mobile-web-app-title" content="Possbo" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta
@@ -29,7 +40,7 @@
       href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=Heebo:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <title>Possbo</title>
+    <title>Possbo | פרסום אוטומטי בפייסבוק, אינסטגרם ווואטסאפ</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
       (function () {
@@ -44,6 +55,11 @@
           ? "/brand/possbo-mark-white.png"
           : "/brand/possbo-mark-black.png";
         document.documentElement.style.background = bg;
+        var appShellRoute =
+          /^\/(?:dashboard|my-groups|create-post|scheduled|group(?:\/|$)|post(?:\/|$)|templates(?:\/|$)|reports(?:\/|$)|guides(?:\/|$)|generate-post|feedback)(?:\/|$|\?)/.test(
+            window.location.pathname + window.location.search,
+          );
+        window.__POSSBO_APP_SHELL_ROUTE__ = appShellRoute;
         document.write(
           "<style>body{margin:0;background:" +
             bg +
@@ -51,7 +67,7 @@
             bg +
             ";min-height:100vh}#splash{background:" +
             bg +
-            "}</style>",
+            "}.app-shell-splash{padding-right:280px;box-sizing:border-box}@media(max-width:768px){.app-shell-splash{padding-right:0}}</style>",
         );
       })();
     </script>
@@ -85,6 +101,9 @@
         <script>
           document.currentScript.previousElementSibling.src =
             window.__POSSBO_SPLASH_LOGO__;
+          if (window.__POSSBO_APP_SHELL_ROUTE__) {
+            document.getElementById("splash").classList.add("app-shell-splash");
+          }
         </script>
       </div>
       <style>

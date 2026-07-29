@@ -813,6 +813,85 @@ export async function scrapeUserPublicationMetrics(userId, publications) {
 }
 
 /**
+ * Recover a missing Facebook permalink by finding the campaign text inside the
+ * expected group feed. Never returns an arbitrary link from the feed.
+ */
+export async function recoverFacebookPostUrl(userId, groupUrl, publishedText) {
+  if (!groupUrl || !publishedText?.trim()) return null;
+  const storageState = await loadUserStorageState(userId);
+  if (!storageState) return null;
+
+  const browser = await launchBrowser();
+  try {
+    const context = await createBrowserContext(browser, { userId, storageState });
+    const page = await context.newPage();
+    const findMatchingPermalink = () => page.evaluate((text) => {
+      const clean = (value) => (value || "").replace(/\s+/g, " ").trim();
+      const fullNeedle = clean(text);
+      const needles = [
+        fullNeedle.slice(0, 120),
+        fullNeedle.slice(0, 80),
+        fullNeedle.slice(0, 45),
+      ].filter((value) => value.length >= 20);
+      const isPermalink = (href) =>
+        /\/posts\/\d+/i.test(href) ||
+        /\/permalink\/\d+/i.test(href) ||
+        /[?&](?:story_fbid|fbid)=\d+/i.test(href);
+
+      for (const article of document.querySelectorAll('[role="article"]')) {
+        const articleText = clean(article.innerText);
+        if (!needles.some((needle) => articleText.includes(needle))) continue;
+        const permalink = Array.from(article.querySelectorAll("a[href]")).find(
+          (link) => isPermalink(link.href),
+        );
+        if (permalink) return permalink.href;
+      }
+      return null;
+    }, publishedText);
+
+    const baseGroupUrl = groupUrl.replace(/\/$/, "");
+    const searchNeedle = publishedText.replace(/\s+/g, " ").trim().slice(0, 80);
+    const candidatePages = [
+      baseGroupUrl,
+      `${baseGroupUrl}/search/?q=${encodeURIComponent(searchNeedle)}`,
+    ];
+    let recovered = null;
+    for (const candidateUrl of candidatePages) {
+      await page.goto(candidateUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.waitForTimeout(4000);
+      recovered = await findMatchingPermalink();
+      if (recovered) break;
+      await page.evaluate(() => window.scrollBy(0, window.innerHeight * 1.5));
+      await page.waitForTimeout(2500);
+      recovered = await findMatchingPermalink();
+      if (recovered) break;
+    }
+
+    if (!recovered) return null;
+    const { normalizeFacebookPostUrl } = await import(
+      "./facebook-automation.js"
+    );
+    const normalized = normalizeFacebookPostUrl(recovered);
+    const expectedGroupId = groupUrl.match(/\/groups\/([^/?]+)/i)?.[1];
+    if (
+      expectedGroupId &&
+      !normalized?.includes(`/groups/${expectedGroupId}/`)
+    ) {
+      return null;
+    }
+    return normalized;
+  } catch (err) {
+    log.warn(`Failed to recover Facebook post URL: ${err.message}`);
+    return null;
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
  * Upsert metrics into the database for a publication.
  * Creates a new PublicationMetric entry per collection (time-series).
  */
@@ -855,10 +934,12 @@ export async function refreshSinglePublicationMetrics(userId, publicationId) {
       externalPostUrl: true,
       externalPostId: true,
       platform: true,
+      post: { select: { content: true } },
+      group: { select: { url: true } },
       publicationJob: { select: { igPublishType: true } },
     },
   });
-  const pub = pubRaw
+  let pub = pubRaw
     ? { ...pubRaw, igMediaType: pubRaw.publicationJob?.igPublishType || "FEED" }
     : null;
   if (!pub) {
@@ -901,13 +982,26 @@ export async function refreshSinglePublicationMetrics(userId, publicationId) {
       saved: result.saved || 0,
       replies: result.replies || 0,
       totalInteractions: result.totalInteractions || 0,
+      lastSyncedAt: new Date(),
     };
   }
 
   // Facebook — use Playwright scraping
   if (!pub.externalPostUrl) {
-    log.warn(`Publication ${publicationId} has no external URL`);
-    return null;
+    const recoveredUrl = await recoverFacebookPostUrl(
+      userId,
+      pub.group?.url,
+      pub.post?.content,
+    );
+    if (!recoveredUrl) {
+      log.warn(`Publication ${publicationId} has no recoverable external URL`);
+      return null;
+    }
+    await prisma.publicationHistory.update({
+      where: { id: publicationId },
+      data: { externalPostUrl: recoveredUrl },
+    });
+    pub = { ...pub, externalPostUrl: recoveredUrl };
   }
 
   log.info(`Refreshing metrics for publication ${publicationId}`, {
@@ -929,7 +1023,11 @@ export async function refreshSinglePublicationMetrics(userId, publicationId) {
   // Always save a new metric entry (time-series data point)
   await savePublicationMetrics(publicationId, result.likes, result.comments);
 
-  return { likes: result.likes, comments: result.comments };
+  return {
+    likes: result.likes,
+    comments: result.comments,
+    lastSyncedAt: new Date(),
+  };
 }
 
 /**

@@ -327,6 +327,21 @@
 .tpl-collage-3 .tpl-collage-img:first-child { grid-row: 1 / -1; }
 .tpl-collage-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
 .tpl-collage-img { width: 100%; height: 100%; object-fit: cover; }
+.tpl-card-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted, #6b7684);
+  background:
+    linear-gradient(135deg, var(--bg-elevated, #171a20), var(--bg-card, #20242c));
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.tpl-card-image-placeholder span {
+  font-size: 12px;
+  font-weight: 600;
+}
 .tpl-collage-more {
   position: absolute;
   bottom: 6px;
@@ -984,6 +999,18 @@
   color: #fff;
   background: rgba(83, 124, 246, 0.18);
   border-color: rgba(83, 124, 246, 0.5);
+}
+
+[data-theme="light"] .tpl-content-editor-toolbar .tpl-ai-generate-btn {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.38);
+}
+
+[data-theme="light"] .tpl-content-editor-toolbar .tpl-ai-generate-btn:hover {
+  color: #fff;
+  background: #2563eb;
+  border-color: #2563eb;
 }
 
 .tpl-form .cp-whatsapp-wrap {

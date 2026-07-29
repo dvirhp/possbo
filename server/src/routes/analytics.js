@@ -15,6 +15,10 @@ const router = express.Router();
 const dashboardCache = new Map(); // userId → { data, ts }
 const CACHE_TTL = 30_000; // 30 seconds
 
+export function invalidateDashboardCache(userId) {
+  dashboardCache.delete(userId);
+}
+
 router.get(
   "/dashboard-data",
   requireAuth,
@@ -78,6 +82,7 @@ router.get(
           errorMessage: true,
           targetType: true,
           platform: true,
+          post: { select: { whatsappTargets: true } },
           publicationJob: { select: { igPublishType: true } },
           metrics: {
             orderBy: { collectedAt: "desc" },
@@ -91,12 +96,13 @@ router.get(
               viewsCount: true,
               savesCount: true,
               repliesCount: true,
+              collectedAt: true,
               totalInteractionsCount: true,
             },
           },
         },
         orderBy: { publishedAt: "desc" },
-        take: 20,
+        take: 500,
       }),
       // Published count
       prisma.publicationHistory.count({
@@ -126,6 +132,7 @@ router.get(
           instagramEnabled: true,
           instagramPublishType: true,
           whatsappEnabled: true,
+          whatsappTargets: true,
           createdAt: true,
           updatedAt: true,
           media: {
@@ -224,6 +231,7 @@ router.get(
               viewsCount: true,
               savesCount: true,
               repliesCount: true,
+              collectedAt: true,
               totalInteractionsCount: true,
             },
           },
@@ -294,6 +302,10 @@ router.get(
         saves: metric?.savesCount || 0,
         replies: metric?.repliesCount || 0,
         interactions: metric?.totalInteractionsCount || 0,
+        lastSyncedAt: metric?.collectedAt || null,
+        whatsappTargets: Array.isArray(h.post?.whatsappTargets)
+          ? h.post.whatsappTargets
+          : [],
         groupName:
           h.targetType === "INSTAGRAM"
             ? "אינסטגרם"
@@ -380,6 +392,9 @@ router.get(
         instagramEnabled: post.instagramEnabled || false,
         instagramPublishType: post.instagramPublishType || null,
         whatsappEnabled: post.whatsappEnabled || false,
+        whatsappTargets: Array.isArray(post.whatsappTargets)
+          ? post.whatsappTargets
+          : [],
         publishedCount: publishedCountMap.get(post.id) || 0,
         createdAt: post.createdAt,
         updatedAt: post.updatedAt,
@@ -511,6 +526,7 @@ router.get(
           saves: m?.savesCount || 0,
           replies: m?.repliesCount || 0,
           interactions: m?.totalInteractionsCount || 0,
+          lastSyncedAt: m?.collectedAt || null,
           platform,
           targetType: pub.targetType || "GROUP",
           igType,
@@ -703,6 +719,213 @@ router.get(
 );
 
 // ─── Exposure stats ──────────────────────────────────────
+
+router.get(
+  "/whatsapp-stats",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const { from, to } = req.query;
+    const publishedAt = {};
+    if (from) publishedAt.gte = new Date(`${from}T00:00:00`);
+    if (to) publishedAt.lte = new Date(`${to}T23:59:59.999`);
+
+    const publications = await prisma.publicationHistory.findMany({
+      where: {
+        userId,
+        status: "SUCCESS",
+        ...(from || to ? { publishedAt } : {}),
+      },
+      select: {
+        platform: true,
+        targetType: true,
+        post: {
+          select: {
+            whatsappTargets: true,
+            instagramPublishType: true,
+          },
+        },
+        group: { select: { memberCount: true } },
+        publicationJob: { select: { igPublishType: true } },
+        metrics: {
+          orderBy: { collectedAt: "desc" },
+          take: 1,
+          select: {
+            likesCount: true,
+            commentsCount: true,
+            sharesCount: true,
+            reachCount: true,
+            viewsCount: true,
+            impressionsCount: true,
+            repliesCount: true,
+            totalInteractionsCount: true,
+          },
+        },
+      },
+    });
+
+    const platformOf = (publication) =>
+      publication.platform ||
+      (publication.targetType === "INSTAGRAM"
+        ? "INSTAGRAM"
+        : publication.targetType === "WHATSAPP"
+          ? "WHATSAPP"
+          : "FACEBOOK");
+    const whatsappPublications = publications.filter(
+      (publication) => platformOf(publication) === "WHATSAPP",
+    );
+    const targetsByPublication = whatsappPublications.map((publication) =>
+      Array.isArray(publication.post?.whatsappTargets)
+        ? publication.post.whatsappTargets
+        : [],
+    );
+    const allTargets = targetsByPublication.flat();
+    const groupIds = [
+      ...new Set(
+        allTargets
+          .filter((target) => target?.type === "group" && target.id)
+          .map((target) => target.id),
+      ),
+    ];
+    const broadcastIds = [
+      ...new Set(
+        allTargets
+          .filter((target) => target?.type === "broadcast" && target.id)
+          .map((target) => target.id),
+      ),
+    ];
+
+    const [groups, broadcasts] = await Promise.all([
+      groupIds.length
+        ? prisma.whatsAppContact.findMany({
+            where: { userId, waId: { in: groupIds }, isGroup: true },
+            select: { waId: true, participantCount: true },
+          })
+        : [],
+      broadcastIds.length
+        ? prisma.whatsAppBroadcastList.findMany({
+            where: { userId, id: { in: broadcastIds } },
+            select: { id: true, members: true },
+          })
+        : [],
+    ]);
+
+    const groupAudience = new Map(
+      groups.map((group) => [group.waId, group.participantCount || 0]),
+    );
+    const broadcastMembers = new Map(
+      broadcasts.map((list) => [
+        list.id,
+        Array.isArray(list.members) ? list.members : [],
+      ]),
+    );
+    const directRecipientKeys = new Set();
+    for (const target of allTargets) {
+      if (target?.type === "broadcast") {
+        for (const member of broadcastMembers.get(target.id) || []) {
+          const key = String(member?.phone || member?.waId || "").replace(
+            /[^0-9]/g,
+            "",
+          );
+          if (key) directRecipientKeys.add(key);
+        }
+      } else if (target?.type !== "group") {
+        const key = String(target?.phone || target?.id || "")
+          .replace(/@s\.whatsapp\.net$/i, "")
+          .replace(/[^0-9]/g, "");
+        if (key) directRecipientKeys.add(key);
+      }
+    }
+
+    const uniqueGroupAudience = groupIds.reduce(
+      (sum, id) => sum + (groupAudience.get(id) || 0),
+      0,
+    );
+    const totalDistribution = targetsByPublication.reduce(
+      (total, targets) =>
+        total +
+        targets.reduce((sum, target) => {
+          if (target?.type === "group")
+            return sum + (groupAudience.get(target.id) || 0);
+          if (target?.type === "broadcast")
+            return sum + (broadcastMembers.get(target.id)?.length || 0);
+          return sum + (target?.id || target?.phone ? 1 : 0);
+        }, 0),
+      0,
+    );
+    const metricTotal = (rows, field) =>
+      rows.reduce((sum, publication) => {
+        const metrics = publication.metrics[0];
+        return sum + Number(metrics?.[field] || 0);
+      }, 0);
+    const instagramPublications = publications.filter(
+      (publication) => platformOf(publication) === "INSTAGRAM",
+    );
+    const facebookPublications = publications.filter(
+      (publication) => platformOf(publication) === "FACEBOOK",
+    );
+    const formats = ["FEED", "REEL", "STORY"].map((type) => {
+      const rows = instagramPublications.filter((publication) => {
+        const publishType =
+          publication.publicationJob?.igPublishType ||
+          publication.post?.instagramPublishType ||
+          "FEED";
+        return publishType.includes(type);
+      });
+      return {
+        type,
+        count: rows.length,
+        views:
+          metricTotal(rows, "viewsCount") ||
+          metricTotal(rows, "impressionsCount"),
+        interactions: rows.reduce((sum, publication) => {
+          const metrics = publication.metrics[0];
+          return (
+            sum +
+            Number(
+              metrics?.totalInteractionsCount ||
+                (metrics?.likesCount || 0) +
+                  (metrics?.commentsCount || 0) +
+                  (metrics?.sharesCount || 0) +
+                  (metrics?.repliesCount || 0),
+            )
+          );
+        }, 0),
+      };
+    });
+
+    res.json({
+      success: true,
+      instagram: {
+        count: instagramPublications.length,
+        likes: metricTotal(instagramPublications, "likesCount"),
+        comments: metricTotal(instagramPublications, "commentsCount"),
+        shares: metricTotal(instagramPublications, "sharesCount"),
+        views:
+          metricTotal(instagramPublications, "viewsCount") ||
+          metricTotal(instagramPublications, "impressionsCount"),
+        reach: metricTotal(instagramPublications, "reachCount"),
+        formats,
+      },
+      facebook: {
+        count: facebookPublications.length,
+        likes: metricTotal(facebookPublications, "likesCount"),
+        comments: metricTotal(facebookPublications, "commentsCount"),
+        exposure: facebookPublications.reduce(
+          (sum, publication) =>
+            sum + Number(publication.group?.memberCount || 0),
+          0,
+        ),
+      },
+      whatsapp: {
+        postsSent: whatsappPublications.length,
+        groupsReached: groupIds.length,
+        peopleReached: uniqueGroupAudience + directRecipientKeys.size,
+        totalDistribution,
+      },
+    });
+  }),
+);
 
 router.get(
   "/exposure",
@@ -1000,7 +1223,11 @@ router.post(
       return res.status(404).json({ error: "Publication not found" });
     }
 
-    if (!pub.externalPostUrl && !pub.externalPostId) {
+    if (
+      pub.platform === "INSTAGRAM" &&
+      !pub.externalPostUrl &&
+      !pub.externalPostId
+    ) {
       return res.status(400).json({
         error: "Publication has no external URL or ID to fetch metrics",
       });
@@ -1028,6 +1255,7 @@ router.post(
         reach: metrics.reach || 0,
         saves: metrics.saved || 0,
         replies: metrics.replies || 0,
+        lastSyncedAt: metrics.lastSyncedAt || new Date(),
       },
     });
   }),
@@ -1206,7 +1434,11 @@ router.post(
       totalRefreshed += igResults.length;
     }
 
-    res.json({ success: true, refreshed: totalRefreshed });
+    res.json({
+      success: true,
+      refreshed: totalRefreshed,
+      lastSyncedAt: totalRefreshed > 0 ? new Date() : null,
+    });
   }),
 );
 

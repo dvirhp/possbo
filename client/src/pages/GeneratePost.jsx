@@ -469,7 +469,7 @@ export default function GeneratePost() {
       <div className="generate-post-container">
         <div className="generate-post-header">
           <Sparkles size={28} />
-          <h1>יצירת פוסט עם AI</h1>
+          <h1>יצירת פוסט בעזרת AI</h1>
           <p className="header-tip">💡 ככל שתספרו יותר ותדייקו יותר, כך הפוסט ייצא טוב יותר!</p>
           <button className="examples-btn" onClick={() => setShowExamples(true)}>
             <Lightbulb size={16} />

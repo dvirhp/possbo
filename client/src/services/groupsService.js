@@ -51,6 +51,8 @@ export const groupsService = {
   markNotificationsRead: () => api.patch("/scheduler/notifications/read"),
   getSessionStatus: () => api.get("/scheduler/session-status"),
   getStats: (params) => api.get("/scheduler/stats", { params }),
+  getWhatsAppStats: (params) =>
+    api.get("/scheduler/whatsapp-stats", { params }),
   getExposure: (params) => api.get("/scheduler/exposure", { params }),
   getDashboardKpis: (params) =>
     api.get("/scheduler/dashboard-kpis", { params }),

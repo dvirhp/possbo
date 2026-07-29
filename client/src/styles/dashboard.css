@@ -3995,7 +3995,7 @@
 
 .stats-platform-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   margin-bottom: 22px;
@@ -4035,6 +4035,30 @@
 .stats-platform-tabs button.active.facebook {
   border-color: rgba(79, 141, 247, 0.48);
   color: #72a6ff;
+}
+
+.stats-platform-tabs button.active.whatsapp {
+  border-color: rgba(37, 211, 102, 0.48);
+  color: #35d574;
+}
+
+[data-theme="dark"] .stats-platform-tabs button.active {
+  background: var(--bg-elevated);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.38);
+}
+
+@media (max-width: 600px) {
+  .stats-platform-tabs {
+    gap: 3px;
+    padding: 3px;
+  }
+
+  .stats-platform-tabs button {
+    min-width: 0;
+    min-height: 40px;
+    padding-inline: 4px;
+    font-size: clamp(10px, 3.2vw, 13px);
+  }
 }
 
 .stats-platform-heading {
@@ -4090,6 +4114,10 @@
   grid-template-columns: repeat(2, 1fr);
 }
 
+.stats-network-kpis-whatsapp {
+  grid-template-columns: repeat(4, minmax(90px, 1fr));
+}
+
 .stats-format-list {
   display: grid;
   gap: 12px;
@@ -4119,6 +4147,10 @@
 
 .stats-platform-facebook .stats-network-kpis strong {
   color: #4f8df7;
+}
+
+.stats-platform-whatsapp .stats-network-kpis strong {
+  color: #25d366;
 }
 
 .stats-platform-note {
@@ -8393,6 +8425,26 @@
 .detail-history-refresh:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.metrics-last-sync {
+  color: var(--text-muted, #7b8495);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.detail-history-card-stats .metrics-last-sync {
+  margin-inline-start: auto;
+}
+
+.top-post-info .metrics-last-sync {
+  display: block;
+  margin-top: 3px;
+}
+
+.top-posts-actions > .metrics-last-sync {
+  order: -1;
 }
 @keyframes spin-refresh {
   from { transform: rotate(0deg); }

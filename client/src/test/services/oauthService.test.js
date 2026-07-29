@@ -80,17 +80,21 @@ describe('oauthService', () => {
   });
 
   describe('loginWithGithub', () => {
-    it('opens popup window', () => {
+    it('opens popup window', async () => {
+      vi.useFakeTimers();
       const mockOpen = vi.fn().mockReturnValue({ closed: true });
       window.open = mockOpen;
 
-      loginWithGithub('login').catch(() => {});
+      const promise = loginWithGithub('login');
 
       expect(mockOpen).toHaveBeenCalledWith(
         expect.stringContaining('github.com/login/oauth/authorize'),
         'github-oauth',
         expect.any(String)
       );
+      vi.advanceTimersByTime(600);
+      await expect(promise).rejects.toThrow('GitHub login cancelled');
+      vi.useRealTimers();
     });
 
     it('rejects when popup is closed', async () => {
@@ -106,32 +110,40 @@ describe('oauthService', () => {
   });
 
   describe('loginWithLinkedin', () => {
-    it('opens popup with linkedin URL', () => {
+    it('opens popup with linkedin URL', async () => {
+      vi.useFakeTimers();
       const mockOpen = vi.fn().mockReturnValue({ closed: true });
       window.open = mockOpen;
 
-      loginWithLinkedin('register').catch(() => {});
+      const promise = loginWithLinkedin('register');
 
       expect(mockOpen).toHaveBeenCalledWith(
         expect.stringContaining('linkedin.com/oauth/v2/authorization'),
         'linkedin-oauth',
         expect.any(String)
       );
+      vi.advanceTimersByTime(600);
+      await expect(promise).rejects.toThrow('LinkedIn login cancelled');
+      vi.useRealTimers();
     });
   });
 
   describe('loginWithApple', () => {
-    it('opens popup with apple URL', () => {
+    it('opens popup with apple URL', async () => {
+      vi.useFakeTimers();
       const mockOpen = vi.fn().mockReturnValue({ closed: true });
       window.open = mockOpen;
 
-      loginWithApple('login').catch(() => {});
+      const promise = loginWithApple('login');
 
       expect(mockOpen).toHaveBeenCalledWith(
         expect.stringContaining('appleid.apple.com/auth/authorize'),
         'apple-oauth',
         expect.any(String)
       );
+      vi.advanceTimersByTime(600);
+      await expect(promise).rejects.toThrow('Apple login cancelled');
+      vi.useRealTimers();
     });
 
     it('rejects when popup is closed', async () => {

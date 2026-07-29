@@ -110,7 +110,7 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
         </button>
         <button className="sidebar-action-item" onClick={() => guardedNavigate('/generate-post')}>
           <span className="sidebar-action-icon"><Sparkles size={16} /></span>
-          <span>יצירת פוסט AI</span>
+          <span>יצירת פוסט בעזרת AI</span>
         </button>
       </div>
 

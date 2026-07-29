@@ -1,13 +1,27 @@
 import nodemailer from "nodemailer";
-import { readFileSync } from "fs";
+import fs from "fs";
+import path from "path";
 import { fileURLToPath } from "url";
-import { dirname, join } from "path";
 import { createLogger } from "./logger.js";
 
 const log = createLogger("mailer");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const emailLogo = fs.readFileSync(
+  path.join(__dirname, "..", "assets", "logo-email-white.png"),
+);
+const EMAIL_LOGO_CID = "possbo-logo";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+function emailAttachments() {
+  return [
+    {
+      filename: "possbo-logo.png",
+      content: emailLogo,
+      cid: EMAIL_LOGO_CID,
+      contentType: "image/png",
+      contentDisposition: "inline",
+    },
+  ];
+}
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -19,17 +33,14 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// White mark for the dark header; email dark mode inverts it on the white header.
-const logoPngBuffer = readFileSync(
-  join(__dirname, "../assets/logo-email-white.png"),
-);
-
 /**
  * Build an HTML email wrapper that adapts to the user's light/dark mode preference.
  * Light mode: white card on light gray bg, dark text.
  * Dark mode: dark card on near-black bg, light text.
  */
 function buildEmailHtml({ title, bodyContent }) {
+  const clientUrl = (process.env.CLIENT_URL || "https://possbo.com").replace(/\/+$/, "");
+  const supportEmail = process.env.SUPPORT_EMAIL || process.env.SMTP_USER || "";
   return `<!DOCTYPE html>
 <html lang="he" dir="rtl" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -88,7 +99,7 @@ function buildEmailHtml({ title, bodyContent }) {
           <!-- Header with Logo -->
           <tr>
             <td class="email-header" style="background-color: #0c0c10; padding: 24px 32px; text-align: center;">
-              <img class="email-logo" src="cid:possbo-logo" alt="Possbo" width="80" height="80" style="display:block; margin:0 auto; width:80px; height:80px;" />
+              <img class="email-logo" src="cid:${EMAIL_LOGO_CID}" alt="Possbo" width="80" height="80" style="display:block; margin:0 auto; width:80px; height:80px;" />
             </td>
           </tr>
           <!-- Body -->
@@ -100,8 +111,12 @@ function buildEmailHtml({ title, bodyContent }) {
           <!-- Footer -->
           <tr>
             <td class="email-footer-border" style="padding: 20px 28px; border-top: 1px solid #eef0f4; text-align: center;">
-              <p class="email-footer-text" style="margin: 0; font-size: 12px; color: #9ca3af;">© ${new Date().getFullYear()} Possbo כל הזכויות שמורות</p>
-              <p class="email-footer-sub" style="margin: 6px 0 0; font-size: 11px; color: #c0c7d1;">המייל הזה נשלח מ-Possbo אם לא ביקשת אותו ניתן להתעלם</p>
+              <p class="email-footer-text" style="margin: 0; font-size: 12px; color: #9ca3af;">© ${new Date().getFullYear()} Possbo. כל הזכויות שמורות.</p>
+              <p class="email-footer-sub" style="margin: 6px 0 0; font-size: 11px; line-height: 1.6; color: #c0c7d1;">זוהי הודעת שירות ואבטחה שנשלחה בעקבות פעולה בחשבון. אם לא ביקשת אותה, אפשר להתעלם ואין למסור את הקוד לאיש.</p>
+              <p class="email-footer-sub" style="margin: 8px 0 0; font-size: 11px; color: #c0c7d1;">
+                <a href="${clientUrl}/privacy" style="color: #8b93a1; text-decoration: underline;">מדיניות פרטיות</a>
+                ${supportEmail ? `&nbsp;·&nbsp;<a href="mailto:${escapeHtml(supportEmail)}" style="color: #8b93a1; text-decoration: underline;">יצירת קשר</a>` : ""}
+              </p>
             </td>
           </tr>
         </table>
@@ -121,6 +136,42 @@ function escapeHtml(value = "") {
     .replace(/'/g, "&#039;");
 }
 
+function buildEmailCodeBlock(code) {
+  const safeCode = escapeHtml(code);
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <div class="email-code-box" title="לחץ לסימון הקוד" style="background-color: #f5f5f5; border: 2px solid #e0e0e0; border-radius: 12px; padding: 20px 32px; display: inline-block; cursor: text; user-select: all; -webkit-user-select: all;">
+            <span class="email-code" dir="ltr" style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #1a1a2e; font-family: 'Courier New', monospace; white-space: nowrap; user-select: all; -webkit-user-select: all;">${safeCode}</span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding-top: 10px;">
+          <span class="email-muted" style="font-size: 11px; color: #6b7280;">לחץ על הקוד כדי לסמן ולהעתיק</span>
+        </td>
+      </tr>
+    </table>`;
+}
+
+function buildExpiryNotice(extraText = "") {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top: 24px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" cellpadding="0" cellspacing="0" dir="rtl" style="margin: 0 auto;">
+            <tr>
+              <td class="email-muted" style="font-size: 13px; color: #6b7280; text-align: center; vertical-align: middle;">הקוד תקף ל-10 דקות בלבד${extraText}</td>
+              <td width="8" aria-hidden="true"></td>
+              <td aria-hidden="true" style="font-size: 15px; line-height: 20px; text-align: center; vertical-align: middle;">⏱️</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>`;
+}
+
 /**
  * Send a verification code email
  */
@@ -128,16 +179,8 @@ export async function sendVerificationEmail(to, code) {
   const bodyContent = `
     <h2 class="email-title" style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #1a1a2e; text-align: center;">קוד האימות שלך</h2>
     <p class="email-muted" style="margin: 0 0 24px; font-size: 14px; color: #6b7280; text-align: center;">הזן את הקוד הבא כדי לאמת את חשבונך</p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td align="center">
-          <div class="email-code-box" style="background-color: #f5f5f5; border: 2px solid #e0e0e0; border-radius: 12px; padding: 20px 32px; display: inline-block;">
-            <span class="email-code" style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #1a1a2e; font-family: 'Courier New', monospace;">${code}</span>
-          </div>
-        </td>
-      </tr>
-    </table>
-    <p class="email-muted" style="margin: 24px 0 0; font-size: 13px; color: #6b7280; text-align: center;">⏱️ הקוד תקף ל-10 דקות בלבד</p>
+    ${buildEmailCodeBlock(code)}
+    ${buildExpiryNotice()}
   `;
 
   const html = buildEmailHtml({ title: "קוד אימות - Possbo", bodyContent });
@@ -150,17 +193,8 @@ export async function sendVerificationEmail(to, code) {
       subject: `${code} - קוד אימות Possbo`,
       html,
       text,
-      attachments: [
-        {
-          filename: "possbo-logo.png",
-          content: logoPngBuffer,
-          cid: "possbo-logo",
-        },
-      ],
-      headers: {
-        "List-Unsubscribe": `<mailto:${process.env.SMTP_USER}?subject=unsubscribe>`,
-        "X-Priority": "1",
-      },
+      headers: { "X-Priority": "1" },
+      attachments: emailAttachments(),
     });
     log.info("Verification email sent", { to });
     return true;
@@ -177,16 +211,8 @@ export async function sendPasswordResetEmail(to, code) {
   const bodyContent = `
     <h2 class="email-title" style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #1a1a2e; text-align: center;">שינוי סיסמה</h2>
     <p class="email-muted" style="margin: 0 0 24px; font-size: 14px; color: #6b7280; text-align: center;">הזן את הקוד הבא כדי לאפס את הסיסמה שלך</p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td align="center">
-          <div class="email-code-box" style="background-color: #f5f5f5; border: 2px solid #e0e0e0; border-radius: 12px; padding: 20px 32px; display: inline-block;">
-            <span class="email-code" style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #1a1a2e; font-family: 'Courier New', monospace;">${code}</span>
-          </div>
-        </td>
-      </tr>
-    </table>
-    <p class="email-muted" style="margin: 24px 0 0; font-size: 13px; color: #6b7280; text-align: center;">⏱️ הקוד תקף ל-10 דקות אם לא ביקשת שינוי סיסמה התעלם</p>
+    ${buildEmailCodeBlock(code)}
+    ${buildExpiryNotice(" — אם לא ביקשת שינוי סיסמה, אפשר להתעלם מהמייל")}
   `;
 
   const html = buildEmailHtml({ title: "שינוי סיסמה - Possbo", bodyContent });
@@ -199,17 +225,8 @@ export async function sendPasswordResetEmail(to, code) {
       subject: `${code} - שינוי סיסמה Possbo`,
       html,
       text,
-      attachments: [
-        {
-          filename: "possbo-logo.png",
-          content: logoPngBuffer,
-          cid: "possbo-logo",
-        },
-      ],
-      headers: {
-        "List-Unsubscribe": `<mailto:${process.env.SMTP_USER}?subject=unsubscribe>`,
-        "X-Priority": "1",
-      },
+      headers: { "X-Priority": "1" },
+      attachments: emailAttachments(),
     });
     log.info("Password reset email sent", { to });
     return true;
@@ -253,13 +270,7 @@ export async function sendInstagramReconnectEmail(to, name = "") {
       subject: "נדרש חיבור מחדש ל־Instagram",
       html,
       text: `${name ? `${name}, ` : ""}לא הצלחנו לפרסם את הקמפיין שלך ב־Instagram. יש לחבר את החשבון מחדש דרך הגדרות Possbo: ${reconnectUrl}`,
-      attachments: [
-        {
-          filename: "possbo-logo.png",
-          content: logoPngBuffer,
-          cid: "possbo-logo",
-        },
-      ],
+      attachments: emailAttachments(),
     });
     log.info("Instagram reconnect email sent", { to });
     return true;
@@ -352,13 +363,7 @@ export async function sendFeedbackEmail({
       subject: `📝 פידבק חדש מ-${userName}`,
       html,
       text: textParts.join("\n\n"),
-      attachments: [
-        {
-          filename: "possbo-logo.png",
-          content: logoPngBuffer,
-          cid: "possbo-logo",
-        },
-      ],
+      attachments: emailAttachments(),
     });
     log.info("Feedback email sent", { userEmail });
     return true;
@@ -426,13 +431,7 @@ export async function sendContactEmail({
       subject: `צור קשר - ${subject || name}`,
       html,
       text,
-      attachments: [
-        {
-          filename: "possbo-logo.png",
-          content: logoPngBuffer,
-          cid: "possbo-logo",
-        },
-      ],
+      attachments: emailAttachments(),
     });
     log.info("Contact email sent");
     return true;

@@ -6,6 +6,28 @@ import { createLogger } from "./logger.js";
 const log = createLogger("whatsapp-bot-api");
 
 const GRAPH_API_URL = "https://graph.facebook.com/v21.0";
+const REQUEST_TIMEOUT_MS = 15_000;
+const RLM = "\u200F";
+
+function removeDisplayDashes(value) {
+  const protectedTokens =
+    /(https?:\/\/[^\s]+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\b\d{4}-\d{2}-\d{2}\b)/gi;
+  return String(value ?? "")
+    .split(protectedTokens)
+    .map((part, index) =>
+      index % 2 === 1
+        ? part
+        : part.replace(/[-–—]/g, " ").replace(/[ \t]{2,}/g, " "),
+    )
+    .join("");
+}
+
+function formatRtl(value) {
+  return removeDisplayDashes(value)
+    .split("\n")
+    .map((line) => (line ? `${RLM}${line}` : line))
+    .join("\n");
+}
 
 function getConfig() {
   return {
@@ -25,11 +47,12 @@ export async function sendText(to, text) {
     messaging_product: "whatsapp",
     to,
     type: "text",
-    text: { body: text },
+    text: { body: formatRtl(text) },
   };
 
   const res = await fetch(url, {
     method: "POST",
+    signal: globalThis.AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
@@ -40,6 +63,39 @@ export async function sendText(to, text) {
   if (!res.ok) {
     const err = await res.text();
     log.error("Failed to send text", { to, error: err });
+    throw new Error(`WhatsApp API error: ${err}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Send an image by a public URL or an existing WhatsApp media ID.
+ */
+export async function sendImage(to, { link, id, caption } = {}) {
+  const { phoneNumberId, accessToken } = getConfig();
+  const url = `${GRAPH_API_URL}/${phoneNumberId}/messages`;
+  const image = link ? { link } : { id };
+  if (caption) image.caption = formatRtl(caption);
+
+  const res = await fetch(url, {
+    method: "POST",
+    signal: globalThis.AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "image",
+      image,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    log.error("Failed to send image", { to, error: err });
     throw new Error(`WhatsApp API error: ${err}`);
   }
 
@@ -59,11 +115,14 @@ export async function sendButtons(to, bodyText, buttons) {
     type: "interactive",
     interactive: {
       type: "button",
-      body: { text: bodyText },
+      body: { text: formatRtl(bodyText) },
       action: {
         buttons: buttons.map((btn, i) => ({
           type: "reply",
-          reply: { id: btn.id || `btn_${i}`, title: btn.title.slice(0, 20) },
+          reply: {
+            id: btn.id || `btn_${i}`,
+            title: removeDisplayDashes(btn.title).slice(0, 20),
+          },
         })),
       },
     },
@@ -71,6 +130,7 @@ export async function sendButtons(to, bodyText, buttons) {
 
   const res = await fetch(url, {
     method: "POST",
+    signal: globalThis.AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
@@ -100,16 +160,27 @@ export async function sendList(to, bodyText, buttonText, sections) {
     type: "interactive",
     interactive: {
       type: "list",
-      body: { text: bodyText },
+      body: { text: formatRtl(bodyText) },
       action: {
-        button: buttonText.slice(0, 20),
-        sections,
+        button: removeDisplayDashes(buttonText).slice(0, 20),
+        sections: sections.map((section) => ({
+          ...section,
+          title: removeDisplayDashes(section.title),
+          rows: section.rows.map((row) => ({
+            ...row,
+            title: removeDisplayDashes(row.title),
+            description: row.description
+              ? removeDisplayDashes(row.description)
+              : undefined,
+          })),
+        })),
       },
     },
   };
 
   const res = await fetch(url, {
     method: "POST",
+    signal: globalThis.AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
@@ -135,6 +206,7 @@ export async function markAsRead(messageId) {
 
   await fetch(url, {
     method: "POST",
+    signal: globalThis.AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",

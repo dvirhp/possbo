@@ -33,7 +33,7 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: |
           echo "## npm audit - ${{ matrix.directory }}" >> $GITHUB_STEP_SUMMARY
-          npm audit --omit=dev 2>&1 | tee audit-output.txt || true
+          npm audit --omit=dev --audit-level=high 2>&1 | tee audit-output.txt
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat audit-output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY

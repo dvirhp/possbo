@@ -21,6 +21,7 @@ import { verifyTurnstile } from "../utils/turnstile.js";
 import {
   setRefreshCookie,
   formatUserResponse,
+  ensureStoredProfileImage,
   normalizeEmail,
 } from "../utils/auth-service.js";
 
@@ -464,7 +465,7 @@ router.post("/refresh", async (req, res) => {
     }
 
     // Verify token matches what's stored in DB
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { id: payload.userId },
     });
     if (!user || !user.refreshToken) {
@@ -481,6 +482,8 @@ router.post("/refresh", async (req, res) => {
       log.warn("Refresh token reuse detected", { userId: user.id, ip: req.ip });
       return res.status(401).json({ error: "Token reuse detected" });
     }
+
+    user = await ensureStoredProfileImage(user);
 
     // Rotate: issue new tokens
     const newAccessToken = generateAccessToken(user.id);

@@ -87,10 +87,17 @@ export function loginWithGithub(mode = 'login') {
     const url = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=user:email&state=${encodeURIComponent(state)}`
     
     const popup = window.open(url, 'github-oauth', 'width=600,height=700,left=200,top=100')
+    if (!popup) {
+      reject(new Error('GitHub popup blocked'))
+      return
+    }
+
+    let timer
     
     const handleMessage = async (event) => {
       if (event.origin !== window.location.origin) return
       if (event.data?.type !== 'github-oauth-callback') return
+      clearInterval(timer)
       window.removeEventListener('message', handleMessage)
       
       try {
@@ -107,8 +114,8 @@ export function loginWithGithub(mode = 'login') {
     window.addEventListener('message', handleMessage)
     
     // Fallback if popup closes
-    const timer = setInterval(() => {
-      if (popup?.closed) {
+    timer = setInterval(() => {
+      if (popup.closed) {
         clearInterval(timer)
         window.removeEventListener('message', handleMessage)
         reject(new Error('GitHub login cancelled'))
@@ -125,10 +132,17 @@ export function loginWithLinkedin(mode = 'login') {
     const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${LINKEDIN_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=openid%20profile%20email&state=${encodeURIComponent(state)}`
     
     const popup = window.open(url, 'linkedin-oauth', 'width=600,height=700,left=200,top=100')
+    if (!popup) {
+      reject(new Error('LinkedIn popup blocked'))
+      return
+    }
+
+    let timer
     
     const handleMessage = async (event) => {
       if (event.origin !== window.location.origin) return
       if (event.data?.type !== 'linkedin-oauth-callback') return
+      clearInterval(timer)
       window.removeEventListener('message', handleMessage)
       
       try {
@@ -144,8 +158,8 @@ export function loginWithLinkedin(mode = 'login') {
     
     window.addEventListener('message', handleMessage)
     
-    const timer = setInterval(() => {
-      if (popup?.closed) {
+    timer = setInterval(() => {
+      if (popup.closed) {
         clearInterval(timer)
         window.removeEventListener('message', handleMessage)
         reject(new Error('LinkedIn login cancelled'))
@@ -162,10 +176,17 @@ export function loginWithApple(mode = 'login') {
     const url = `https://appleid.apple.com/auth/authorize?client_id=${APPLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code%20id_token&scope=name%20email&response_mode=fragment&state=${encodeURIComponent(state)}`
 
     const popup = window.open(url, 'apple-oauth', 'width=600,height=700,left=200,top=100')
+    if (!popup) {
+      reject(new Error('Apple popup blocked'))
+      return
+    }
+
+    let timer
 
     const handleMessage = (event) => {
       if (event.origin !== window.location.origin) return
       if (event.data?.type !== 'apple-oauth-callback') return
+      clearInterval(timer)
       window.removeEventListener('message', handleMessage)
 
       http.post('/api/oauth/apple', {
@@ -177,8 +198,8 @@ export function loginWithApple(mode = 'login') {
 
     window.addEventListener('message', handleMessage)
 
-    const timer = setInterval(() => {
-      if (popup?.closed) {
+    timer = setInterval(() => {
+      if (popup.closed) {
         clearInterval(timer)
         window.removeEventListener('message', handleMessage)
         reject(new Error('Apple login cancelled'))
