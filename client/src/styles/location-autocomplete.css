@@ -1,5 +1,6 @@
 .loc-autocomplete {
   position: relative;
+  z-index: 120;
   margin: 8px 16px;
 }
 
@@ -80,7 +81,7 @@
   overflow-y: auto;
   list-style: none;
   padding: 8px 0;
-  z-index: 100;
+  z-index: 2000;
   box-shadow: var(--shadow-md);
 }
 

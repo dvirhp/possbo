@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
 import { invalidateDashboardCache } from "./analytics.js";
 import { createLogger } from "../utils/logger.js";
+import { dispatchPublicationNotification } from "../utils/notification-service.js";
 import {
   sendText,
   sendImage,
@@ -61,12 +62,32 @@ const MAIN_MENU_INPUTS = new Set([
   "cancel",
 ]);
 
+const CAMPAIGN_EXIT_CONFIRM_STEPS = new Set([
+  "CAMP_PREVIEW",
+  "CAMP_PLATFORM",
+  "CAMP_FB_ALSO_GROUPS",
+  "CAMP_GROUPS",
+  "CAMP_IG_TYPES",
+  "CAMP_WA_SEARCH",
+  "CAMP_WA_TARGETS",
+  "CAMP_MORE_PLATFORMS",
+  "CAMP_SCHEDULE",
+  "CAMP_DATE",
+  "CAMP_TIME",
+  "CAMP_RECURRING_DAYS",
+  "CAMP_RECURRING_TIME",
+  "CAMP_RECURRING_START",
+  "CAMP_RECURRING_END",
+  "TARGET_SELECTOR_WAIT",
+]);
+
 async function interactiveMenu(phone, text, options) {
   const currentStep = getConversation(phone)?.step;
   const menuOptions = [...options];
   if (
     getAuthenticatedUser(phone) &&
     currentStep !== "MAIN_MENU" &&
+    currentStep !== "MAIN_MENU_CONFIRM" &&
     !menuOptions.some((option) => option.id === "main_menu")
   ) {
     menuOptions.push({ id: "main_menu", title: "תפריט ראשי" });
@@ -74,6 +95,7 @@ async function interactiveMenu(phone, text, options) {
 
   setConversation(phone, {
     menuOptions: menuOptions.map((option) => option.id),
+    menuOptionItems: menuOptions.map((option) => ({ ...option })),
     menuOptionLabels: Object.fromEntries(
       menuOptions.map((option) => [
         normalizeMenuText(option.title),
@@ -319,6 +341,30 @@ async function route(phone, input) {
   }
 
   if (userId && MAIN_MENU_INPUTS.has(input)) {
+    const currentStep = conv?.step || "MAIN_MENU";
+    if (
+      CAMPAIGN_EXIT_CONFIRM_STEPS.has(currentStep) &&
+      conv?.draft &&
+      currentStep !== "MAIN_MENU_CONFIRM"
+    ) {
+      const returnMenuItems = (conv.menuOptionItems || []).filter(
+        (option) => option.id !== "main_menu",
+      );
+      setConversation(phone, {
+        step: "MAIN_MENU_CONFIRM",
+        returnStep: currentStep,
+        returnMenuItems,
+      });
+      await interactiveMenu(
+        phone,
+        "הקמפיין עדיין לא נשמר. חזרה לתפריט הראשי תמחק את ההתקדמות הנוכחית. האם אתה בטוח?",
+        [
+          { id: "main_menu_confirm_exit", title: "כן, חזור לתפריט" },
+          { id: "main_menu_keep_editing", title: "לא, המשך בקמפיין" },
+        ],
+      );
+      return;
+    }
     setConversation(phone, { step: "MAIN_MENU", draft: undefined });
     invalidateDashboardCache(userId);
     await mainMenu(phone);
@@ -544,6 +590,50 @@ async function mainMenu(phone) {
 // STEP HANDLERS
 // ═══════════════════════════════════════════════════════════════════════════════
 const steps = {
+  MAIN_MENU_CONFIRM: async (phone, userId, input, conv) => {
+    if (input === "main_menu_confirm_exit") {
+      setConversation(phone, {
+        step: "MAIN_MENU",
+        draft: undefined,
+        returnStep: undefined,
+        returnMenuItems: undefined,
+      });
+      invalidateDashboardCache(userId);
+      await mainMenu(phone);
+      return;
+    }
+    if (input === "main_menu_keep_editing") {
+      const returnStep = conv?.returnStep || "CAMP_PREVIEW";
+      const returnMenuItems = conv?.returnMenuItems || [];
+      setConversation(phone, {
+        step: returnStep,
+        returnStep: undefined,
+        returnMenuItems: undefined,
+      });
+      if (returnMenuItems.length > 0) {
+        await interactiveMenu(
+          phone,
+          "ממשיכים מאותה נקודה. ההתקדמות בקמפיין נשמרה בשיחה.",
+          returnMenuItems,
+        );
+      } else {
+        await sendText(
+          phone,
+          "ממשיכים מאותה נקודה. שלח את הפרט שהתבקשת להזין כדי להמשיך.",
+        );
+      }
+      return;
+    }
+    await interactiveMenu(
+      phone,
+      "הקמפיין עדיין לא נשמר. האם לחזור לתפריט הראשי ולמחוק את ההתקדמות?",
+      [
+        { id: "main_menu_confirm_exit", title: "כן, חזור לתפריט" },
+        { id: "main_menu_keep_editing", title: "לא, המשך בקמפיין" },
+      ],
+    );
+  },
+
   MAIN_MENU: async (phone, userId, input) => {
     if (
       input === "1" ||
@@ -2277,7 +2367,7 @@ async function openExternalTargetSelector(
   const platformName = platform === "facebook" ? "Facebook" : "WhatsApp";
   await sendText(
     phone,
-    `בחירת יעדי ${platformName} נפתחת במסך מאובטח עם חיפוש ובחירה מרובה.\n\nפתח את הקישור:\n${publicBase}/bot-targets/${token}\n\nהקישור תקף ל-30 דקות ולשימוש אחד בלבד. לאחר הלחיצה על שמירה אמשיך איתך כאן אוטומטית.`,
+    `בחירת יעדי ${platformName} נפתחת במסך מאובטח עם חיפוש ובחירה מרובה.\n\nפתח את הקישור:\n${publicBase}/bot-targets/${token}\n\nאם נפתח תחילה מסך אזהרה של Pinggy, לחץ על Enter site (כניסה לאתר) כדי להמשיך למסך הבחירה.\n\nהקישור תקף ל-30 דקות ולשימוש אחד בלבד. לאחר בחירת היעדים חשוב ללחוץ על שמירה, ואז אמשיך איתך כאן אוטומטית.`,
   );
   await interactiveMenu(phone, "אם הקישור פג, אפשר ליצור קישור חדש:", [
     { id: "selector_new_link", title: "צור קישור חדש" },
@@ -2291,20 +2381,52 @@ async function buildExternalTargetSelection(session) {
   }
   const draft = conv.draft || {};
   if (session.platform === "facebook") {
-    const memberships = await prisma.userGroup.findMany({
-      where: { userId: session.userId },
-      include: {
-        group: {
-          select: {
-            id: true,
-            externalGroupId: true,
-            name: true,
-            memberCount: true,
+    const [savedGroups, memberships] = await Promise.all([
+      prisma.facebookGroup.findMany({
+        where: { userId: session.userId },
+        select: {
+          groupId: true,
+          groupName: true,
+          memberCount: true,
+        },
+        orderBy: { groupName: "asc" },
+      }),
+      prisma.userGroup.findMany({
+        where: { userId: session.userId },
+        include: {
+          group: {
+            select: {
+              id: true,
+              externalGroupId: true,
+              name: true,
+              memberCount: true,
+            },
           },
         },
-      },
-      orderBy: { group: { name: "asc" } },
-    });
+        orderBy: { group: { name: "asc" } },
+      }),
+    ]);
+    const groupsById = new Map();
+    for (const group of savedGroups) {
+      groupsById.set(group.groupId, {
+        id: group.groupId,
+        name: group.groupName,
+        memberCount: group.memberCount,
+      });
+    }
+    for (const { group } of memberships) {
+      const id = group.externalGroupId || group.id;
+      if (!groupsById.has(id)) {
+        groupsById.set(id, {
+          id,
+          name: group.name,
+          memberCount: group.memberCount,
+        });
+      }
+    }
+    const facebookGroups = [...groupsById.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, "he"),
+    );
     const items = [
       {
         id: "profile",
@@ -2312,8 +2434,8 @@ async function buildExternalTargetSelection(session) {
         type: "profile",
         description: "פרסום בפרופיל Facebook האישי",
       },
-      ...memberships.map(({ group }) => ({
-        id: `group:${group.externalGroupId || group.id}`,
+      ...facebookGroups.map((group) => ({
+        id: `group:${group.id}`,
         name: group.name,
         type: "group",
         description: group.memberCount
@@ -3375,6 +3497,20 @@ async function createCampaign(phone, userId) {
     // includes the new campaign immediately.
     invalidateDashboardCache(userId);
     setConversation(phone, { step: "MAIN_MENU", draft: undefined });
+
+    if (draft.scheduleMode !== "now" && jobCount > 0) {
+      await dispatchPublicationNotification({
+        userId,
+        event: "schedule",
+        postTitle: post.title || post.content?.slice(0, 80),
+        scheduledAt,
+      }).catch((notificationError) => {
+        log.error("Bot schedule notification failed", notificationError, {
+          userId,
+          postId: post.id,
+        });
+      });
+    }
 
     const platforms = [];
     if (draft.publishToProfile) platforms.push("פרופיל");

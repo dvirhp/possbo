@@ -13,6 +13,7 @@ import {
   resolveUploadPath,
 } from "../utils/media-upload.js";
 import { sendInstagramReconnectEmail } from "../utils/mailer.js";
+import { dispatchPublicationNotification } from "../utils/notification-service.js";
 import { createLogger } from "../utils/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -964,6 +965,31 @@ export async function processPublicationJobs() {
           },
         });
 
+        await dispatchPublicationNotification({
+          userId: user.id,
+          event: "success",
+          postTitle: post.title || post.content?.slice(0, 80),
+          targetType: isInstagramJob
+            ? "INSTAGRAM"
+            : isWhatsAppJob
+              ? "WHATSAPP"
+              : isProfileJob
+                ? "PROFILE"
+                : "GROUP",
+          platform: isInstagramJob
+            ? "INSTAGRAM"
+            : isWhatsAppJob
+              ? "WHATSAPP"
+              : "FACEBOOK",
+          target: group?.name || "",
+          scheduledAt: job.scheduledAt,
+        }).catch((notificationError) => {
+          log.error("Success notification failed", notificationError, {
+            jobId: job.id,
+            userId: user.id,
+          });
+        });
+
         succeeded++;
         log.info("Post published successfully", {
           postId: post.id,
@@ -1127,13 +1153,30 @@ export async function processPublicationJobs() {
                 ? `פרסום לאינסטגרם נכשל — בעיה בתמונה: ${errorMsg}`
                 : `הפרסום נכשל אחרי ${newAttempts} ניסיונות: ${errorMsg}`;
 
-          await prisma.notification.create({
-            data: {
+          await dispatchPublicationNotification({
+            userId: user.id,
+            event: "failure",
+            postTitle: post.title || post.content?.slice(0, 80),
+            targetType: isInstagramJob
+              ? "INSTAGRAM"
+              : isWhatsAppJob
+                ? "WHATSAPP"
+                : isProfileJob
+                  ? "PROFILE"
+                  : "GROUP",
+            platform: isInstagramJob
+              ? "INSTAGRAM"
+              : isWhatsAppJob
+                ? "WHATSAPP"
+                : "FACEBOOK",
+            target: group?.name || "",
+            scheduledAt: job.scheduledAt,
+            errorMessage: notificationMsg,
+          }).catch((notificationError) => {
+            log.error("Failure notification failed", notificationError, {
+              jobId: job.id,
               userId: user.id,
-              type: isSessionError ? "SESSION_EXPIRED" : "PUBLICATION_FAILED",
-              title: "פרסום נכשל",
-              message: notificationMsg,
-            },
+            });
           });
 
           if (isInstagramAuthError) {
@@ -1285,8 +1328,24 @@ export async function recoverStaleJobs() {
             publicationJobId: job.id,
             publishedAt: new Date(),
             status: "FAILED",
-            errorMessage: "השרת קרס במהלך הפרסום — הפרסום לא הושלם",
+            errorMessage: "השרת קרס במהלך הפרסום - הפרסום לא הושלם",
           },
+        });
+
+        await dispatchPublicationNotification({
+          userId,
+          event: "failure",
+          postTitle: job.postGroup.post?.title || "",
+          targetType: job.targetType || "GROUP",
+          platform: job.platform || "FACEBOOK",
+          target: job.postGroup.group?.name || "",
+          scheduledAt: job.scheduledAt,
+          errorMessage: "הפרסום לא הושלם לאחר התאוששות מתקלה בשרת",
+        }).catch((notificationError) => {
+          log.error("Stale job notification failed", notificationError, {
+            jobId: job.id,
+            userId,
+          });
         });
       }
 

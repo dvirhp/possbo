@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 import { groupsService } from '../services/groupsService'
 import { getAccessToken } from '../services/http'
-import { Users, Send, Clock3, CheckCircle2, Heart, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Eye, ThumbsUp, MessageCircle } from 'lucide-react'
+import { Users, Send, Clock3, CheckCircle2, Heart, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Eye, ThumbsUp, MessageCircle, RefreshCw } from 'lucide-react'
 import PostsDataTable from './PostsDataTable'
 import '../styles/posts-data-table.css'
 
@@ -652,6 +652,16 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
   // Facebook and Instagram are ranked by the selected engagement metric.
   const [topPostsSort, setTopPostsSort] = useState('likes')
   const [topPostsPlatform, setTopPostsPlatform] = useState('all')
+  const [topPostsSyncing, setTopPostsSyncing] = useState(false)
+  const handleTopPostsSync = async () => {
+    if (topPostsSyncing) return
+    setTopPostsSyncing(true)
+    try {
+      await onUpdate?.()
+    } finally {
+      window.setTimeout(() => setTopPostsSyncing(false), 450)
+    }
+  }
   const topPosts = useMemo(() => {
     const postsData = stats?.topPosts || []
     if (!postsData.length) return []
@@ -793,7 +803,19 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
           {/* Top Performing Posts */}
           <div className="ov2-top-posts-card">
             <div className="ov2-top-posts-header">
-              <h3>פוסטים מובילים</h3>
+              <div className="ov2-top-posts-title">
+                <h3>פוסטים מובילים</h3>
+                <button
+                  type="button"
+                  className="ov2-top-posts-sync"
+                  onClick={handleTopPostsSync}
+                  disabled={topPostsSyncing}
+                  aria-label="סנכרן"
+                  data-tooltip="סנכרן"
+                >
+                  <RefreshCw size={15} className={topPostsSyncing ? 'spin' : ''} />
+                </button>
+              </div>
               <div className="ov2-top-posts-toggle">
                 <button className={`ov2-toggle-btn ${topPostsSort === 'likes' ? 'active' : ''}`} disabled={topPostsPlatform === 'whatsapp'} onClick={() => setTopPostsSort('likes')}>👍 לייקים</button>
                 <button className={`ov2-toggle-btn ${topPostsSort === 'comments' ? 'active' : ''}`} disabled={topPostsPlatform === 'whatsapp'} onClick={() => setTopPostsSort('comments')}>💬 תגובות</button>

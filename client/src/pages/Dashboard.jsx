@@ -40,6 +40,18 @@ function resolveImg(url) {
   return url
 }
 
+const FacebookLogo = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.098 4.388 23.093 10.125 24v-8.385H7.078v-3.542h3.047V9.37c0-3.02 1.792-4.688 4.533-4.688 1.312 0 2.686.236 2.686.236v2.965H15.83c-1.491 0-1.956.93-1.956 1.884v2.306h3.328l-.532 3.542h-2.796V24C19.612 23.093 24 18.098 24 12.073Z"/></svg>
+)
+
+const InstagramLogo = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919C8.417 2.175 8.796 2.163 12 2.163ZM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24s3.668-.014 4.948-.072c4.354-.2 6.782-2.618 6.979-6.98C23.986 15.668 24 15.259 24 12s-.014-3.667-.072-4.947C23.732 2.699 21.311.273 16.949.073 15.668.014 15.259 0 12 0Zm0 5.838A6.162 6.162 0 1 0 12 18.162 6.162 6.162 0 0 0 12 5.838ZM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881Z"/></svg>
+)
+
+const WhatsAppLogo = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-2.096-1.046-3.47-3.165-3.574-3.31-.173-.297-.018-.458.13-.606.371-.369.554-.654.744-1.052.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-1.77-.077-2.58 1.344-2.58 2.762 0 2.558 2.15 5.032 2.448 5.43 2.108 2.795 5.23 4.635 8.435 4.635 2.022 0 3.494-1.027 3.99-2.441.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347ZM12.05 21.785a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 5.45 0 9.886 4.438 9.883 9.892-.003 5.45-4.437 9.884-9.891 9.884ZM12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654A11.882 11.882 0 0 0 12.045 23.794c6.554 0 11.89-5.335 11.893-11.893C23.94 5.346 18.606 0 12.05 0Z"/></svg>
+)
+
 function formatMetricsTimestamp(lastSyncedAt, publishedAt) {
   const value = lastSyncedAt || publishedAt
   if (!value) return 'טרם סונכרן'
@@ -174,7 +186,7 @@ export default function Dashboard() {
   const {
     user, setUser, authChecked, logout, ensureFresh, forceRefresh,
     campaigns, groups, jobs, posts, stats, dataReady,
-    setStats, updateGroups, refreshing,
+    setStats, updateGroups, updateCampaignEverywhere, refreshing,
   } = useAppData()
 
   const activeTab = searchParams.get('tab') || 'overview'
@@ -224,6 +236,10 @@ export default function Dashboard() {
   const [sheetGroupSearch, setSheetGroupSearch] = useState('')
   const [sheetTemplateSearch, setSheetTemplateSearch] = useState('')
   const [bootstrapping, setBootstrapping] = useState(false)
+  const [showConnectionsModal, setShowConnectionsModal] = useState(false)
+  const [connectingPlatform, setConnectingPlatform] = useState(null)
+  const [quickWhatsappQr, setQuickWhatsappQr] = useState(null)
+  const quickWhatsappPollRef = useRef(null)
   const [dashDateRange, setDashDateRange] = useState({ from: '', to: '' })
   const [showDashDatePicker, setShowDashDatePicker] = useState(false)
   const groupFilterRef = useRef(null)
@@ -311,6 +327,92 @@ export default function Dashboard() {
       }
     }
   }
+
+  const connectFacebook = async () => {
+    setShowConnectionsModal(false)
+    setConnectingPlatform('facebook')
+    try {
+      await handleBootstrap()
+    } finally {
+      setConnectingPlatform(null)
+    }
+  }
+
+  const connectInstagram = async () => {
+    setConnectingPlatform('instagram')
+    try {
+      const res = await authAPI.getInstagramAuthUrl()
+      if (!res.data?.authUrl) throw new Error('Missing Instagram authorization URL')
+      const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+      if (!popup) throw new Error('POPUP_BLOCKED')
+      const handleMessage = (event) => {
+        if (event.data?.type !== 'instagram-oauth-callback') return
+        window.removeEventListener('message', handleMessage)
+        setConnectingPlatform(null)
+        if (event.data.success) {
+          setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
+        }
+      }
+      window.addEventListener('message', handleMessage)
+    } catch (err) {
+      setConnectingPlatform(null)
+      logClientError('quick_instagram_connect_failed', err, { source: 'Dashboard' })
+      window.alert(err.message === 'POPUP_BLOCKED' ? 'הדפדפן חסם את חלון החיבור. יש לאפשר חלונות קופצים ולנסות שוב.' : 'לא ניתן לפתוח את חיבור Instagram')
+    }
+  }
+
+  const connectWhatsapp = async () => {
+    setConnectingPlatform('whatsapp')
+    try {
+      const res = await authAPI.connectWhatsapp()
+      if (!res.data?.qrDataUrl) throw new Error('Missing WhatsApp QR')
+      setShowConnectionsModal(false)
+      setQuickWhatsappQr(res.data.qrDataUrl)
+      if (quickWhatsappPollRef.current) clearInterval(quickWhatsappPollRef.current)
+      quickWhatsappPollRef.current = setInterval(async () => {
+        try {
+          const status = await authAPI.getWhatsappStatus()
+          if (status.data?.connected) {
+            clearInterval(quickWhatsappPollRef.current)
+            quickWhatsappPollRef.current = null
+            setQuickWhatsappQr(null)
+            setConnectingPlatform(null)
+            setUser(prev => ({ ...prev, whatsappSessionConnected: true, whatsappSessionPhone: status.data.phone || null }))
+          } else if (status.data?.qrDataUrl) {
+            setQuickWhatsappQr(status.data.qrDataUrl)
+          }
+        } catch { /* keep polling while the QR is visible */ }
+      }, 3000)
+    } catch (err) {
+      setConnectingPlatform(null)
+      logClientError('quick_whatsapp_connect_failed', err, { source: 'Dashboard' })
+      window.alert('לא ניתן לפתוח את חיבור WhatsApp')
+    }
+  }
+
+  useEffect(() => () => {
+    if (quickWhatsappPollRef.current) clearInterval(quickWhatsappPollRef.current)
+  }, [])
+
+  const openAccountConnections = () => {
+    setShowConnectionsModal(false)
+    setActiveTab('account')
+  }
+
+  const connections = [
+    { id: 'facebook', name: 'Facebook', connected: Boolean(user?.fbSessionValid), icon: <FacebookLogo />, action: connectFacebook },
+    { id: 'instagram', name: 'Instagram', connected: Boolean(user?.instagramConnected), icon: <InstagramLogo />, action: connectInstagram },
+    { id: 'whatsapp', name: 'WhatsApp', connected: Boolean(user?.whatsappSessionConnected), icon: <WhatsAppLogo />, action: connectWhatsapp },
+  ]
+  const missingConnections = connections.filter(connection => !connection.connected)
+
+  useEffect(() => {
+    if (!dataReady || refreshing || missingConnections.length < 2) return
+    const key = `possbo-connections-prompt-${user?.id || 'user'}`
+    if (sessionStorage.getItem(key)) return
+    sessionStorage.setItem(key, '1')
+    setShowConnectionsModal(true)
+  }, [dataReady, refreshing, missingConnections.length, user?.id])
 
   const handleRefreshGroups = async () => {
     setRefreshingGroups(true)
@@ -605,13 +707,95 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
-              {/* Facebook session banner — only show after data is loaded (avoids flash from stale cache) */}
-              {user && !user.fbSessionValid && dataReady && !refreshing && (
+              {/* Connection banner — a direct action for one missing account, a hub for several */}
+              {user && missingConnections.length > 0 && dataReady && !refreshing && (
                 <div className="session-banner">
-                  <span>⚠️ חשבון הפייסבוק לא מחובר, פוסטים מתוזמנים לא יפורסמו</span>
-                  <button className="session-banner-btn" disabled={bootstrapping} onClick={handleBootstrap}>
-                    {bootstrapping ? '⏳ ממתין לחיבור...' : '🔗 חבר עכשיו'}
+                  <span>
+                    ⚠️ {missingConnections.length === 1
+                      ? `חשבון ${missingConnections[0].name} לא מחובר, פרסומים לערוץ זה לא יישלחו`
+                      : `${missingConnections.length} חשבונות עדיין לא מחוברים. חברו אותם כדי לפרסם בכל הערוצים`}
+                  </span>
+                  <button
+                    className="session-banner-btn"
+                    disabled={missingConnections.length === 1 && (
+                      connectingPlatform === missingConnections[0].id ||
+                      (missingConnections[0].id === 'facebook' && bootstrapping)
+                    )}
+                    onClick={() => {
+                      if (missingConnections.length === 1) missingConnections[0].action()
+                      else setShowConnectionsModal(true)
+                    }}
+                  >
+                    {missingConnections.length === 1 && (
+                      connectingPlatform === missingConnections[0].id ||
+                      (missingConnections[0].id === 'facebook' && bootstrapping)
+                    )
+                      ? '⏳ מתחבר...'
+                      : missingConnections.length === 1 ? '🔗 חבר עכשיו' : '🔗 חברו חשבונות'}
                   </button>
+                </div>
+              )}
+
+              {showConnectionsModal && (
+                <div className="connections-modal-backdrop" role="presentation" onMouseDown={() => setShowConnectionsModal(false)}>
+                  <section className="connections-modal" role="dialog" aria-modal="true" aria-labelledby="connections-modal-title" onMouseDown={event => event.stopPropagation()}>
+                    <button className="connections-modal-close" type="button" onClick={() => setShowConnectionsModal(false)} aria-label="סגירה">×</button>
+                    <div className="connections-modal-heading">
+                      <span>🔗</span>
+                      <div>
+                        <h2 id="connections-modal-title">חברו את החשבונות שלכם</h2>
+                        <p>חברו את ערוצי הפרסום כדי שתוכלו ליצור, לתזמן ולפרסם מ־Possbo במקום אחד.</p>
+                      </div>
+                    </div>
+                    <div className="connections-modal-list">
+                      {connections.map(connection => (
+                        <div className={`connections-modal-row connection-${connection.id} ${connection.connected ? 'is-connected' : ''}`} key={connection.id}>
+                          <i>{connection.icon}</i>
+                          <div>
+                            <strong>{connection.name}</strong>
+                            <small>{connection.connected ? 'מחובר ומוכן לפרסום' : 'עדיין לא מחובר'}</small>
+                          </div>
+                          {connection.connected ? (
+                            <span className="connection-ready">✓ מחובר</span>
+                          ) : (
+                            <button type="button" disabled={connectingPlatform === connection.id || (connection.id === 'facebook' && bootstrapping)} onClick={connection.action}>
+                              {connectingPlatform === connection.id || (connection.id === 'facebook' && bootstrapping) ? 'מתחבר...' : 'חבר חשבון'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <footer>
+                      <button type="button" onClick={() => setShowConnectionsModal(false)}>אעשה זאת אחר כך</button>
+                      <small>תוכלו לנהל את החיבורים בכל עת דרך ניהול החשבון.</small>
+                    </footer>
+                  </section>
+                </div>
+              )}
+
+              {quickWhatsappQr && (
+                <div className="connections-modal-backdrop" role="presentation">
+                  <section className="connections-modal quick-wa-modal" role="dialog" aria-modal="true" aria-labelledby="quick-wa-title">
+                    <button
+                      className="connections-modal-close"
+                      type="button"
+                      aria-label="סגירה"
+                      onClick={() => {
+                        setQuickWhatsappQr(null)
+                        setConnectingPlatform(null)
+                        if (quickWhatsappPollRef.current) clearInterval(quickWhatsappPollRef.current)
+                        quickWhatsappPollRef.current = null
+                      }}
+                    >×</button>
+                    <div className="quick-wa-logo"><WhatsAppLogo /></div>
+                    <h2 id="quick-wa-title">חיבור WhatsApp</h2>
+                    <p>פתחו את WhatsApp בטלפון ← הגדרות ← מכשירים מקושרים ← קישור מכשיר</p>
+                    <img src={quickWhatsappQr} alt="קוד QR לחיבור WhatsApp" className="wa-qr-image" />
+                    <div className="wa-connect-waiting">
+                      <div className="wa-connect-spinner" />
+                      <span>ממתינים לסריקה...</span>
+                    </div>
+                  </section>
                 </div>
               )}
 
@@ -1184,7 +1368,7 @@ export default function Dashboard() {
               {/* Panel */}
               <div className="dash-panel">
                 {activeTab === 'overview' && <DashboardOverview campaigns={campaigns} groups={groups} posts={posts} jobs={jobs} stats={stats} user={user} onUpdate={forceRefresh} onViewCampaign={(c, edit) => { setOverviewDetail(c); setOverviewEditMode(!!edit) }} />}
-                {activeTab === 'campaigns' && <CampaignsPanel campaigns={filteredCampaigns} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} posts={filteredPosts} subTab={campaignSubTab} />}
+                {activeTab === 'campaigns' && <CampaignsPanel campaigns={filteredCampaigns} navigate={navigate} groups={groups} onUpdate={forceRefresh} onCampaignUpdated={updateCampaignEverywhere} viewMode={viewMode} posts={filteredPosts} subTab={campaignSubTab} />}
                 {activeTab === 'groups' && <GroupsPanel groups={groups} navigate={navigate} sessionRequired={sessionRequired} onRefresh={handleRefreshGroups} refreshing={refreshingGroups} />}
                 {activeTab === 'posts' && <PostsPanel posts={filteredPosts} navigate={navigate} groups={groups} onUpdate={forceRefresh} viewMode={viewMode} />}
                 {activeTab === 'stats' && (
@@ -1214,6 +1398,7 @@ export default function Dashboard() {
         onSave={async (data, imgs) => {
           try {
             await groupsService.updateCampaign(overviewDetail.id, data, imgs)
+            updateCampaignEverywhere(overviewDetail.id, data)
             setOverviewDetail(null)
             setOverviewEditMode(false)
             forceRefresh()
@@ -1254,7 +1439,7 @@ export default function Dashboard() {
 
 // ─── PANELS ─────────────────────────────────────────────
 
-function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts, subTab }) {
+function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdated, viewMode, posts, subTab }) {
   const [tooltipId, setTooltipId] = useState(null)
   const [menuId, setMenuId] = useState(null)
   const [editCampaign, setEditCampaign] = useState(null)
@@ -1408,6 +1593,11 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
     setLoading(true)
     try {
       await groupsService.updateCampaign(id, data, images)
+      setLocalCampaigns(prev => prev.map(campaign => campaign.id === id
+        ? { ...campaign, ...data, ...(data.text !== undefined ? { content: data.text } : {}) }
+        : campaign
+      ))
+      onCampaignUpdated?.(id, data)
       setEditCampaign(null)
       onUpdate()
     } catch { /* ignore */ }
@@ -1465,6 +1655,16 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
     {!subTabCampaigns.length ? (
       <div className="empty-state">
         <p>{subTab === 'scheduled' ? 'אין קמפיינים מתוזמנים' : subTab === 'published' ? 'אין קמפיינים שפורסמו' : 'אין קמפיינים'}</p>
+        {subTab === 'scheduled' && (
+          <Link to="/create-post" className="empty-btn scheduled-empty-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="2" />
+              <path d="M16 3v4M8 3v4M3 10h18" />
+              <path d="M12 14v3l2 1" />
+            </svg>
+            צור את הקמפיין המתוזמן הראשון שלך
+          </Link>
+        )}
         {subTab === 'all' && <Link to="/create-post" className="empty-btn">+ צור קמפיין ראשון</Link>}
       </div>
     ) :
@@ -1480,6 +1680,9 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
           </span>
           <span className="cl-col cl-col-status cl-sortable" onClick={() => handleCampaignSort('status')}>
             סטטוס {sortKey === 'status' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+          </span>
+          <span className="cl-col cl-col-exposure cl-sortable" onClick={() => handleCampaignSort('exposure')}>
+            חשיפה {sortKey === 'exposure' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
           </span>
           <span className="cl-col cl-col-date cl-sortable" onClick={() => handleCampaignSort('date')}>
             תאריך {sortKey === 'date' && <span className="cl-sort-icon">{sortDir === 'asc' ? '↑' : '↓'}</span>}
@@ -1523,6 +1726,16 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, viewMode, posts
               <div className="cl-col cl-col-status">
                 <span className={`cl-status-badge ${STATUS_CLASSES[campaign.status] || 'badge-active'}`}>
                   {STATUS_LABELS[campaign.status] || campaign.status}
+                </span>
+              </div>
+              {/* Exposure */}
+              <div className="cl-col cl-col-exposure">
+                <span className="cl-exposure-val" title="חשיפה משוערת">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="2.5" />
+                  </svg>
+                  {formatExposure(campaign.totalExposure)}
                 </span>
               </div>
               {/* Date */}
@@ -4548,7 +4761,7 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
 
           <div className="form-group">
             <label>תוכן הפוסט</label>
-            <textarea value={text} onChange={e => setText(e.target.value)} rows={4} required aria-label="תוכן הפוסט" />
+            <textarea value={text} onChange={e => setText(e.target.value)} rows={4} aria-label="תוכן הפוסט" />
           </div>
 
           <div className="form-group">
@@ -4669,7 +4882,7 @@ function EditCampaignModal({ campaign, groups, loading, onSave, onClose }) {
           </div>
 
           <div className="detail-edit-actions">
-            <button type="submit" className="modal-submit-btn" disabled={loading || !text || !selectedGroups.length}>
+            <button type="submit" className="modal-submit-btn" disabled={loading}>
               {loading ? '⏳ מעדכן...' : 'עדכן קמפיין'}
             </button>
             <button type="button" className="modal-cancel-btn" onClick={onClose}>ביטול</button>
@@ -5063,7 +5276,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
             </div>
             <div className="form-group">
               <label>תוכן הפוסט</label>
-              <textarea value={text} onChange={e => setText(e.target.value)} rows={4} required aria-label="תוכן הפוסט" />
+              <textarea value={text} onChange={e => setText(e.target.value)} rows={4} aria-label="תוכן הפוסט" />
             </div>
             <div className="form-group">
               <label>תמונות ({imagePreviews.length}/10)</label>
@@ -5166,7 +5379,7 @@ function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, 
               )}
             </div>
             <div className="detail-edit-actions">
-              <button type="submit" className="modal-submit-btn" disabled={loading || !text || !selectedGroups.length}>
+              <button type="submit" className="modal-submit-btn" disabled={loading}>
                 {loading ? '⏳ מעדכן...' : 'עדכן קמפיין'}
               </button>
               <button type="button" className="modal-cancel-btn" onClick={() => setEditing(false)}>ביטול</button>

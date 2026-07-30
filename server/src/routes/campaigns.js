@@ -5,6 +5,7 @@ import { requireAuth } from "../utils/auth-middleware.js";
 import { triggerImmediateProcess } from "../jobs/index.js";
 import { uploadFields } from "../utils/upload-service.js";
 import { createLogger } from "../utils/logger.js";
+import { dispatchPublicationNotification } from "../utils/notification-service.js";
 
 const router = express.Router();
 const log = createLogger("campaigns");
@@ -815,6 +816,20 @@ router.post(
           where: { id: { in: expiredDrafts.map((draft) => draft.id) }, userId },
         });
       }
+    }
+
+    if (post.status !== "DRAFT" && scheduleMode !== "now" && results.length > 0) {
+      await dispatchPublicationNotification({
+        userId,
+        event: "schedule",
+        postTitle: post.title || post.content?.slice(0, 80),
+        scheduledAt: scheduledAt || recurringScheduledAt,
+      }).catch((notificationError) => {
+        log.error("Schedule notification failed", notificationError, {
+          userId,
+          postId: post.id,
+        });
+      });
     }
 
     res.json({

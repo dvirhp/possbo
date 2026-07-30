@@ -722,6 +722,65 @@
   color: var(--text-primary);
   margin: 0;
 }
+.ov2-top-posts-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.ov2-top-posts-sync {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition: color .18s, border-color .18s, background .18s, transform .18s;
+}
+.ov2-top-posts-sync:hover:not(:disabled) {
+  color: var(--indigo);
+  border-color: color-mix(in srgb, var(--indigo) 45%, var(--border));
+  background: var(--indigo-soft);
+  transform: translateY(-1px);
+}
+.ov2-top-posts-sync:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+.ov2-top-posts-sync::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  translate: -50% 3px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: #fff;
+  background: #171923;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s, translate .16s;
+}
+.ov2-top-posts-sync:hover::after,
+.ov2-top-posts-sync:focus-visible::after {
+  translate: -50% 0;
+  opacity: 1;
+}
+.ov2-top-posts-sync .spin {
+  animation: ov2-sync-spin .8s linear infinite;
+}
+@keyframes ov2-sync-spin {
+  to { transform: rotate(360deg); }
+}
 .ov2-top-posts-toggle {
   display: flex;
   gap: 4px;

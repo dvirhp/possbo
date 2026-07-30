@@ -3,6 +3,7 @@ import prisma from "../config/prisma.js";
 import { encrypt, decrypt } from "../utils/encryption.js";
 import { getPublicMediaUrl } from "../utils/media-upload.js";
 import { createLogger } from "../utils/logger.js";
+import { dispatchPublicationNotification } from "../utils/notification-service.js";
 
 const router = express.Router();
 const log = createLogger("instagram");
@@ -440,6 +441,7 @@ router.post("/disconnect", requireAuth, async (req, res) => {
 
 // ─── POST /instagram/publish — Publish to Instagram ─────────────────
 router.post("/publish", requireAuth, async (req, res) => {
+  const notificationTitle = req.body?.caption?.slice(0, 80) || "";
   try {
     const { postId, publishType, caption, mediaUrl: rawMediaUrl } = req.body;
 
@@ -608,6 +610,16 @@ router.post("/publish", requireAuth, async (req, res) => {
       permalink,
     });
 
+    await dispatchPublicationNotification({
+      userId: req.user.id,
+      event: "success",
+      postTitle: notificationTitle,
+      targetType: "INSTAGRAM",
+      platform: "INSTAGRAM",
+    }).catch((notificationError) => {
+      log.error("Instagram success notification failed", notificationError);
+    });
+
     res.json({
       success: true,
       mediaId: publishData.id,
@@ -616,6 +628,16 @@ router.post("/publish", requireAuth, async (req, res) => {
     });
   } catch (err) {
     log.error("Instagram publish error", err);
+    await dispatchPublicationNotification({
+      userId: req.user.id,
+      event: "failure",
+      postTitle: notificationTitle,
+      targetType: "INSTAGRAM",
+      platform: "INSTAGRAM",
+      errorMessage: err.message || "Unknown error",
+    }).catch((notificationError) => {
+      log.error("Instagram failure notification failed", notificationError);
+    });
     res.status(500).json({ error: "שגיאה בפרסום לאינסטגרם" });
   }
 });

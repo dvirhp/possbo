@@ -281,6 +281,92 @@ export async function sendInstagramReconnectEmail(to, name = "") {
 }
 
 /**
+ * Send a publication lifecycle email (scheduled, succeeded or failed).
+ */
+export async function sendPublicationNotificationEmail({
+  to,
+  name = "",
+  event,
+  postTitle = "",
+  platform = "",
+  target = "",
+  scheduledAt = null,
+  errorMessage = "",
+}) {
+  if (!to) {
+    log.warn("Publication notification email skipped: user has no email", { event });
+    return false;
+  }
+
+  const config = {
+    success: {
+      subject: "הפרסום הושלם בהצלחה",
+      title: "הפרסום שלך עלה בהצלחה",
+      color: "#16a34a",
+      intro: "הפרסום הסתיים בהצלחה וזמין כעת ביעד שבחרת.",
+    },
+    failure: {
+      subject: "הפרסום לא הושלם",
+      title: "נדרשת בדיקה בפרסום",
+      color: "#dc2626",
+      intro: "לא הצלחנו להשלים את הפרסום. אפשר לבדוק את הפרטים ולנסות שוב מתוך Possbo.",
+    },
+    schedule: {
+      subject: "הקמפיין תוזמן בהצלחה",
+      title: "הקמפיין נוסף ליומן",
+      color: "#5b5ce2",
+      intro: "התזמון נשמר והמערכת תנסה לפרסם אותו באופן אוטומטי במועד שנבחר.",
+    },
+  }[event];
+  if (!config) return false;
+
+  const clientUrl = (process.env.CLIENT_URL || "http://localhost:4200").replace(/\/$/, "");
+  const safeName = escapeHtml(name || "שלום");
+  const safeTitle = escapeHtml(postTitle || "קמפיין ללא שם");
+  const safePlatform = escapeHtml(platform || "הערוצים שנבחרו");
+  const safeTarget = escapeHtml(target || "");
+  const safeError = escapeHtml(errorMessage || "");
+  const scheduleLabel = scheduledAt
+    ? new Date(scheduledAt).toLocaleString("he-IL", { dateStyle: "medium", timeStyle: "short" })
+    : "";
+
+  const details = [
+    ["קמפיין", safeTitle],
+    platform ? ["פלטפורמה", safePlatform] : null,
+    target ? ["יעד", safeTarget] : null,
+    scheduleLabel ? ["מועד", escapeHtml(scheduleLabel)] : null,
+    event === "failure" && safeError ? ["סיבה", safeError] : null,
+  ].filter(Boolean);
+
+  const bodyContent = `
+    <h2 class="email-title" style="margin:0 0 10px;font-size:20px;font-weight:700;color:#1a1a2e;text-align:center;">${config.title}</h2>
+    <p class="email-text" style="margin:0 0 20px;font-size:14px;color:#4b5563;line-height:1.8;text-align:center;">${safeName}, ${config.intro}</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+      ${details.map(([label, value]) => `<tr><td style="padding:9px 12px;color:#6b7280;font-size:12px;border-bottom:1px solid #eef0f4;">${label}</td><td style="padding:9px 12px;color:#1a1a2e;font-size:13px;font-weight:600;border-bottom:1px solid #eef0f4;">${value}</td></tr>`).join("")}
+    </table>
+    <table role="presentation" width="100%" style="margin-top:22px;"><tr><td align="center">
+      <a href="${clientUrl}/dashboard?tab=campaigns" style="display:inline-block;padding:11px 22px;border-radius:10px;background:${config.color};color:#fff;text-decoration:none;font-size:13px;font-weight:700;">לצפייה בקמפיינים</a>
+    </td></tr></table>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: `"Possbo" <${process.env.SMTP_USER}>`,
+      to,
+      subject: `${config.subject} - Possbo`,
+      html: buildEmailHtml({ title: `${config.subject} - Possbo`, bodyContent }),
+      text: `${config.subject}\nקמפיין: ${postTitle || "ללא שם"}${platform ? `\nפלטפורמה: ${platform}` : ""}${target ? `\nיעד: ${target}` : ""}${scheduleLabel ? `\nמועד: ${scheduleLabel}` : ""}${errorMessage ? `\nסיבה: ${errorMessage}` : ""}\n${clientUrl}/dashboard?tab=campaigns`,
+      attachments: emailAttachments(),
+    });
+    log.info("Publication notification email sent", { to, event });
+    return true;
+  } catch (error) {
+    log.error("Failed to send publication notification email", error, { to, event });
+    return false;
+  }
+}
+
+/**
  * Generate a 6-digit verification code
  */
 export function generateCode() {

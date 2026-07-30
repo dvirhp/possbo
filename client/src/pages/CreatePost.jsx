@@ -20,6 +20,150 @@ function toDateStr(d) {
   return d.toISOString().split('T')[0]
 }
 
+function getWeekdaysInRange(startDate, endDate) {
+  if (!startDate || !endDate) return []
+  const cursor = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate}T00:00:00`)
+  if (Number.isNaN(cursor.getTime()) || Number.isNaN(end.getTime()) || cursor > end) return []
+  const weekdays = new Set()
+  while (cursor <= end && weekdays.size < 7) {
+    weekdays.add(cursor.getDay())
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return [...weekdays]
+}
+
+const isValidTime24 = (time) => /^([01]\d|2[0-3]):[0-5]\d$/.test(time || '')
+
+function normalizeTime24(value) {
+  const raw = value.trim()
+  if (!raw) return ''
+
+  let hours
+  let minutes
+  if (raw.includes(':')) {
+    const parts = raw.split(':')
+    if (parts.length !== 2 || !parts[0] || parts[1].length > 2) return raw
+    hours = Number(parts[0])
+    minutes = parts[1] === '' ? 0 : Number(parts[1])
+  } else {
+    const digits = raw.replace(/\D/g, '')
+    if (digits.length <= 2) {
+      hours = Number(digits)
+      minutes = 0
+    } else if (digits.length === 3) {
+      hours = Number(digits.slice(0, 1))
+      minutes = Number(digits.slice(1))
+    } else {
+      hours = Number(digits.slice(0, 2))
+      minutes = Number(digits.slice(2, 4))
+    }
+  }
+
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours > 23 || minutes > 59) return raw
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function TimeInput24({ value, onChange, disabled, className = '', ariaLabel = 'שעה בפורמט 24 שעות' }) {
+  const handleChange = (event) => {
+    let next = event.target.value.replace(/[^\d:]/g, '').slice(0, 5)
+    if (!next.includes(':')) {
+      const digits = next.slice(0, 4)
+      next = digits.length > 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits
+    } else {
+      const [hours = '', minutes = ''] = next.split(':')
+      next = `${hours.slice(0, 2)}:${minutes.slice(0, 2)}`
+    }
+    onChange(next)
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      aria-label={ariaLabel}
+      placeholder="HH:MM"
+      dir="ltr"
+      value={value}
+      onChange={handleChange}
+      onBlur={() => onChange(normalizeTime24(value))}
+      disabled={disabled}
+      className={className}
+    />
+  )
+}
+
+function RecurringDaysPicker({ startDate, endDate, selectedDays, dayTimes, onChange }) {
+  const availableDays = useMemo(() => getWeekdaysInRange(startDate, endDate), [startDate, endDate])
+
+  useEffect(() => {
+    if (!startDate || !endDate) return
+    const allowed = new Set(availableDays)
+    const nextDays = selectedDays.filter(day => allowed.has(day))
+    const nextTimes = Object.fromEntries(Object.entries(dayTimes || {}).filter(([day]) => allowed.has(Number(day))))
+    if (nextDays.length !== selectedDays.length || Object.keys(nextTimes).length !== Object.keys(dayTimes || {}).length) {
+      onChange(nextDays, nextTimes)
+    }
+    // The range is the event that requires pruning; onChange is intentionally not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate])
+
+  const toggleDay = (day) => {
+    if (!availableDays.includes(day)) return
+    if (selectedDays.includes(day)) {
+      const nextTimes = { ...dayTimes }
+      delete nextTimes[day]
+      onChange(selectedDays.filter(value => value !== day), nextTimes)
+    } else {
+      onChange([...selectedDays, day], { ...dayTimes, [day]: [''] })
+    }
+  }
+
+  const selectAllAvailable = () => {
+    if (selectedDays.length === availableDays.length && availableDays.every(day => selectedDays.includes(day))) {
+      onChange([], {})
+      return
+    }
+    const nextTimes = { ...dayTimes }
+    availableDays.forEach(day => {
+      if (!nextTimes[day]) nextTimes[day] = ['']
+    })
+    onChange(availableDays, nextTimes)
+  }
+
+  return (
+    <div className="schedule-section">
+      <label className="schedule-section-label">באילו ימים?</label>
+      {startDate && endDate && availableDays.length < 7 && (
+        <div className="schedule-range-notice">
+          הטווח שבחרת קצר מדי לפרסום חוזר בכל ימות השבוע. ניתן לבחור רק את הימים שקיימים בטווח.
+        </div>
+      )}
+      <div className="days-grid">
+        {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map((label, day) => {
+          const unavailable = !startDate || !endDate || !availableDays.includes(day)
+          return (
+            <button
+              key={day}
+              type="button"
+              disabled={unavailable}
+              className={`day-btn ${selectedDays.includes(day) ? 'active' : ''}`}
+              onClick={() => toggleDay(day)}
+            >{label}</button>
+          )
+        })}
+        <button
+          type="button"
+          disabled={!startDate || !endDate || availableDays.length === 0}
+          className={`day-btn day-btn-all ${availableDays.length > 0 && selectedDays.length === availableDays.length ? 'active' : ''}`}
+          onClick={selectAllAvailable}
+        >כל הימים בטווח</button>
+      </div>
+    </div>
+  )
+}
+
 function RecurringDateRange({ startDate, endDate, onStartChange, onEndChange, minDate, initialMonth }) {
   const [open, setOpen] = useState(false)
   const [calMonth, setCalMonth] = useState(() => {
@@ -27,9 +171,6 @@ function RecurringDateRange({ startDate, endDate, onStartChange, onEndChange, mi
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
   const [hoverDate, setHoverDate] = useState(null)
-  const triggerRef = useRef(null)
-  const [pickerStyle, setPickerStyle] = useState({})
-
   const year = calMonth.getFullYear()
   const month = calMonth.getMonth()
   const monthName = calMonth.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })
@@ -91,23 +232,13 @@ function RecurringDateRange({ startDate, endDate, onStartChange, onEndChange, mi
   const formatDate = (d) => new Date(d + 'T00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })
 
   const handleOpen = () => {
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect()
-      const spaceBelow = window.innerHeight - rect.bottom
-      const pickerHeight = 360
-      if (spaceBelow >= pickerHeight + 8) {
-        setPickerStyle({ top: rect.bottom + 8, left: '50%', transform: 'translateX(-50%)' })
-      } else {
-        setPickerStyle({ bottom: window.innerHeight - rect.top + 8, left: '50%', transform: 'translateX(-50%)' })
-      }
-    }
     setOpen(true)
   }
 
   return (
-    <div className="cp-range-wrap">
+    <div className="cp-range-wrap cp-anchored-date-wrap">
       {/* Trigger button / summary */}
-      <button type="button" className="cp-range-trigger" ref={triggerRef} onClick={handleOpen}>
+      <button type="button" className="cp-range-trigger" onClick={handleOpen}>
         {startDate ? (
           <span className="cp-range-trigger-text">
             📅 {formatDate(startDate)}{endDate ? ` — ${formatDate(endDate)}` : ''}
@@ -121,11 +252,11 @@ function RecurringDateRange({ startDate, endDate, onStartChange, onEndChange, mi
       {open && (
         <>
         <div className="cp-range-backdrop" onClick={() => setOpen(false)} />
-        <div className="cp-range-picker" style={pickerStyle}>
-          <div className="cp-range-nav">
-            <button type="button" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>›</button>
+        <div className="cp-range-picker cp-anchored-date-picker">
+          <div className="cp-range-nav cp-recurring-range-nav">
+            <button type="button" aria-label="החודש הבא" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>‹</button>
             <span>{monthName}</span>
-            <button type="button" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>‹</button>
+            <button type="button" aria-label="החודש הקודם" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>›</button>
           </div>
           <div className="cp-range-grid">
             {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map(d => (
@@ -167,9 +298,6 @@ function SingleDatePicker({ value, onChange, minDate }) {
     const d = value ? new Date(value) : new Date()
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
-  const triggerRef = useRef(null)
-  const [pickerStyle, setPickerStyle] = useState({})
-
   const year = calMonth.getFullYear()
   const month = calMonth.getMonth()
   const monthName = calMonth.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })
@@ -194,24 +322,14 @@ function SingleDatePicker({ value, onChange, minDate }) {
   }
 
   const handleOpen = () => {
-    if (!open && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect()
-      const spaceBelow = window.innerHeight - rect.bottom
-      const pickerHeight = 320
-      if (spaceBelow >= pickerHeight + 8) {
-        setPickerStyle({ top: rect.bottom + 8, left: '50%', transform: 'translateX(-50%)' })
-      } else {
-        setPickerStyle({ bottom: window.innerHeight - rect.top + 8, left: '50%', transform: 'translateX(-50%)' })
-      }
-    }
     setOpen(!open)
   }
 
   const formatDate = (d) => new Date(d + 'T00:00').toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
-    <div className="cp-range-wrap">
-      <button type="button" className="cp-range-trigger" ref={triggerRef} onClick={handleOpen}>
+    <div className="cp-range-wrap cp-single-date-wrap">
+      <button type="button" className="cp-range-trigger" onClick={handleOpen}>
         <span className="cp-range-trigger-text">
           {value ? `📅 ${formatDate(value)}` : '📅 בחר תאריך'}
         </span>
@@ -220,11 +338,11 @@ function SingleDatePicker({ value, onChange, minDate }) {
       {open && (
         <>
         <div className="cp-range-backdrop" onClick={() => setOpen(false)} />
-        <div className="cp-range-picker" style={pickerStyle}>
+        <div className="cp-range-picker cp-single-date-picker">
           <div className="cp-range-nav">
-            <button type="button" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>›</button>
+            <button type="button" aria-label="החודש הבא" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>‹</button>
             <span>{monthName}</span>
-            <button type="button" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>‹</button>
+            <button type="button" aria-label="החודש הקודם" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>›</button>
           </div>
           <div className="cp-range-grid">
             {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map(d => (
@@ -258,6 +376,7 @@ export default function CreatePost() {
   const fromTemplate = location.state?.fromTemplate || null
   const profilePublishDefault = location.state?.publishToProfile || false
   const generatedContent = location.state?.generatedContent || null
+  const createPostDraft = location.state?.createPostDraft || null
 
   // Profile publishing
   const [publishToProfile, setPublishToProfile] = useState(profilePublishDefault)
@@ -270,7 +389,9 @@ export default function CreatePost() {
   const [igTypeCaptions, setIgTypeCaptions] = useState({ FEED: '', STORY: '', REEL: '' }) // per-type captions
   const [reelVideoScope, setReelVideoScope] = useState('campaign') // 'campaign' | 'reel'
   const [previewMode, setPreviewMode] = useState('facebook') // 'facebook' | 'ig-feed' | 'ig-story' | 'ig-reel' | 'whatsapp'
+  const facebookConnected = Boolean(user?.fbSessionValid)
   const instagramConnected = user?.instagramConnected || false
+  const [facebookConnecting, setFacebookConnecting] = useState(false)
 
   // WhatsApp distribution
   const [selectedWaTargets, setSelectedWaTargets] = useState(fromTemplate?.whatsappTargets || []) // array of { id, type: 'group'|'broadcast', name }
@@ -294,6 +415,23 @@ export default function CreatePost() {
     } catch { /* ignore */ }
   }, [setUser])
 
+  const connectFacebook = async () => {
+    setFacebookConnecting(true)
+    try {
+      await groupsService.bootstrapSession()
+      setUser(prev => prev ? { ...prev, fbSessionValid: true } : prev)
+      forceRefresh()
+    } catch (err) {
+      if (err.response?.data?.error === 'FACEBOOK_SESSION_NOT_COMPLETED') {
+        window.alert('החיבור לא הושלם. יש להשלים את הכניסה לפייסבוק בחלון שנפתח.')
+      } else {
+        window.alert(err.userMessage || 'לא הצלחנו לחבר את חשבון הפייסבוק כרגע.')
+      }
+    } finally {
+      setFacebookConnecting(false)
+    }
+  }
+
   // Distribution view tab
   const [distributionTab, setDistributionTab] = useState('facebook')
 
@@ -313,7 +451,7 @@ export default function CreatePost() {
   }, [cachedTemplates])
 
   const [campaignTitle, setCampaignTitle] = useState(fromTemplate?.title || republishData?.title || '')
-  const [postText, setPostText] = useState(fromTemplate?.content || republishData?.content || generatedContent || '')
+  const [postText, setPostText] = useState(fromTemplate?.content || republishData?.content || generatedContent || createPostDraft?.postText || '')
   const [postImages, setPostImages] = useState([])
   const [postImagePreviews, setPostImagePreviews] = useState([])
   const [restoredImageUrls, setRestoredImageUrls] = useState(fromTemplate?.imageUrls || [])
@@ -353,7 +491,6 @@ export default function CreatePost() {
   const [recurringStartDate, setRecurringStartDate] = useState('')
   const [recurringEndDate, setRecurringEndDate] = useState('')
   const [dayTimes, setDayTimes] = useState(fromTemplate?.dayTimes || {}) // { 0: ['10:00'], 2: ['16:00','17:00'] }
-
   // Per-platform scheduling overrides
   const [profileScheduleCustom, setProfileScheduleCustom] = useState(false) // false = now (default)
   const [profileScheduleMode, setProfileScheduleMode] = useState(fromTemplate?.profileScheduleMode || 'now') // 'now' | 'scheduled' | 'recurring'
@@ -1043,6 +1180,135 @@ export default function CreatePost() {
   // Multi-step wizard
   const [currentStep, setCurrentStep] = useState(0)
   const [stepErrors, setStepErrors] = useState({}) // { 0: 'msg', 1: 'msg' }
+  const aiDraftRestoredRef = useRef(false)
+
+  useEffect(() => {
+    if (!createPostDraft || aiDraftRestoredRef.current) return
+    aiDraftRestoredRef.current = true
+
+    setCampaignTitle(createPostDraft.campaignTitle || '')
+    setPostText(generatedContent || createPostDraft.postText || '')
+    setIsAnonymous(Boolean(createPostDraft.isAnonymous))
+    setPostLocation(createPostDraft.postLocation || '')
+    setShowLocationInput(Boolean(createPostDraft.showLocationInput || createPostDraft.postLocation))
+    setRestoredImageUrls(createPostDraft.restoredImageUrls || [])
+    setPostImagePreviews(createPostDraft.postImagePreviews || [])
+    setPublishToProfile(Boolean(createPostDraft.publishToProfile))
+    setSelectedGroups(createPostDraft.selectedGroups || [])
+    setInstagramEnabled(Boolean(createPostDraft.instagramEnabled))
+    setInstagramPublishTypes(createPostDraft.instagramPublishTypes?.length ? createPostDraft.instagramPublishTypes : ['FEED'])
+    setStoryMediaMode(createPostDraft.storyMediaMode || 'first')
+    setStoryPickedIndex(createPostDraft.storyPickedIndex || 0)
+    setStoryCaptions(createPostDraft.storyCaptions || [])
+    setIgTypeCaptions(createPostDraft.igTypeCaptions || { FEED: '', STORY: '', REEL: '' })
+    if (createPostDraft.igTypeSchedules) setIgTypeSchedules(createPostDraft.igTypeSchedules)
+    setSelectedWaTargets(createPostDraft.selectedWaTargets || [])
+    setShowWhatsapp(Boolean(createPostDraft.showWhatsapp))
+    setWhatsappNumber(createPostDraft.whatsappNumber || user?.whatsappNumber || '')
+    setWhatsappMessage(createPostDraft.whatsappMessage || '')
+    setDistributionTab(createPostDraft.distributionTab || 'facebook')
+
+    setScheduleMode(createPostDraft.scheduleMode || 'now')
+    setScheduleDate(createPostDraft.scheduleDate || '')
+    setScheduleTime(createPostDraft.scheduleTime || '')
+    setRecurringDays(createPostDraft.recurringDays || [])
+    setRecurringTime(createPostDraft.recurringTime || '')
+    setDayTimes(createPostDraft.dayTimes || {})
+    setRecurringStartDate(createPostDraft.recurringStartDate || '')
+    setRecurringEndDate(createPostDraft.recurringEndDate || '')
+
+    setProfileScheduleCustom(Boolean(createPostDraft.profileScheduleCustom))
+    setProfileScheduleMode(createPostDraft.profileScheduleMode || 'now')
+    setProfileScheduleDate(createPostDraft.profileScheduleDate || '')
+    setProfileScheduleTime(createPostDraft.profileScheduleTime || '')
+    setProfileRecurringDays(createPostDraft.profileRecurringDays || [])
+    setProfileDayTimes(createPostDraft.profileDayTimes || {})
+    setProfileRecurringStartDate(createPostDraft.profileRecurringStartDate || '')
+    setProfileRecurringEndDate(createPostDraft.profileRecurringEndDate || '')
+
+    setIgScheduleCustom(Boolean(createPostDraft.igScheduleCustom))
+    setIgScheduleMode(createPostDraft.igScheduleMode || 'now')
+    setIgScheduleDate(createPostDraft.igScheduleDate || '')
+    setIgScheduleTime(createPostDraft.igScheduleTime || '')
+    setIgRecurringDays(createPostDraft.igRecurringDays || [])
+    setIgDayTimes(createPostDraft.igDayTimes || {})
+    setIgRecurringStartDate(createPostDraft.igRecurringStartDate || '')
+    setIgRecurringEndDate(createPostDraft.igRecurringEndDate || '')
+
+    setWaScheduleMode(createPostDraft.waScheduleMode || 'now')
+    setWaScheduleDate(createPostDraft.waScheduleDate || '')
+    setWaScheduleTime(createPostDraft.waScheduleTime || '')
+    setWaRecurringDays(createPostDraft.waRecurringDays || [])
+    setWaDayTimes(createPostDraft.waDayTimes || {})
+    setWaRecurringStartDate(createPostDraft.waRecurringStartDate || '')
+    setWaRecurringEndDate(createPostDraft.waRecurringEndDate || '')
+    setScheduleSubTab(createPostDraft.scheduleSubTab || 'groups')
+    setSchedulePlatformTab(createPostDraft.schedulePlatformTab || 'facebook')
+    setFbScheduleSubTab(createPostDraft.fbScheduleSubTab || 'groups')
+    setCurrentStep(Number.isInteger(createPostDraft.currentStep) ? createPostDraft.currentStep : 0)
+  }, [createPostDraft, generatedContent, user?.whatsappNumber])
+
+  const handleOpenAiGenerator = () => {
+    const draft = {
+      campaignTitle,
+      postText,
+      isAnonymous,
+      postLocation,
+      showLocationInput,
+      restoredImageUrls,
+      postImagePreviews,
+      publishToProfile,
+      selectedGroups,
+      instagramEnabled,
+      instagramPublishTypes,
+      storyMediaMode,
+      storyPickedIndex,
+      storyCaptions,
+      igTypeCaptions,
+      igTypeSchedules,
+      selectedWaTargets,
+      showWhatsapp,
+      whatsappNumber,
+      whatsappMessage,
+      distributionTab,
+      scheduleMode,
+      scheduleDate,
+      scheduleTime,
+      recurringDays,
+      recurringTime,
+      dayTimes,
+      recurringStartDate,
+      recurringEndDate,
+      profileScheduleCustom,
+      profileScheduleMode,
+      profileScheduleDate,
+      profileScheduleTime,
+      profileRecurringDays,
+      profileDayTimes,
+      profileRecurringStartDate,
+      profileRecurringEndDate,
+      igScheduleCustom,
+      igScheduleMode,
+      igScheduleDate,
+      igScheduleTime,
+      igRecurringDays,
+      igDayTimes,
+      igRecurringStartDate,
+      igRecurringEndDate,
+      waScheduleMode,
+      waScheduleDate,
+      waScheduleTime,
+      waRecurringDays,
+      waDayTimes,
+      waRecurringStartDate,
+      waRecurringEndDate,
+      scheduleSubTab,
+      schedulePlatformTab,
+      fbScheduleSubTab,
+      currentStep,
+    }
+    navigate('/generate-post', { state: { fromCreatePost: true, createPostDraft: draft } })
+  }
 
   // Clear errors automatically when user fixes the issue
   useEffect(() => {
@@ -1050,20 +1316,15 @@ export default function CreatePost() {
     const newErrors = { ...stepErrors }
     if (newErrors[0] && postText.trim()) { delete newErrors[0] }
     if (newErrors[1]) {
-      const hasTarget = selectedGroups.length > 0 || publishToProfile || instagramEnabled
+      const hasTarget = selectedGroups.length > 0 || publishToProfile || instagramEnabled || whatsappDistEnabled
       const igNeedsMedia = instagramEnabled && postImages.length === 0
       if (hasTarget && !igNeedsMedia) { delete newErrors[1] }
-    }
-    if (newErrors[2]) {
-      if (scheduleMode === 'now') { delete newErrors[2] }
-      else if (scheduleMode === 'scheduled' && scheduleDate && scheduleTime) { delete newErrors[2] }
-      else if (scheduleMode === 'recurring' && recurringDays.length > 0 && recurringDays.every(d => dayTimes[d]?.some(t => t.trim())) && recurringStartDate && recurringEndDate) { delete newErrors[2] }
     }
     if (JSON.stringify(newErrors) !== JSON.stringify(stepErrors)) {
       setStepErrors(newErrors)
       if (Object.keys(newErrors).length === 0) setError(null)
     }
-  }, [postText, selectedGroups, publishToProfile, instagramEnabled, postImages, scheduleMode, scheduleDate, scheduleTime, recurringDays, dayTimes, recurringStartDate, recurringEndDate])
+  }, [postText, selectedGroups, publishToProfile, instagramEnabled, whatsappDistEnabled, postImages, scheduleMode, scheduleDate, scheduleTime, recurringDays, dayTimes, recurringStartDate, recurringEndDate])
 
   const steps = [
     { id: 'content', label: 'תוכן', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> },
@@ -1078,7 +1339,7 @@ export default function CreatePost() {
       if (!postText.trim()) errors[0] = 'יש לכתוב טקסט לפוסט'
     }
     if (step >= 1) {
-      if (selectedGroups.length === 0 && !publishToProfile && !instagramEnabled && !whatsappDistEnabled) errors[1] = 'יש לבחור לפחות קבוצה אחת, פרסום בפרופיל, אינסטגרם או וואטסאפ'
+      if (selectedGroups.length === 0 && !publishToProfile && !instagramEnabled && !whatsappDistEnabled) errors[1] = 'יש לבחור לפחות פלטפורמה אחת: פייסבוק, אינסטגרם או וואטסאפ'
       else if (instagramEnabled && instagramPublishTypes.length === 0) errors[1] = 'יש לבחור לפחות יעד אחד באינסטגרם: פוסט, סטורי או רילס'
       else if (instagramEnabled) {
         const sharedMedia = postImages
@@ -1096,31 +1357,67 @@ export default function CreatePost() {
       }
     }
     if (step >= 2) {
-      if (scheduleMode === 'scheduled') {
-        if (!scheduleDate || !scheduleTime) errors[2] = 'יש לבחור תאריך ושעה'
-        else if (new Date(`${scheduleDate}T${scheduleTime}`) <= new Date()) errors[2] = 'תאריך חייב להיות בעתיד'
+      const scheduleError = (config, label) => {
+        if (config.mode === 'scheduled') {
+          if (!config.date || !isValidTime24(config.time)) return `יש לבחור תאריך ושעה תקינים עבור ${label}`
+          if (new Date(`${config.date}T${config.time}`) <= new Date()) return `התאריך עבור ${label} חייב להיות בעתיד`
+        }
+        if (config.mode === 'recurring') {
+          const days = config.days || []
+          if (!config.startDate || !config.endDate) return `יש לבחור תקופת תזמון עבור ${label}`
+          if (days.length === 0) return `יש לבחור לפחות יום אחד עבור ${label}`
+          const allowedDays = getWeekdaysInRange(config.startDate, config.endDate)
+          if (!days.every(day => allowedDays.includes(day))) return `יש לבחור עבור ${label} רק ימים שקיימים בטווח התאריכים`
+          if (!days.every(day => config.dayTimes?.[day]?.some(isValidTime24))) return `יש לבחור שעה תקינה לכל יום עבור ${label}`
+        }
+        return ''
       }
-      if (scheduleMode === 'recurring') {
-        if (recurringDays.length === 0) errors[2] = 'יש לבחור לפחות יום אחד'
-        else if (!recurringDays.every(d => dayTimes[d]?.some(t => t.trim()))) errors[2] = 'יש לבחור שעה לכל יום שנבחר'
-        else if (!recurringStartDate) errors[2] = 'יש לבחור תאריך התחלה'
-        else if (!recurringEndDate) errors[2] = 'יש לבחור תאריך סיום'
+
+      const schedulesToValidate = []
+      if (selectedGroups.length > 0) {
+        schedulesToValidate.push([{
+          mode: scheduleMode, date: scheduleDate, time: scheduleTime,
+          days: recurringDays, dayTimes, startDate: recurringStartDate, endDate: recurringEndDate
+        }, 'הקבוצות'])
       }
-      if (instagramEnabled) {
+      if (publishToProfile) {
+        schedulesToValidate.push([{
+          mode: profileScheduleMode, date: profileScheduleDate, time: profileScheduleTime,
+          days: profileRecurringDays, dayTimes: profileDayTimes,
+          startDate: profileRecurringStartDate, endDate: profileRecurringEndDate
+        }, 'הפרופיל'])
+      }
+      if (whatsappDistEnabled) {
+        schedulesToValidate.push([{
+          mode: waScheduleMode, date: waScheduleDate, time: waScheduleTime,
+          days: waRecurringDays, dayTimes: waDayTimes,
+          startDate: waRecurringStartDate, endDate: waRecurringEndDate
+        }, 'WhatsApp'])
+      }
+      for (const [config, label] of schedulesToValidate) {
+        const message = scheduleError(config, label)
+        if (message) {
+          errors[2] = message
+          break
+        }
+      }
+
+      if (!errors[2] && instagramEnabled) {
         for (const type of instagramPublishTypes) {
           const typeSchedule = igTypeSchedules[type]
           const label = type === 'FEED' ? 'פוסט Instagram' : type === 'STORY' ? 'סטורי Instagram' : 'רילס Instagram'
-          if (typeSchedule?.mode === 'scheduled' && (!typeSchedule.date || !typeSchedule.time)) {
-            errors[2] = `יש לבחור תאריך ושעה עבור ${label}`
+          const message = scheduleError({
+            mode: typeSchedule?.mode || 'now',
+            date: typeSchedule?.date,
+            time: typeSchedule?.time,
+            days: typeSchedule?.recurringDays,
+            dayTimes: typeSchedule?.dayTimes,
+            startDate: typeSchedule?.startDate,
+            endDate: typeSchedule?.endDate
+          }, label)
+          if (message) {
+            errors[2] = message
             break
-          }
-          if (typeSchedule?.mode === 'recurring') {
-            const days = typeSchedule.recurringDays || []
-            const hasAllTimes = days.length > 0 && days.every(day => typeSchedule.dayTimes?.[day]?.some(time => time.trim()))
-            if (!hasAllTimes || !typeSchedule.startDate || !typeSchedule.endDate) {
-              errors[2] = `יש להשלים ימים, שעות ותקופה עבור ${label}`
-              break
-            }
           }
         }
       }
@@ -1341,7 +1638,7 @@ export default function CreatePost() {
 
           <div className="cp-wizard">
           {/* Restore / Continue / Template buttons */}
-          {!results && currentStep === 0 && (dataReady ? (recentDrafts.length > 0 || recentHistory.length > 0 || templates.length > 0) : true) && (
+          {!results && currentStep === 0 && (
             <div className="cp-restore-bar">
               {!dataReady ? (
                 <>
@@ -1351,27 +1648,21 @@ export default function CreatePost() {
                 </>
               ) : (
                 <>
-                  {recentHistory.length > 0 && (
-                    <button type="button" className={`cp-restore-card ${showRestore === 'history' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'history' ? false : 'history')}>
-                      <span className="cp-restore-card-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></span>
-                      <span className="cp-restore-card-copy"><strong>שחזור מהיסטוריה</strong><small>פתח קמפיין שפורסם בעבר</small></span>
-                      <span className="cp-restore-card-count">{recentHistory.length}</span>
-                    </button>
-                  )}
-                  {templates.length > 0 && (
-                    <button type="button" className={`cp-restore-card ${showRestore === 'templates' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'templates' ? false : 'templates')}>
-                      <span className="cp-restore-card-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
-                      <span className="cp-restore-card-copy"><strong>טעינה מתבנית</strong><small>התחל מתוכן ששמרת</small></span>
-                      <span className="cp-restore-card-count">{templates.length}</span>
-                    </button>
-                  )}
-                  {recentDrafts.length > 0 && (
-                    <button type="button" className={`cp-restore-card ${showRestore === 'drafts' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'drafts' ? false : 'drafts')}>
-                      <span className="cp-restore-card-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6"/></svg></span>
-                      <span className="cp-restore-card-copy"><strong>המשך טיוטה</strong><small>חזור למקום שבו עצרת</small></span>
-                      <span className="cp-restore-card-count">{recentDrafts.length}</span>
-                    </button>
-                  )}
+                  <button type="button" className={`cp-restore-card ${showRestore === 'history' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'history' ? false : 'history')}>
+                    <span className="cp-restore-card-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></span>
+                    <span className="cp-restore-card-copy"><strong>שחזור מהיסטוריה</strong><small>פתח קמפיין שפורסם בעבר</small></span>
+                    <span className="cp-restore-card-count">{recentHistory.length}</span>
+                  </button>
+                  <button type="button" className={`cp-restore-card ${showRestore === 'templates' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'templates' ? false : 'templates')}>
+                    <span className="cp-restore-card-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+                    <span className="cp-restore-card-copy"><strong>טעינה מתבנית</strong><small>התחל מתוכן ששמרת</small></span>
+                    <span className="cp-restore-card-count">{templates.length}</span>
+                  </button>
+                  <button type="button" className={`cp-restore-card ${showRestore === 'drafts' ? 'cp-restore-card-active' : ''}`} onClick={() => setShowRestore(showRestore === 'drafts' ? false : 'drafts')}>
+                    <span className="cp-restore-card-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6"/></svg></span>
+                    <span className="cp-restore-card-copy"><strong>המשך טיוטה</strong><small>חזור למקום שבו עצרת</small></span>
+                    <span className="cp-restore-card-count">{recentDrafts.length}</span>
+                  </button>
                 </>
               )}
             </div>
@@ -1394,6 +1685,9 @@ export default function CreatePost() {
                       </div>
                     </div>
                   ))}
+                  {templates.length === 0 && (
+                    <div className="cp-restore-empty">עוד אין לך תבניות שמורות</div>
+                  )}
                 </div>
               ) : loadingRecent ? (
                 <div className="cp-restore-loading">טוען...</div>
@@ -1418,7 +1712,7 @@ export default function CreatePost() {
                   )}
                   {(showRestore === 'drafts' ? recentDrafts : recentHistory).length === 0 && (
                     <div className="cp-restore-empty">
-                      {showRestore === 'drafts' ? 'אין טיוטות שמורות' : 'אין היסטוריה'}
+                      {showRestore === 'drafts' ? 'עוד לא שמרת טיוטות' : 'עוד אין לך היסטוריית קמפיינים'}
                     </div>
                   )}
                 </div>
@@ -1482,7 +1776,7 @@ export default function CreatePost() {
                   <button
                     type="button"
                     className="cp-ai-generate-btn cp-ai-generate-inline"
-                    onClick={() => navigate('/generate-post', { state: { fromCreatePost: true } })}
+                    onClick={handleOpenAiGenerator}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2L12 3Z"/><path d="m19 14-.8 2.2L16 17l2.2.8L19 20l.8-2.2L22 17l-2.2-.8L19 14Z"/></svg>
                     יצירת תוכן עם AI
@@ -1541,6 +1835,11 @@ export default function CreatePost() {
                               if (res.data.success) {
                                 setWhatsappNumber(res.data.whatsappNumber)
                                 setWhatsappMessage(res.data.whatsappMessage || '')
+                                setUser(prev => prev ? {
+                                  ...prev,
+                                  whatsappNumber: res.data.whatsappNumber,
+                                  whatsappMessage: res.data.whatsappMessage || null,
+                                } : prev)
                                 setShowWhatsapp(true)
                                 setWaLinking(false)
                               }
@@ -1568,6 +1867,9 @@ export default function CreatePost() {
                         <span className="cp-wa-active-status">פעיל</span>
                       </div>
                       <div className="cp-whatsapp-row cp-wa-active-link" dir="ltr">wa.me/{whatsappNumber.replace(/[^0-9]/g, '')}{whatsappMessage ? '?text=...' : ''}</div>
+                      <p className="cp-wa-number-settings-note">
+                        רוצים לערוך את המספר? <Link to="/dashboard?tab=account">גשו להגדרות החשבון</Link>
+                      </p>
                       {whatsappMessage && !waEditingMsg && <div className="cp-wa-msg-preview">{whatsappMessage}</div>}
                       {!waEditingMsg ? (
                         <button type="button" className="cp-wa-edit-btn" onClick={() => setWaEditingMsg(true)}>עריכת הודעה</button>
@@ -1682,6 +1984,26 @@ export default function CreatePost() {
 
                 {/* ─── Facebook section ─── */}
                 {distributionTab === 'facebook' && (
+                !facebookConnected ? (
+                  <div className="cp-platform-panel cp-facebook-card">
+                    <div className="cp-ig-connect-notice">
+                      <div className="cp-ig-notice-icon" style={{ color: '#1877f2' }}>
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12S0 5.446 0 12.073c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073Z"/></svg>
+                      </div>
+                      <h3 className="cp-ig-notice-title">חברו את חשבון הפייסבוק שלכם</h3>
+                      <p className="cp-ig-notice-text">כדי לפרסם בפרופיל ובקבוצות Facebook, יש לחבר תחילה את חשבון הפייסבוק.</p>
+                      <button
+                        type="button"
+                        className="cp-ig-connect-btn"
+                        style={{ background: '#1877f2' }}
+                        disabled={facebookConnecting}
+                        onClick={connectFacebook}
+                      >
+                        {facebookConnecting ? 'מתחבר לפייסבוק...' : 'חבר חשבון Facebook'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                 <div className="cp-facebook-panel">
                 <div className="cp-facebook-panel-heading">
                   <div>
@@ -1801,6 +2123,7 @@ export default function CreatePost() {
                       )}
                     </div>
                 </div>
+                )
                 )}
 
                 {/* ─── Instagram section ─── */}
@@ -2463,8 +2786,10 @@ export default function CreatePost() {
                             if (scheduleMode === 'scheduled') setScheduleTime(time)
                           }}
                           onSelectDay={(dayNum) => {
-                            if (scheduleMode === 'recurring' && !recurringDays.includes(dayNum)) {
+                            const allowedDays = getWeekdaysInRange(recurringStartDate, recurringEndDate)
+                            if (scheduleMode === 'recurring' && allowedDays.includes(dayNum) && !recurringDays.includes(dayNum)) {
                               setRecurringDays(prev => [...prev, dayNum])
+                              setDayTimes(prev => ({ ...prev, [dayNum]: prev[dayNum] || [''] }))
                             }
                           }}
                         />
@@ -2493,10 +2818,9 @@ export default function CreatePost() {
                                   }
                                 }}
                               >
-                                <input
-                                  type="time"
+                                <TimeInput24
                                   value={scheduleTime}
-                                  onChange={(e) => setScheduleTime(e.target.value)}
+                                  onChange={setScheduleTime}
                                   disabled={!scheduleDate}
                                   className={!scheduleDate ? 'disabled-input' : ''}
                                 />
@@ -2525,30 +2849,16 @@ export default function CreatePost() {
                               initialMonth={recurringStartDate ? new Date(recurringStartDate) : new Date()}
                             />
                           </div>
-                          <div className="schedule-section">
-                            <label className="schedule-section-label">באילו ימים?</label>
-                            <div className="days-grid">
-                              {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map((day, i) => (
-                                <button key={i} type="button" className={`day-btn ${recurringDays.includes(i) ? 'active' : ''}`}
-                                  onClick={() => {
-                                    setRecurringDays(prev => {
-                                      if (prev.includes(i)) {
-                                        setDayTimes(dt => { const copy = { ...dt }; delete copy[i]; return copy })
-                                        return prev.filter(d => d !== i)
-                                      } else {
-                                        setDayTimes(dt => ({ ...dt, [i]: [''] }))
-                                        return [...prev, i]
-                                      }
-                                    })
-                                  }}>{day}</button>
-                              ))}
-                              <button type="button" className={`day-btn day-btn-all ${recurringDays.length === 7 ? 'active' : ''}`}
-                                onClick={() => {
-                                  if (recurringDays.length === 7) { setRecurringDays([]); setDayTimes({}) }
-                                  else { setRecurringDays([0,1,2,3,4,5,6]); setDayTimes(dt => { const c = {...dt}; for(let i=0;i<7;i++){if(!c[i])c[i]=['']} return c }) }
-                                }}>כל יום</button>
-                            </div>
-                          </div>
+                          <RecurringDaysPicker
+                            startDate={recurringStartDate}
+                            endDate={recurringEndDate}
+                            selectedDays={recurringDays}
+                            dayTimes={dayTimes}
+                            onChange={(days, times) => {
+                              setRecurringDays(days)
+                              setDayTimes(times)
+                            }}
+                          />
                           {recurringDays.length > 0 && (
                             <div className="schedule-section day-times-section">
                               <label className="schedule-section-label">שעות לכל יום</label>
@@ -2565,7 +2875,7 @@ export default function CreatePost() {
                                       <div className="day-times-slots">
                                         {times.map((time,ti) => (
                                           <div key={ti} className="time-slot">
-                                            <input type="time" value={time} onChange={(e) => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} aria-label={`שעה ${ti + 1} ליום ${dayName}`} />
+                                            <TimeInput24 value={time} onChange={(nextTime) => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=nextTime; return c }) }} ariaLabel={`שעה ${ti + 1} ליום ${dayName}`} />
                                             {times.length > 1 && <button type="button" className="time-remove-btn" onClick={() => { setDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }} aria-label={`הסר שעה ${ti + 1} מיום ${dayName}`}>✕</button>}
                                           </div>
                                         ))}
@@ -2624,10 +2934,9 @@ export default function CreatePost() {
                             </div>
                             <div className="schedule-field schedule-field-time-wrap">
                               <label>שעה</label>
-                              <input
-                                type="time"
+                              <TimeInput24
                                 value={profileScheduleTime}
-                                onChange={(e) => setProfileScheduleTime(e.target.value)}
+                                onChange={setProfileScheduleTime}
                                 disabled={!profileScheduleDate}
                                 className={!profileScheduleDate ? 'disabled-input' : ''}
                               />
@@ -2654,25 +2963,16 @@ export default function CreatePost() {
                               initialMonth={profileRecurringStartDate ? new Date(profileRecurringStartDate) : new Date()}
                             />
                           </div>
-                          <div className="schedule-section">
-                            <label className="schedule-section-label">באילו ימים?</label>
-                            <div className="days-grid">
-                              {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
-                                <button key={i} type="button" className={`day-btn ${profileRecurringDays.includes(i)?'active':''}`}
-                                  onClick={() => {
-                                    setProfileRecurringDays(prev => {
-                                      if(prev.includes(i)){setProfileDayTimes(dt=>{const c={...dt};delete c[i];return c});return prev.filter(d=>d!==i)}
-                                      else{setProfileDayTimes(dt=>({...dt,[i]:['']}));return[...prev,i]}
-                                    })
-                                  }}>{day}</button>
-                              ))}
-                              <button type="button" className={`day-btn day-btn-all ${profileRecurringDays.length===7?'active':''}`}
-                                onClick={() => {
-                                  if(profileRecurringDays.length===7){setProfileRecurringDays([]);setProfileDayTimes({})}
-                                  else{setProfileRecurringDays([0,1,2,3,4,5,6]);setProfileDayTimes(dt=>{const c={...dt};for(let i=0;i<7;i++){if(!c[i])c[i]=['']}return c})}
-                                }}>כל יום</button>
-                            </div>
-                          </div>
+                          <RecurringDaysPicker
+                            startDate={profileRecurringStartDate}
+                            endDate={profileRecurringEndDate}
+                            selectedDays={profileRecurringDays}
+                            dayTimes={profileDayTimes}
+                            onChange={(days, times) => {
+                              setProfileRecurringDays(days)
+                              setProfileDayTimes(times)
+                            }}
+                          />
                           {profileRecurringDays.length > 0 && (
                             <div className="schedule-section day-times-section">
                               <label className="schedule-section-label">שעות לכל יום</label>
@@ -2689,7 +2989,7 @@ export default function CreatePost() {
                                       <div className="day-times-slots">
                                         {times.map((time,ti) => (
                                           <div key={ti} className="time-slot">
-                                            <input type="time" value={time} onChange={(e) => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} aria-label={`שעה ${ti + 1} לפרופיל ביום ${dayName}`} />
+                                            <TimeInput24 value={time} onChange={(nextTime) => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=nextTime; return c }) }} ariaLabel={`שעה ${ti + 1} לפרופיל ביום ${dayName}`} />
                                             {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setProfileDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }} aria-label={`הסר שעה ${ti + 1} מפרופיל ביום ${dayName}`}>✕</button>}
                                           </div>
                                         ))}
@@ -2789,10 +3089,9 @@ export default function CreatePost() {
                             </div>
                             <div className="schedule-field schedule-field-time-wrap">
                               <label>שעה</label>
-                              <input
-                                type="time"
+                              <TimeInput24
                                 value={ts.time}
-                                onChange={(e) => updateTs('time', e.target.value)}
+                                onChange={(nextTime) => updateTs('time', nextTime)}
                                 disabled={!ts.date}
                                 className={!ts.date ? 'disabled-input' : ''}
                               />
@@ -2819,33 +3118,13 @@ export default function CreatePost() {
                               initialMonth={ts.startDate ? new Date(ts.startDate) : new Date()}
                             />
                           </div>
-                          <div className="schedule-section">
-                            <label className="schedule-section-label">באילו ימים?</label>
-                            <div className="days-grid">
-                              {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
-                                <button key={i} type="button" className={`day-btn ${ts.recurringDays.includes(i)?'active':''}`}
-                                  onClick={() => {
-                                    setIgTypeSchedules(prev => {
-                                      const cur = prev[activeIgType]
-                                      const newDays = cur.recurringDays.includes(i) ? cur.recurringDays.filter(d => d !== i) : [...cur.recurringDays, i]
-                                      const newDayTimes = { ...cur.dayTimes }
-                                      if (cur.recurringDays.includes(i)) delete newDayTimes[i]
-                                      else newDayTimes[i] = ['']
-                                      return { ...prev, [activeIgType]: { ...cur, recurringDays: newDays, dayTimes: newDayTimes } }
-                                    })
-                                  }}>{day}</button>
-                              ))}
-                              <button type="button" className={`day-btn day-btn-all ${ts.recurringDays.length===7?'active':''}`}
-                                onClick={() => {
-                                  setIgTypeSchedules(prev => {
-                                    const cur = prev[activeIgType]
-                                    if (cur.recurringDays.length === 7) return { ...prev, [activeIgType]: { ...cur, recurringDays: [], dayTimes: {} } }
-                                    const newDayTimes = { ...cur.dayTimes }; for(let j=0;j<7;j++){if(!newDayTimes[j])newDayTimes[j]=['']}
-                                    return { ...prev, [activeIgType]: { ...cur, recurringDays: [0,1,2,3,4,5,6], dayTimes: newDayTimes } }
-                                  })
-                                }}>כל יום</button>
-                            </div>
-                          </div>
+                          <RecurringDaysPicker
+                            startDate={ts.startDate}
+                            endDate={ts.endDate}
+                            selectedDays={ts.recurringDays}
+                            dayTimes={ts.dayTimes}
+                            onChange={(days, times) => updateTsMulti({ recurringDays: days, dayTimes: times })}
+                          />
                           {ts.recurringDays.length > 0 && (
                             <div className="schedule-section day-times-section">
                               <label className="schedule-section-label">שעות לכל יום</label>
@@ -2862,11 +3141,11 @@ export default function CreatePost() {
                                       <div className="day-times-slots">
                                         {times.map((time,ti) => (
                                           <div key={ti} className="time-slot">
-                                            <input type="time" value={time} aria-label={`שעה ${ti + 1} לאינסטגרם ביום ${dayName}`} onChange={(e) => {
+                                            <TimeInput24 value={time} ariaLabel={`שעה ${ti + 1} לאינסטגרם ביום ${dayName}`} onChange={(nextTime) => {
                                               setIgTypeSchedules(prev => {
                                                 const cur = prev[activeIgType]
                                                 const newDayTimes = { ...cur.dayTimes, [dayIdx]: [...(cur.dayTimes[dayIdx] || [''])] }
-                                                newDayTimes[dayIdx][ti] = e.target.value
+                                                newDayTimes[dayIdx][ti] = nextTime
                                                 return { ...prev, [activeIgType]: { ...cur, dayTimes: newDayTimes } }
                                               })
                                             }} />
@@ -2938,10 +3217,9 @@ export default function CreatePost() {
                             </div>
                             <div className="schedule-field schedule-field-time-wrap">
                               <label>שעה</label>
-                              <input
-                                type="time"
+                              <TimeInput24
                                 value={waScheduleTime}
-                                onChange={(e) => setWaScheduleTime(e.target.value)}
+                                onChange={setWaScheduleTime}
                                 disabled={!waScheduleDate}
                                 className={!waScheduleDate ? 'disabled-input' : ''}
                               />
@@ -2968,25 +3246,16 @@ export default function CreatePost() {
                               initialMonth={waRecurringStartDate ? new Date(waRecurringStartDate) : new Date()}
                             />
                           </div>
-                          <div className="schedule-section">
-                            <label className="schedule-section-label">באילו ימים?</label>
-                            <div className="days-grid">
-                              {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((day,i) => (
-                                <button key={i} type="button" className={`day-btn ${waRecurringDays.includes(i)?'active':''}`}
-                                  onClick={() => {
-                                    setWaRecurringDays(prev => {
-                                      if(prev.includes(i)){setWaDayTimes(dt=>{const c={...dt};delete c[i];return c});return prev.filter(d=>d!==i)}
-                                      else{setWaDayTimes(dt=>({...dt,[i]:['']}));return[...prev,i]}
-                                    })
-                                  }}>{day}</button>
-                              ))}
-                              <button type="button" className={`day-btn day-btn-all ${waRecurringDays.length===7?'active':''}`}
-                                onClick={() => {
-                                  if(waRecurringDays.length===7){setWaRecurringDays([]);setWaDayTimes({})}
-                                  else{setWaRecurringDays([0,1,2,3,4,5,6]);setWaDayTimes(dt=>{const c={...dt};for(let i=0;i<7;i++){if(!c[i])c[i]=['']}return c})}
-                                }}>כל יום</button>
-                            </div>
-                          </div>
+                          <RecurringDaysPicker
+                            startDate={waRecurringStartDate}
+                            endDate={waRecurringEndDate}
+                            selectedDays={waRecurringDays}
+                            dayTimes={waDayTimes}
+                            onChange={(days, times) => {
+                              setWaRecurringDays(days)
+                              setWaDayTimes(times)
+                            }}
+                          />
                           {waRecurringDays.length > 0 && (
                             <div className="schedule-section day-times-section">
                               <label className="schedule-section-label">שעות לכל יום</label>
@@ -3003,7 +3272,7 @@ export default function CreatePost() {
                                       <div className="day-times-slots">
                                         {times.map((time,ti) => (
                                           <div key={ti} className="time-slot">
-                                            <input type="time" value={time} onChange={(e) => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=e.target.value; return c }) }} aria-label={`שעה ${ti + 1} לוואטסאפ ביום ${dayName}`} />
+                                            <TimeInput24 value={time} onChange={(nextTime) => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=[...(c[dayIdx]||[''])]; c[dayIdx][ti]=nextTime; return c }) }} ariaLabel={`שעה ${ti + 1} לוואטסאפ ביום ${dayName}`} />
                                             {times.length>1 && <button type="button" className="time-remove-btn" onClick={() => { setWaDayTimes(dt => { const c={...dt}; c[dayIdx]=c[dayIdx].filter((_,idx)=>idx!==ti); return c }) }} aria-label={`הסר שעה ${ti + 1} מוואטסאפ ביום ${dayName}`}>✕</button>}
                                           </div>
                                         ))}
@@ -3057,7 +3326,7 @@ export default function CreatePost() {
                     <div className="cp-review-section">
                       <span className="cp-review-label">יעדי פרסום:</span>
                       <div className="cp-review-groups">
-                        {publishToProfile && <span className="cp-review-chip cp-chip-profile">👤 פרופיל אישי</span>}
+                        {publishToProfile && <span className="cp-review-chip cp-chip-profile">👤 פייסבוק: פרופיל אישי</span>}
                         {selectedGroups.length > 0 && <span className="cp-review-chip cp-chip-profile">Facebook · {selectedGroups.length} קבוצות</span>}
                         {selectedGroups.slice(0, 5).map(g => (
                           <span key={g.id} className="cp-review-chip">👥 {g.name}</span>

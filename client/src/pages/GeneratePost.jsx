@@ -433,7 +433,12 @@ export default function GeneratePost() {
       })
       return
     }
-    navigate('/create-post', { state: { generatedContent: generatedPost } })
+    navigate('/create-post', {
+      state: {
+        generatedContent: generatedPost,
+        createPostDraft: location.state?.createPostDraft || null,
+      },
+    })
   }
 
   const canGoStep2 = form.postType && form.topic && form.productOrService && (form.postType !== 'other' || form.otherType)

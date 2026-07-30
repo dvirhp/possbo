@@ -234,7 +234,7 @@ export default function Register() {
           </button>
         </form>
 
-        <div className="auth-divider"><span>התחבר באמצעות</span></div>
+        <div className="auth-divider"><span>הירשם באמצעות</span></div>
 
         <OAuthButtons
           mode="register"

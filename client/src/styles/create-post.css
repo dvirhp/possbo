@@ -871,7 +871,10 @@
 }
 
 .cp-location-wrap {
+  position: relative;
+  z-index: 120;
   padding: 0 20px 16px;
+  overflow: visible;
 }
 
 /* ─── WhatsApp Link ─── */
@@ -917,7 +920,8 @@
 }
 
 .cp-whatsapp-input input::placeholder {
-  color: var(--text-muted, #6b7684);
+  color: color-mix(in srgb, var(--text-muted, #6b7684) 48%, transparent);
+  opacity: 1;
 }
 
 .cp-whatsapp-preview {
@@ -932,6 +936,20 @@
   font-size: 12px;
   color: var(--text-muted, #6b7684);
   margin: 0 0 10px;
+}
+
+.cp-wa-number-settings-note {
+  margin: 7px 2px 2px;
+  color: var(--text-muted, #6b7684);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cp-wa-number-settings-note a {
+  color: #25a85b;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .cp-whatsapp-actions {
@@ -1021,7 +1039,8 @@
 }
 .cp-wa-edit-wrap textarea::placeholder,
 .cp-wa-edit-wrap input[type="text"]::placeholder {
-  color: var(--text-muted, #6b7684);
+  color: color-mix(in srgb, var(--text-muted, #6b7684) 48%, transparent);
+  opacity: 1;
 }
 .cp-wa-edit-label {
   font-size: 12px;
@@ -1488,6 +1507,37 @@
   direction: rtl;
   z-index: 1000;
   box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.day-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  border-color: var(--border, rgba(255,255,255,0.06));
+  color: var(--text-muted, #6b7684);
+}
+
+.schedule-range-notice {
+  margin: 0 0 10px;
+  padding: 9px 11px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 9px;
+  background: rgba(245, 158, 11, 0.09);
+  color: var(--text-secondary, #a3adb8);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.cp-single-date-wrap,
+.cp-anchored-date-wrap {
+  isolation: isolate;
+}
+.cp-single-date-picker,
+.cp-anchored-date-picker {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  bottom: auto;
+  left: auto;
+  transform: none;
+  z-index: 1000;
 }
 .cp-range-nav {
   display: flex;
@@ -2033,6 +2083,9 @@
   color: var(--indigo);
   border-color: var(--indigo);
   background: var(--indigo-soft);
+}
+.cp-recurring-range-nav {
+  direction: ltr;
 }
 
 .cp-facebook-panel {
@@ -4850,6 +4903,19 @@
   overflow: hidden;
   border-radius: 16px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.06);
+}
+
+.cp-content-editor:has(.loc-autocomplete-dropdown),
+.cp-content-editor:focus-within {
+  position: relative;
+  z-index: 120;
+  overflow: visible;
+}
+
+.cp-content-tools:has(.loc-autocomplete-dropdown) {
+  position: relative;
+  z-index: 130;
+  overflow: visible;
 }
 
 .cp-content-editor-heading {
