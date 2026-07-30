@@ -5,6 +5,7 @@ import { requireAuth } from "../utils/auth-middleware.js";
 import { uploadFields } from "../utils/upload-service.js";
 import campaignsRouter from "./campaigns.js";
 import analyticsRouter from "./analytics.js";
+import { dispatchPublicationNotification } from "../utils/notification-service.js";
 
 const router = express.Router();
 
@@ -128,6 +129,14 @@ router.post(
         ...(recurringTime && { recurringTime }),
       },
     });
+
+    await dispatchPublicationNotification({
+      userId: req.user.id,
+      event: "schedule",
+      postTitle: post.title || post.content?.slice(0, 80),
+      platform: "FACEBOOK",
+      scheduledAt: scheduledDate,
+    }).catch(() => {});
 
     res.json({
       success: true,

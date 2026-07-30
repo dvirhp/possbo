@@ -15,6 +15,7 @@ export default function NotificationSettings({ open, onClose }) {
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -30,6 +31,7 @@ export default function NotificationSettings({ open, onClose }) {
   const handleToggle = (key) => {
     setSettings(prev => ({ ...prev, [key]: !prev[key] }))
     setSaved(false)
+    setSaveError(false)
   }
 
   const handleMasterToggle = () => {
@@ -45,20 +47,19 @@ export default function NotificationSettings({ open, onClose }) {
       pushOnSchedule: newEnabled ? prev.pushOnSchedule : false,
     }))
     setSaved(false)
+    setSaveError(false)
   }
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(false)
     try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 5000)
       await authAPI.updateNotificationSettings(settings)
-      clearTimeout(timeout)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch {
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      setSaved(false)
+      setSaveError(true)
     } finally {
       setSaving(false)
     }
@@ -210,7 +211,7 @@ export default function NotificationSettings({ open, onClose }) {
         )}
 
         <button className="notif-save-btn" onClick={handleSave} disabled={saving}>
-          {saving ? 'שומר...' : saved ? '✓ נשמר!' : 'שמור הגדרות'}
+          {saving ? 'שומר...' : saved ? '✓ נשמר!' : saveError ? 'השמירה נכשלה - נסו שוב' : 'שמור הגדרות'}
         </button>
       </div>
     </>

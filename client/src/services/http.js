@@ -71,8 +71,10 @@ function getUserFriendlyMessage(error) {
   }
   const status = error.response.status;
   const serverMsg = error.response.data?.error;
+  const isLoginRequest = error.config?.url?.includes("/auth/login");
   // Known Hebrew server messages — pass through
   if (serverMsg && /[\u0590-\u05FF]/.test(serverMsg)) return serverMsg;
+  if (status === 401 && isLoginRequest) return "האימייל או הסיסמה אינם נכונים.";
   // Map HTTP status codes
   if (status === 400) return serverMsg || "הנתונים שהוזנו אינם תקינים.";
   if (status === 401) return "יש להתחבר מחדש.";

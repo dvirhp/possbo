@@ -15,6 +15,7 @@ import { asyncHandler } from "../utils/async-handler.js";
 import { createLogger } from "../utils/logger.js";
 import { requireAuth } from "../utils/auth-middleware.js";
 import { uploadImages } from "../utils/upload-service.js";
+import { dispatchPublicationNotification } from "../utils/notification-service.js";
 const log = createLogger("publish");
 
 const router = express.Router();
@@ -69,6 +70,17 @@ router.post(
       });
       log.info("Post saved", { postId: saved.id, postUrl: saved.postUrl });
 
+      await dispatchPublicationNotification({
+        userId: req.user.id,
+        event: "success",
+        postTitle: title || sanitizedText.slice(0, 80),
+        targetType: "GROUP",
+        platform: "FACEBOOK",
+        target: groupName || groupUrl,
+      }).catch((notificationError) => {
+        log.error("Direct publication notification failed", notificationError);
+      });
+
       res.json({ ...result, savedPost: saved });
     } catch (err) {
       // Record failed publication in history
@@ -120,6 +132,17 @@ router.post(
       for (const p of imagePaths) {
         if (fs.existsSync(p)) fs.unlinkSync(p);
       }
+      await dispatchPublicationNotification({
+        userId: req.user.id,
+        event: "failure",
+        postTitle: title || sanitizedText.slice(0, 80),
+        targetType: "GROUP",
+        platform: "FACEBOOK",
+        target: groupName || groupUrl,
+        errorMessage: err.message || "Unknown error",
+      }).catch((notificationError) => {
+        log.error("Direct failure notification failed", notificationError);
+      });
       throw err;
     }
   }),
@@ -178,6 +201,16 @@ router.post(
         imagePaths,
       });
 
+      await dispatchPublicationNotification({
+        userId: req.user.id,
+        event: "success",
+        postTitle: title || sanitizedText.slice(0, 80),
+        targetType: "PROFILE",
+        platform: "FACEBOOK",
+      }).catch((notificationError) => {
+        log.error("Profile publication notification failed", notificationError);
+      });
+
       res.json({ ...result, savedPost: saved });
     } catch (err) {
       // Record failed profile publication
@@ -229,6 +262,16 @@ router.post(
       for (const p of imagePaths) {
         if (fs.existsSync(p)) fs.unlinkSync(p);
       }
+      await dispatchPublicationNotification({
+        userId: req.user.id,
+        event: "failure",
+        postTitle: title || sanitizedText.slice(0, 80),
+        targetType: "PROFILE",
+        platform: "FACEBOOK",
+        errorMessage: err.message || "Unknown error",
+      }).catch((notificationError) => {
+        log.error("Profile failure notification failed", notificationError);
+      });
       throw err;
     }
   }),

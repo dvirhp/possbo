@@ -409,6 +409,33 @@ export function DataProvider({ children }) {
   // Individual updaters for optimistic updates
   const updateGroups = useCallback((newGroups) => setGroups(newGroups), [])
   const updateCampaigns = useCallback((newCampaigns) => setCampaigns(newCampaigns), [])
+  const updateCampaignEverywhere = useCallback((campaignId, changes) => {
+    const patch = {
+      ...changes,
+      ...(changes.text !== undefined ? { content: changes.text } : {}),
+    }
+    delete patch.text
+
+    setCampaigns(current => current.map(campaign => campaign.id === campaignId ? { ...campaign, ...patch } : campaign))
+    setRecentCampaigns(current => ({
+      drafts: (current?.drafts || []).map(campaign => campaign.id === campaignId ? { ...campaign, ...patch } : campaign),
+      history: (current?.history || []).map(campaign => campaign.id === campaignId ? { ...campaign, ...patch } : campaign),
+    }))
+    setJobs(current => current.map(job => {
+      const post = job.postGroup?.post
+      if (post?.id !== campaignId && job.postId !== campaignId) return job
+      return post
+        ? { ...job, postGroup: { ...job.postGroup, post: { ...post, ...patch } } }
+        : { ...job, ...patch }
+    }))
+    setPosts(current => current.map(publication => {
+      if (publication.post?.id === campaignId) {
+        return { ...publication, post: { ...publication.post, ...patch } }
+      }
+      if (publication.postId === campaignId) return { ...publication, ...patch }
+      return publication
+    }))
+  }, [])
 
   const value = {
     // Auth
@@ -434,6 +461,7 @@ export function DataProvider({ children }) {
     fetchAll,
     updateGroups,
     updateCampaigns,
+    updateCampaignEverywhere,
     // Setters for specific updates
     setJobs,
     setCampaigns,
