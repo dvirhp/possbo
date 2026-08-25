@@ -18,6 +18,7 @@ function start(command, args, cwd, env = {}) {
     env: { ...process.env, ...env },
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
+    detached: process.platform !== "win32",
   });
   child.stdout.on("data", (chunk) => process.stdout.write(chunk));
   child.stderr.on("data", (chunk) => process.stderr.write(chunk));
@@ -61,7 +62,11 @@ try {
   if (browser) await browser.close();
   for (const child of processes) {
     if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-    else child.kill("SIGTERM");
+    else {
+      // Stop the entire npm/Vite or API process group so inherited stdio
+      // handles cannot keep the CI runner alive after the assertions finish.
+      try { process.kill(-child.pid, "SIGTERM"); } catch {}
+    }
   }
   if (user) await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
   await prisma.$disconnect();

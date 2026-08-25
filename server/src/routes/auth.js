@@ -489,7 +489,8 @@ router.post("/refresh", async (req, res) => {
     const newAccessToken = generateAccessToken(user.id);
     const newRefreshToken = generateRefreshToken(user.id);
 
-    // Start hashing new token in parallel — don't block response
+    // Hash in parallel with the following lookups, but persist the rotated
+    // token before acknowledging it to the client.
     const hashPromise = bcrypt.hash(newRefreshToken, SALT_ROUNDS);
 
     // Check subscription status
@@ -505,9 +506,14 @@ router.post("/refresh", async (req, res) => {
       select: { providerUserName: true },
     });
 
+    const newRefreshHash = await hashPromise;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: newRefreshHash },
+    });
+
     setRefreshCookie(res, newRefreshToken, req);
 
-    // Send response immediately — user doesn't need to wait for DB save
     res.json({
       success: true,
       accessToken: newAccessToken,
@@ -524,15 +530,6 @@ router.post("/refresh", async (req, res) => {
       }),
     });
 
-    // Save new refresh token hash in background — don't block the response
-    hashPromise
-      .then((newRefreshHash) =>
-        prisma.user.update({
-          where: { id: user.id },
-          data: { refreshToken: newRefreshHash },
-        }),
-      )
-      .catch((err) => log.error("Failed to save refresh token hash", err));
   } catch (error) {
     log.error("Token refresh failed", error);
     res.status(500).json({ error: "Token refresh failed" });
