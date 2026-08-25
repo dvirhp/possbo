@@ -1,73 +1,107 @@
-import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import axios from 'axios';
-import multer from 'multer';
-import { PrismaClient } from '@prisma/client';
-import { captureGroupScreenshot, scrapeMyGroups, publishToGroup } from '../utils/facebook-automation.js';
-
-const uploadsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'uploads');
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.png';
-    cb(null, Date.now() + '-' + Math.round(Math.random() * 1e6) + ext);
-  },
-});
-const upload = multer({ storage });
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import express from "express";
+import fs from "fs";
+import path from "path";
+import axios from "axios";
+import prisma from "../config/prisma.js";
+import {
+  bootstrapFacebookSession,
+  captureGroupScreenshot,
+  scrapeMyGroups,
+} from "../utils/facebook-automation.js";
+import { queueImmediateFacebookPublication } from "../utils/immediate-publication.js";
+import { createLogger } from "../utils/logger.js";
+import {
+  refreshGroupsMetadataForUser,
+  isRefreshInProgress,
+  getRefreshProgress,
+} from "../jobs/group-metadata-refresh.js";
+import { isAllowedUrl, sanitizeText } from "../utils/security.js";
+import { asyncHandler } from "../utils/async-handler.js";
+import { requireAuth } from "../utils/auth-middleware.js";
+import { uploadSingle, uploadsDir } from "../utils/upload-service.js";
 
 const router = express.Router();
-const prisma = new PrismaClient();
+const log = createLogger("groups");
 
-// Middleware to check authentication
-const requireAuth = (req, res, next) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Not authenticated' });
+const groupImagesDir = path.join(uploadsDir, "groups");
+
+/**
+ * Download a Facebook group image and save locally.
+ * Returns the local path (e.g. /uploads/groups/abc123.jpg) or null on failure.
+ */
+async function downloadGroupImage(fbImageUrl, groupId) {
+  if (!fbImageUrl || !fbImageUrl.startsWith("http")) return null;
+
+  try {
+    if (!fs.existsSync(groupImagesDir)) {
+      fs.mkdirSync(groupImagesDir, { recursive: true });
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(fbImageUrl, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return null;
+
+    const contentType = response.headers.get("content-type") || "";
+    const ext = contentType.includes("png")
+      ? ".png"
+      : contentType.includes("webp")
+        ? ".webp"
+        : ".jpg";
+
+    const filename = `${groupId.replace(/[^a-zA-Z0-9_-]/g, "_")}${ext}`;
+    const filePath = path.join(groupImagesDir, filename);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(filePath, buffer);
+
+    return `/uploads/groups/${filename}`;
+  } catch {
+    return null;
   }
-  next();
-};
+}
 
 // Search for Facebook group
-router.post('/search', requireAuth, async (req, res) => {
+router.post("/search", requireAuth, async (req, res) => {
   try {
     const { groupName } = req.body;
     const user = req.user;
 
     if (!user.facebookAccessToken) {
-      return res.status(400).json({ error: 'No Facebook access token' });
+      return res.status(400).json({ error: "No Facebook access token" });
     }
 
     // Search for groups using Facebook Graph API
-    const response = await axios.get(`https://graph.facebook.com/v18.0/search`, {
+    await axios.get(`https://graph.facebook.com/v18.0/search`, {
       params: {
         q: groupName,
-        type: 'group',
+        type: "group",
         access_token: user.facebookAccessToken,
       },
     });
-
-    const groups = response.data.data || [];
 
     // Get user's groups to find matches
-    const userGroupsResponse = await axios.get(`https://graph.facebook.com/v18.0/me/groups`, {
-      params: {
-        fields: 'id,name,picture',
-        access_token: user.facebookAccessToken,
+    const userGroupsResponse = await axios.get(
+      `https://graph.facebook.com/v18.0/me/groups`,
+      {
+        params: {
+          fields: "id,name,picture",
+          access_token: user.facebookAccessToken,
+        },
       },
-    });
+    );
 
     const userGroups = userGroupsResponse.data.data || [];
     const matchedGroup = userGroups.find(
-      (g) => g.name.toLowerCase() === groupName.toLowerCase()
+      (g) => g.name.toLowerCase() === groupName.toLowerCase(),
     );
 
     if (matchedGroup) {
       // Save to database
       await prisma.facebookGroup.upsert({
-        where: { userId_groupId: { userId: user.id, groupId: matchedGroup.id } },
+        where: {
+          userId_groupId: { userId: user.id, groupId: matchedGroup.id },
+        },
         update: { groupImage: matchedGroup.picture?.data?.url },
         create: {
           userId: user.id,
@@ -84,52 +118,77 @@ router.post('/search', requireAuth, async (req, res) => {
       });
     }
 
-    res.json({ success: false, message: 'Group not found in your groups' });
+    res.json({ success: false, message: "Group not found in your groups" });
   } catch (error) {
-    console.error('Error searching groups:', error);
+    createLogger("groups").error("Error searching groups", error);
     // Graph API can fail for non-approved permissions or account restrictions.
     // Return a controlled response so UI doesn't break on repeated searches.
     res.status(200).json({
       success: false,
-      message: 'Facebook Graph search unavailable for this account/app mode',
+      message: "Facebook Graph search unavailable for this account/app mode",
     });
   }
 });
 
 // Refresh screenshot by running authenticated automation and persisting result
-router.get('/refresh-screenshot', requireAuth, async (req, res) => {
-  const { groupName = 'פשפשוק - רכב' } = req.query;
-  try {
+router.get(
+  "/refresh-screenshot",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { groupName = "פשפשוק - רכב" } = req.query;
     if (!req.user?.facebookAccessToken) {
-      return res.status(400).json({ success: false, error: 'No Facebook access token' });
+      return res
+        .status(400)
+        .json({ success: false, error: "No Facebook access token" });
     }
 
     let targetUrl = null;
     try {
-      const groupsRes = await axios.get('https://graph.facebook.com/v18.0/me/groups', {
-        params: {
-          fields: 'id,name',
-          access_token: req.user.facebookAccessToken,
+      const groupsRes = await axios.get(
+        "https://graph.facebook.com/v18.0/me/groups",
+        {
+          params: {
+            fields: "id,name",
+            access_token: req.user.facebookAccessToken,
+          },
         },
-      });
+      );
       const groups = groupsRes.data?.data || [];
       const normalized = String(groupName).trim().toLowerCase();
-      const matched = groups.find((g) => String(g.name || '').trim().toLowerCase() === normalized)
-        || groups.find((g) => String(g.name || '').toLowerCase().includes(normalized));
+      const matched =
+        groups.find(
+          (g) =>
+            String(g.name || "")
+              .trim()
+              .toLowerCase() === normalized,
+        ) ||
+        groups.find((g) =>
+          String(g.name || "")
+            .toLowerCase()
+            .includes(normalized),
+        );
       if (matched?.id) {
         targetUrl = `https://www.facebook.com/groups/${matched.id}`;
       }
     } catch (lookupError) {
-      console.warn('Group lookup failed, falling back to search URL:', lookupError.message);
+      createLogger("groups").warn(
+        "Group lookup failed, falling back to search URL",
+        { error: lookupError.message },
+      );
     }
 
-    const screenshot = await captureGroupScreenshot(groupName, req.user.facebookAccessToken, targetUrl);
+    const screenshot = await captureGroupScreenshot(
+      groupName,
+      req.user.facebookAccessToken,
+      targetUrl,
+      req.user.id,
+    );
 
     await prisma.facebookGroup.upsert({
       where: {
         userId_groupId: {
           userId: req.user.id,
-          groupId: 'pshpshuk-rehev-auto',
+          groupId: "pshpshuk-rehev-auto",
         },
       },
       update: {
@@ -138,7 +197,7 @@ router.get('/refresh-screenshot', requireAuth, async (req, res) => {
       },
       create: {
         userId: req.user.id,
-        groupId: 'pshpshuk-rehev-auto',
+        groupId: "pshpshuk-rehev-auto",
         groupName,
         screenshot,
       },
@@ -149,143 +208,536 @@ router.get('/refresh-screenshot', requireAuth, async (req, res) => {
       groupName,
       screenshot,
     });
-  } catch (error) {
-    console.error('Refresh screenshot error:', error.message);
-    if (error.message === 'FACEBOOK_SESSION_REQUIRED') {
-      return res.status(428).json({
-        success: false,
-        error: 'FACEBOOK_SESSION_REQUIRED',
-        message: 'Facebook browser session is not initialized. Run session bootstrap first.',
-      });
-    }
-    res.status(500).json({ success: false, error: error.message || 'Failed to refresh screenshot' });
-  }
-});
+  }),
+);
 
-// One-time session bootstrap: instructs user to run setup script
-router.post('/session/bootstrap', async (_req, res) => {
-  // __dirname = server/src/routes -> go up to server/
-  const STORAGE_STATE_PATH = path.join(__dirname, '..', '..', '.facebook-storage-state.json');
-
-  // Check if session already exists
-  if (fs.existsSync(STORAGE_STATE_PATH)) {
-    return res.json({
+// Bootstrap Facebook session for the logged-in user
+router.post(
+  "/session/bootstrap",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    await bootstrapFacebookSession(req.user.id);
+    res.json({
       success: true,
-      message: 'Facebook session already initialized',
-      sessionExists: true,
+      message: "Facebook session saved successfully",
     });
-  }
-
-  // Guide user to run the setup script
-  res.status(428).json({
-    success: false,
-    error: 'FACEBOOK_SESSION_REQUIRED',
-    message: 'Run "npm run bootstrap-session" in the server folder to initialize Facebook session',
-    instruction: 'בטרמינל בתיקיית server, הרץ: npm run bootstrap-session',
-  });
-});
+  }),
+);
 
 // Scrape user's groups from Facebook using Playwright
-router.get('/scrape-my-groups', async (_req, res) => {
-  try {
-    const groups = await scrapeMyGroups();
-    res.json({ success: true, groups });
-  } catch (error) {
-    console.error('Scrape my groups error:', error.message);
-    if (error.message === 'FACEBOOK_SESSION_REQUIRED') {
-      return res.status(428).json({
-        success: false,
-        error: 'FACEBOOK_SESSION_REQUIRED',
+router.get(
+  "/scrape-my-groups",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const groups = await scrapeMyGroups(req.user.id);
+    let previousCount = 0;
+
+    // Smart sync: compare old vs new, preserve posts for groups that still exist
+    if (req.user) {
+      const userId = req.user.id;
+      const newGroupIds = new Set(
+        groups.filter((g) => g.id && g.name).map((g) => g.id),
+      );
+
+      // Get existing groups from DB
+      const existingGroups = await prisma.facebookGroup.findMany({
+        where: { userId },
       });
+      previousCount = existingGroups.length;
+      // Delete groups that no longer exist (and their related data)
+      const groupsToDelete = existingGroups.filter(
+        (g) => !newGroupIds.has(g.groupId),
+      );
+      for (const g of groupsToDelete) {
+        // Find Group record by URL pattern for this facebook group
+        const dbGroup = await prisma.group.findFirst({
+          where: {
+            OR: [
+              { url: `https://www.facebook.com/groups/${g.groupId}` },
+              { url: `https://www.facebook.com/groups/${g.groupId}/` },
+            ],
+          },
+        });
+        if (dbGroup) {
+          // Delete publication history, post groups, and posts for this group+user
+          const postGroups = await prisma.postGroup.findMany({
+            where: { groupId: dbGroup.id, userId },
+          });
+          for (const pg of postGroups) {
+            await prisma.publicationHistory.deleteMany({
+              where: { postGroupId: pg.id },
+            });
+          }
+          await prisma.postGroup.deleteMany({
+            where: { groupId: dbGroup.id, userId },
+          });
+        }
+        // Delete the FacebookGroup record
+        await prisma.facebookGroup.deleteMany({ where: { id: g.id } });
+      }
+
+      // Upsert groups that exist in the new list (save FB image URL for now)
+      for (const g of groups) {
+        if (g.id && g.name) {
+          // On update: only overwrite memberCount/privacyType if we have new values
+          const updateData = {
+            groupName: g.name,
+            groupImage: g.image || null,
+          };
+          if (g.memberCount) updateData.memberCount = g.memberCount;
+          if (g.privacyType) updateData.privacyType = g.privacyType;
+
+          await prisma.facebookGroup.upsert({
+            where: {
+              userId_groupId: { userId, groupId: g.id },
+            },
+            update: updateData,
+            create: {
+              userId,
+              groupId: g.id,
+              groupName: g.name,
+              groupImage: g.image || null,
+              memberCount: g.memberCount || null,
+              privacyType: g.privacyType || null,
+            },
+          });
+
+          if (!prisma.group?.upsert || !prisma.userGroup?.upsert) continue;
+          const canonicalGroup = await prisma.group.upsert({
+            where: { externalGroupId: g.id },
+            update: {
+              name: g.name,
+              url: `https://www.facebook.com/groups/${g.id}`,
+              ...(g.memberCount && { memberCount: g.memberCount }),
+              ...(g.privacyType && { privacyType: g.privacyType }),
+            },
+            create: {
+              name: g.name,
+              url: `https://www.facebook.com/groups/${g.id}`,
+              externalGroupId: g.id,
+              memberCount: g.memberCount || null,
+              privacyType: g.privacyType || null,
+            },
+          });
+          await prisma.userGroup.upsert({
+            where: {
+              userId_groupId: { userId, groupId: canonicalGroup.id },
+            },
+            update: {},
+            create: { userId, groupId: canonicalGroup.id },
+          });
+        }
+      }
+
+      // Download images in background (don't block the response)
+      const groupsToDownload = groups.filter(
+        (g) => g.image && g.image.includes("fbcdn.net"),
+      );
+      if (groupsToDownload.length > 0) {
+        log.info(
+          `Downloading ${groupsToDownload.length} group images in background...`,
+        );
+        (async () => {
+          for (const g of groupsToDownload) {
+            try {
+              const localPath = await downloadGroupImage(g.image, g.id);
+              if (localPath) {
+                await prisma.facebookGroup.updateMany({
+                  where: { userId, groupId: g.id },
+                  data: { groupImage: localPath },
+                });
+              }
+            } catch {
+              /* skip */
+            }
+          }
+          log.info("Group images download complete");
+        })();
+      }
     }
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+
+    if (prisma.groupSyncHistory?.create) {
+      await prisma.groupSyncHistory.create({ data: { userId: req.user.id, groupsFound: groups.length, groupsAdded: Math.max(0, groups.length - previousCount), groupsRemoved: Math.max(0, previousCount - groups.length), status: "SUCCESS" } });
+    }
+    res.json({ success: true, groups });
+  }),
+);
 
 // Get user's Facebook groups
-router.get('/my-groups', requireAuth, async (req, res) => {
-  try {
+router.get(
+  "/my-groups",
+  requireAuth,
+  asyncHandler(async (req, res) => {
     const user = req.user;
 
     if (!user.facebookAccessToken) {
-      return res.status(400).json({ error: 'No Facebook access token' });
+      return res.status(400).json({ error: "No Facebook access token" });
     }
 
-    const response = await axios.get(`https://graph.facebook.com/v18.0/me/groups`, {
-      params: {
-        fields: 'id,name,picture,icon',
-        access_token: user.facebookAccessToken,
+    const response = await axios.get(
+      `https://graph.facebook.com/v18.0/me/groups`,
+      {
+        params: {
+          fields: "id,name,picture,icon",
+          access_token: user.facebookAccessToken,
+        },
+      },
+    );
+
+    res.json(response.data.data || []);
+  }),
+);
+
+// Get saved groups from database
+router.get(
+  "/saved",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const groups = await prisma.facebookGroup.findMany({
+      where: { userId },
+      select: {
+        groupId: true,
+        groupName: true,
+        groupImage: true,
+        memberCount: true,
+        privacyType: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Get publication/scheduled counts per group in parallel using count queries
+    const groupUrls = groups.map(
+      (g) => `https://www.facebook.com/groups/${g.groupId}`,
+    );
+
+    const linkedGroups = await prisma.group.findMany({
+      where: { url: { in: groupUrls } },
+      select: {
+        url: true,
+        _count: {
+          select: {
+            publicationHistory: { where: { userId, status: "SUCCESS" } },
+          },
+        },
+        postGroups: {
+          where: {
+            userId,
+            post: {
+              status: "ACTIVE",
+              campaignType: { in: ["RECURRING", "SCHEDULED"] },
+            },
+          },
+          select: { id: true },
+        },
       },
     });
 
-    res.json(response.data.data || []);
-  } catch (error) {
-    console.error('Error fetching groups:', error);
-    res.status(500).json({ error: 'Failed to fetch groups' });
-  }
-});
+    // Build lookup: groupId → { postsCount, scheduledCount }
+    const statsMap = {};
+    for (const lg of linkedGroups) {
+      const match = lg.url?.match(/groups\/([^/]+)/);
+      if (!match) continue;
+      const gId = match[1];
+      statsMap[gId] = {
+        postsCount: lg._count.publicationHistory,
+        scheduledCount: lg.postGroups.length,
+      };
+    }
 
-// Get saved groups from database
-router.get('/saved', requireAuth, async (req, res) => {
-  try {
-    const groups = await prisma.facebookGroup.findMany({
-      where: { userId: req.user.id },
+    // Format to match the scrape response shape the client expects
+    const formatted = groups.map((g) => ({
+      id: g.groupId,
+      name: g.groupName,
+      image: g.groupImage,
+      url: `https://www.facebook.com/groups/${g.groupId}`,
+      memberCount: g.memberCount || null,
+      privacyType: g.privacyType || null,
+      postsCount: statsMap[g.groupId]?.postsCount || 0,
+      scheduledCount: statsMap[g.groupId]?.scheduledCount || 0,
+    }));
+    res.json({ success: true, groups: formatted });
+  }),
+);
+
+// Refresh group metadata (member count + privacy type) — runs in background
+router.post(
+  "/refresh-metadata",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+
+    // If already running, return current progress
+    if (isRefreshInProgress(userId)) {
+      const progress = getRefreshProgress(userId);
+      return res.json({ success: true, status: "in_progress", progress });
+    }
+
+    // Start in background, return immediately
+    refreshGroupsMetadataForUser(userId).catch((err) => {
+      log.error("Background metadata refresh failed", {
+        userId,
+        error: err.message,
+      });
     });
-    res.json(groups);
-  } catch (error) {
-    console.error('Error fetching saved groups:', error);
-    res.status(500).json({ error: 'Failed to fetch saved groups' });
-  }
-});
+
+    res.status(202).json({ success: true, status: "started" });
+  }),
+);
+
+// Get progress of metadata refresh
+router.get(
+  "/refresh-metadata/status",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const progress = getRefreshProgress(userId);
+    if (progress) {
+      res.json({ success: true, status: "in_progress", progress });
+    } else {
+      res.json({ success: true, status: "idle" });
+    }
+  }),
+);
+
+// Sync memberCount from FacebookGroup → Group table (one-time fix)
+router.post(
+  "/sync-member-counts",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const fbGroups = await prisma.facebookGroup.findMany({
+      where: { userId, memberCount: { not: null } },
+      select: { groupId: true, memberCount: true, privacyType: true },
+    });
+
+    let synced = 0;
+    for (const fg of fbGroups) {
+      const url = `https://www.facebook.com/groups/${fg.groupId}`;
+      const r = await prisma.group.updateMany({
+        where: { url },
+        data: { memberCount: fg.memberCount, privacyType: fg.privacyType },
+      });
+      if (r.count > 0) synced++;
+    }
+
+    res.json({ success: true, synced, total: fbGroups.length });
+  }),
+);
+
+// Get posts for a specific group
+router.get(
+  "/:groupId/posts",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { groupId } = req.params;
+    const userId = req.user.id;
+
+    // Find the Group record by exact URL match
+    const group = await prisma.group.findFirst({
+      where: {
+        OR: [
+          { url: `https://www.facebook.com/groups/${groupId}` },
+          { url: `https://www.facebook.com/groups/${groupId}/` },
+        ],
+      },
+    });
+
+    if (!group) {
+      return res.json({ success: true, posts: [] });
+    }
+
+    // Get posts for this group by this user
+    const postGroups = await prisma.postGroup.findMany({
+      where: { groupId: group.id, userId },
+      include: {
+        post: true,
+        publications: {
+          orderBy: { publishedAt: "desc" },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const posts = postGroups.map((pg) => ({
+      id: pg.post.id,
+      name:
+        pg.post.content.substring(0, 80) +
+        (pg.post.content.length > 80 ? "..." : ""),
+      subtitle: new Date(pg.post.createdAt).toLocaleString("he-IL"),
+      url: pg.publications[0]?.externalPostUrl || null,
+      text: pg.post.content,
+      location: pg.post.location,
+      anonymous: pg.post.isAnonymous,
+      createdAt: pg.post.createdAt,
+      postUrl: pg.publications[0]?.externalPostUrl || null,
+      hasScreenshot: !!pg.publications[0]?.screenshotUrl,
+    }));
+
+    res.json({ success: true, posts });
+  }),
+);
 
 // Take screenshot of Facebook group using Playwright with saved session
-router.get('/facebook-screenshot', async (req, res) => {
-  const { groupName = 'פשפשוק - רכב' } = req.query;
-  try {
-    // If groupName is a URL, pass it as targetUrl directly
-    const isUrl = groupName.startsWith('http');
+router.get(
+  "/facebook-screenshot",
+  asyncHandler(async (req, res) => {
+    const { groupName = "פשפשוק - רכב" } = req.query;
+    const isUrl = groupName.startsWith("http");
+    if (isUrl && !isAllowedUrl(groupName)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Only Facebook URLs are allowed" });
+    }
     const targetUrl = isUrl ? groupName : null;
-    const screenshot = await captureGroupScreenshot(groupName, null, targetUrl);
+    const screenshot = await captureGroupScreenshot(
+      groupName,
+      null,
+      targetUrl,
+      req.user?.id,
+    );
     res.json({
       success: true,
       screenshot,
       groupName,
     });
-  } catch (error) {
-    console.error('Facebook screenshot error:', error.message);
-    if (error.message === 'FACEBOOK_SESSION_REQUIRED') {
-      return res.status(428).json({
-        success: false,
-        error: 'FACEBOOK_SESSION_REQUIRED',
-        message: 'Facebook browser session is not initialized. Run session bootstrap first.',
-      });
-    }
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+  }),
+);
 
 // Publish a post to a Facebook group
-router.post('/publish', upload.single('image'), async (req, res) => {
-  const { groupUrl, text } = req.body;
-  if (!groupUrl || !text) {
-    return res.status(400).json({ success: false, error: 'groupUrl and text are required' });
-  }
-  const imagePath = req.file ? req.file.path : null;
-  try {
-    const result = await publishToGroup(groupUrl, text, imagePath);
-    res.json(result);
-  } catch (error) {
-    console.error('Publish error:', error.message);
-    if (error.message === 'FACEBOOK_SESSION_REQUIRED') {
-      return res.status(428).json({ success: false, error: 'FACEBOOK_SESSION_REQUIRED' });
+router.post(
+  "/publish",
+  requireAuth,
+  uploadSingle("", "image"),
+  asyncHandler(async (req, res) => {
+    const { groupUrl, groupName, text, anonymous, location } = req.body;
+    if (!groupUrl || !text) {
+      return res
+        .status(400)
+        .json({ success: false, error: "groupUrl and text are required" });
     }
-    res.status(500).json({ success: false, error: error.message });
-  } finally {
-    // Clean up uploaded file
-    if (imagePath && fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
+    const sanitizedText = sanitizeText(text);
+    if (!sanitizedText) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Text is invalid or too long" });
     }
-  }
-});
+    const sanitizedLocation = location ? sanitizeText(location, 200) : null;
+    const isAnonymous = anonymous === "true";
+    const imagePath = req.file ? req.file.path : null;
+    const queued = await queueImmediateFacebookPublication({
+        userId: req.user.id,
+        targetType: "GROUP",
+        groupUrl,
+        groupName,
+        text: sanitizedText,
+        anonymous: isAnonymous,
+        location: sanitizedLocation,
+        imagePaths: imagePath ? [imagePath] : [],
+        idempotencyKey: req.get("Idempotency-Key"),
+      });
+    res.status(202).json({
+      success: true,
+      queued: true,
+      duplicate: queued.duplicate,
+      jobId: queued.job.id,
+      postId: queued.postId,
+      status: queued.job.status,
+    });
+  }),
+);
+
+// Search Facebook Places (for location autocomplete)
+router.get(
+  "/places",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { q } = req.query;
+    if (!q || q.length < 2) {
+      return res.json([]);
+    }
+
+    const user = req.user;
+
+    // Try Facebook Graph API first (if user has access token)
+    if (user.facebookAccessToken) {
+      try {
+        const response = await axios.get(
+          `https://graph.facebook.com/v18.0/search`,
+          {
+            params: {
+              q,
+              type: "place",
+              fields: "name,location,id",
+              limit: 10,
+              access_token: user.facebookAccessToken,
+            },
+          },
+        );
+
+        const places = (response.data.data || []).map((place) => ({
+          id: place.id,
+          name: place.name,
+          city: place.location?.city || "",
+          country: place.location?.country || "",
+        }));
+
+        if (places.length > 0) {
+          return res.json(places);
+        }
+      } catch {
+        // Fall through to Photon
+      }
+    }
+
+    // Fallback: Photon geocoder (fast, OSM-based, supports streets + cities)
+    try {
+      const photonRes = await axios.get("https://photon.komoot.io/api/", {
+        params: {
+          q,
+          limit: 8,
+          lat: 32.08,
+          lon: 34.78,
+        },
+        timeout: 5000,
+      });
+
+      const features = photonRes.data.features || [];
+      const places = features
+        .filter((f) => {
+          const val = f.properties?.osm_value || "";
+          return val !== "construction" && val !== "footway";
+        })
+        .map((f) => {
+          const p = f.properties || {};
+          const name = p.name || "";
+          const city = p.city || "";
+          const state = p.state || "";
+          const country = p.country || "";
+          const detail = city || state || country;
+          return {
+            id: String(p.osm_id || Math.random()),
+            name,
+            city: detail,
+            country: city ? country : "",
+          };
+        });
+
+      // Deduplicate by name+city
+      const seen = new Set();
+      const unique = places.filter((p) => {
+        const key = `${p.name}|${p.city}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      res.json(unique.slice(0, 8));
+    } catch {
+      res.json([]);
+    }
+  }),
+);
 
 export default router;

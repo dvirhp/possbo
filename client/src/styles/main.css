@@ -2,18 +2,441 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+html {
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--bg-deep);
+  color: var(--text-secondary);
   min-height: 100vh;
+  transition: background 0.2s ease;
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus-ring, #60a5fa) !important;
+  outline-offset: 3px !important;
+}
+
+:is(button, a, input, textarea, select, [role="button"], [tabindex]):focus-visible {
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.22) !important;
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at 50% 14%, rgba(255, 255, 255, 0.045), transparent 32%),
+    #050505;
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] :is(
+  .primary,
+  .cta-btn-primary,
+  .nav-btn-register,
+  .auth-submit,
+  .confirm-btn.confirm,
+  .reports-export-btn,
+  .reports-download-btn,
+  .reports-drp-apply,
+  .tpl-create-btn,
+  .tpl-empty-btn,
+  .tpl-list-use-btn,
+  .generate-btn.primary,
+  .sidebar-bottom-btn.primary,
+  .error-boundary-btn.primary
+) {
+  color: #050505;
+  background: linear-gradient(180deg, #e9eef8 0%, #cbd6e8 100%);
+  border-color: rgba(219, 230, 246, 0.84);
+  box-shadow: 0 0 26px rgba(105, 127, 170, 0.28);
+}
+
+[data-theme="dark"] :is(
+  .primary,
+  .cta-btn-primary,
+  .nav-btn-register,
+  .auth-submit,
+  .confirm-btn.confirm,
+  .reports-export-btn,
+  .reports-download-btn,
+  .reports-drp-apply,
+  .tpl-create-btn,
+  .tpl-empty-btn,
+  .tpl-list-use-btn,
+  .generate-btn.primary,
+  .sidebar-bottom-btn.primary,
+  .error-boundary-btn.primary
+):hover:not(:disabled) {
+  color: #050505;
+  background: linear-gradient(180deg, #f3f7ff 0%, #d8e2f2 100%);
+  box-shadow: 0 0 34px rgba(105, 127, 170, 0.38);
+}
+
+[data-theme="dark"] :is(input, textarea, select) {
+  background-color: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] :is(
+  .auth-submit,
+  .auth-submit-btn,
+  .billing-manage-btn,
+  .confirm-btn-primary,
+  .conn-btn--primary,
+  .cp-ai-generate-btn,
+  .cp-btn-primary,
+  .cp-ig-connect-btn,
+  .cp-nav-next,
+  .cp-publish-btn,
+  .cp-wa-save-btn,
+  .empty-btn,
+  .error-boundary-btn.primary,
+  .feedback-submit-btn,
+  .generate-btn.primary,
+  .generic-list-item-btn,
+  .modal-submit-btn,
+  .notif-save-btn,
+  .overview-create-btn,
+  .reports-download-btn,
+  .reports-drp-apply,
+  .reports-export-btn,
+  .sc-empty-btn,
+  .settings-btn-save,
+  .sidebar-action-glow,
+  .sidebar-download-btn,
+  .subscription-submit-btn,
+  .tpl-create-btn,
+  .tpl-detail-use-btn,
+  .tpl-empty-btn,
+  .tpl-list-use-btn,
+  .tpl-save-btn,
+  .tpl-use-btn,
+  .wa-connect-btn
+) {
+  color: #050505 !important;
+  background: linear-gradient(180deg, #e9eef8 0%, #cbd6e8 100%) !important;
+  border-color: rgba(219, 230, 246, 0.84) !important;
+  box-shadow: 0 0 26px rgba(105, 127, 170, 0.28) !important;
+}
+
+[data-theme="dark"] :is(
+  .auth-submit,
+  .auth-submit-btn,
+  .billing-manage-btn,
+  .confirm-btn-primary,
+  .conn-btn--primary,
+  .cp-ai-generate-btn,
+  .cp-btn-primary,
+  .cp-ig-connect-btn,
+  .cp-nav-next,
+  .cp-publish-btn,
+  .cp-wa-save-btn,
+  .empty-btn,
+  .error-boundary-btn.primary,
+  .feedback-submit-btn,
+  .generate-btn.primary,
+  .generic-list-item-btn,
+  .modal-submit-btn,
+  .notif-save-btn,
+  .overview-create-btn,
+  .reports-download-btn,
+  .reports-drp-apply,
+  .reports-export-btn,
+  .sc-empty-btn,
+  .settings-btn-save,
+  .sidebar-action-glow,
+  .sidebar-download-btn,
+  .subscription-submit-btn,
+  .tpl-create-btn,
+  .tpl-detail-use-btn,
+  .tpl-empty-btn,
+  .tpl-list-use-btn,
+  .tpl-save-btn,
+  .tpl-use-btn,
+  .wa-connect-btn
+):hover:not(:disabled) {
+  color: #050505 !important;
+  background: linear-gradient(180deg, #f3f7ff 0%, #d8e2f2 100%) !important;
+  box-shadow: 0 0 34px rgba(105, 127, 170, 0.38) !important;
+}
+
+[data-theme="dark"] :is(
+  .auth-submit,
+  .auth-submit-btn,
+  .billing-manage-btn,
+  .confirm-btn-primary,
+  .conn-btn--primary,
+  .cp-ai-generate-btn,
+  .cp-btn-primary,
+  .cp-ig-connect-btn,
+  .cp-nav-next,
+  .cp-publish-btn,
+  .cp-wa-save-btn,
+  .empty-btn,
+  .error-boundary-btn.primary,
+  .feedback-submit-btn,
+  .generate-btn.primary,
+  .generic-list-item-btn,
+  .modal-submit-btn,
+  .notif-save-btn,
+  .overview-create-btn,
+  .reports-download-btn,
+  .reports-drp-apply,
+  .reports-export-btn,
+  .sc-empty-btn,
+  .settings-btn-save,
+  .sidebar-action-glow,
+  .sidebar-download-btn,
+  .subscription-submit-btn,
+  .tpl-create-btn,
+  .tpl-detail-use-btn,
+  .tpl-empty-btn,
+  .tpl-list-use-btn,
+  .tpl-save-btn,
+  .tpl-use-btn,
+  .wa-connect-btn
+) :is(span, svg, path) {
+  color: #050505 !important;
+  stroke: currentColor !important;
+}
+
+[data-theme="dark"] :is(
+  .a11y-option.active,
+  .account-subtab.active,
+  .campaign-type-btns button.active,
+  .chart-toggle-btn.active,
+  .chatbot-day-btn.active,
+  .chatbot-sched-mode-btn.active,
+  .contact-method-btn.selected,
+  .cp-schedule-sub-tab.active,
+  .cp-step.active .cp-step-indicator,
+  .day-btn.active,
+  .drp-period-btn.active,
+  .filter-chip.active,
+  .filter-sheet-trigger.active,
+  .generate-btn.icon-btn.selected,
+  .generate-step.active,
+  .groups-sub-tab.active,
+  .mobile-nav-item.active,
+  .period-btn.active,
+  .post-type-btn.selected,
+  .pref-seg-btn.active,
+  .reports-period-btn.active,
+  .rpf-btn.active,
+  .sc-list-range button.active,
+  .sc-view-toggle button.active,
+  .schedule-tab.active,
+  .sidebar-item.active,
+  .sidebar-nav-item.active,
+  .theme-toggle-btn.active,
+  .tone-btn.selected,
+  .toggle-btn.selected,
+  .top-posts-platform-btn.active,
+  .top-posts-toggle button.active,
+  .tpl-day.active,
+  .tpl-mode-btn.active,
+  .tpl-platform-tab.active,
+  .tpl-toggle-btn.active,
+  .tpl-view-btn.active,
+  .view-toggle-btn.active,
+  .wa-mode-tab.active,
+  .wa-toggle-btn.active
+) {
+  color: #050505 !important;
+}
+
+[data-theme="dark"] :is(
+  .a11y-option.active,
+  .account-subtab.active,
+  .campaign-type-btns button.active,
+  .chart-toggle-btn.active,
+  .chatbot-day-btn.active,
+  .chatbot-sched-mode-btn.active,
+  .contact-method-btn.selected,
+  .cp-schedule-sub-tab.active,
+  .cp-step.active .cp-step-indicator,
+  .day-btn.active,
+  .drp-period-btn.active,
+  .filter-chip.active,
+  .filter-sheet-trigger.active,
+  .generate-btn.icon-btn.selected,
+  .generate-step.active,
+  .groups-sub-tab.active,
+  .mobile-nav-item.active,
+  .period-btn.active,
+  .post-type-btn.selected,
+  .pref-seg-btn.active,
+  .reports-period-btn.active,
+  .rpf-btn.active,
+  .sc-list-range button.active,
+  .sc-view-toggle button.active,
+  .schedule-tab.active,
+  .sidebar-item.active,
+  .sidebar-nav-item.active,
+  .theme-toggle-btn.active,
+  .tone-btn.selected,
+  .toggle-btn.selected,
+  .top-posts-platform-btn.active,
+  .top-posts-toggle button.active,
+  .tpl-day.active,
+  .tpl-mode-btn.active,
+  .tpl-platform-tab.active,
+  .tpl-toggle-btn.active,
+  .tpl-view-btn.active,
+  .view-toggle-btn.active,
+  .wa-mode-tab.active,
+  .wa-toggle-btn.active
+) :is(span, svg, path) {
+  color: #050505 !important;
+  stroke: currentColor !important;
+}
+
+[data-theme="light"] body {
+  background: var(--bg-deep);
+  color: var(--text-secondary);
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Pull-to-refresh */
+.ptr-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ptr-spinner {
+  color: var(--indigo);
+  transition: opacity 0.15s;
+}
+.ptr-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px var(--indigo-soft));
+}
+.ptr-spinning {
+  animation: ptr-pulse 0.8s ease-in-out infinite;
+}
+@keyframes ptr-pulse {
+  0%, 100% { transform: scale(0.8); opacity: 0.6; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+/* Error Boundary */
+.error-boundary {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg-deep, #16181d);
+}
+.error-boundary-card {
+  text-align: center;
+  max-width: 400px;
+  width: 100%;
+  background: var(--bg-card, #1e2128);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 16px;
+  padding: 40px 32px;
+}
+.error-boundary-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+.error-boundary-card h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary, #e8ecf0);
+  margin-bottom: 8px;
+}
+.error-boundary-card p {
+  font-size: 14px;
+  color: var(--text-muted, #6b7684);
+  margin-bottom: 24px;
+}
+.error-boundary-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.error-boundary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: 0.15s;
+  border: none;
+}
+.error-boundary-btn.primary {
+  background: var(--indigo);
+  color: #fff;
+}
+.error-boundary-btn.primary:hover {
+  background: #2f2f2f;
+}
+.error-boundary-btn.secondary {
+  background: transparent;
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  color: var(--text-secondary, #a3adb8);
+}
+.error-boundary-btn.secondary:hover {
+  border-color: var(--indigo);
+  color: var(--indigo);
 }

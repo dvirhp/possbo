@@ -1,13 +1,125 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PostIt - Share Your Stories</title>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
-</body>
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Keep a non-conditional default for browsers that ignore favicon media
+         queries. The version token also replaces previously cached icons. -->
+    <link rel="icon" type="image/png" sizes="512x512" href="/brand/possbo-favicon-dark-v5.png" />
+    <link rel="shortcut icon" type="image/png" href="/brand/possbo-favicon-dark-v5.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/brand/possbo-favicon-light-v5.png" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/brand/possbo-favicon-dark-v5.png" media="(prefers-color-scheme: dark)" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/brand/possbo-favicon-light-v5.png" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#667eea" />
+    <meta name="application-name" content="Possbo" />
+    <meta name="description" content="Possbo מאפשרת ליצור, לתזמן ולמדוד קמפיינים בפייסבוק, אינסטגרם ווואטסאפ ממקום אחד — עם AI, תבניות, אוטומציה ודוחות." />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://possbo.com/" />
+    <meta property="og:locale" content="he_IL" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Possbo" />
+    <meta property="og:title" content="Possbo | קמפיין אחד לפייסבוק, אינסטגרם ווואטסאפ" />
+    <meta property="og:description" content="יוצרים תוכן עם AI, בוחרים קהלים ומתזמנים פרסום בכל הערוצים ממערכת אחת." />
+    <meta property="og:url" content="https://possbo.com/" />
+    <meta property="og:image" content="https://possbo.com/brand/possbo-hero-automation-v1.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="apple-mobile-web-app-title" content="Possbo" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.json?v=possbo-5" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=Heebo:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>Possbo | פרסום אוטומטי בפייסבוק, אינסטגרם ווואטסאפ</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script>
+      (function () {
+        var t = localStorage.getItem("possbo-theme") || "system";
+        var dark =
+          t === "dark" ||
+          (t === "system" &&
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        var bg = dark ? "#0a0a0a" : "#f8fafc";
+        window.__POSSBO_SPLASH_LOGO__ = dark
+          ? "/brand/possbo-mark-white.png"
+          : "/brand/possbo-mark-black.png";
+        document.documentElement.style.background = bg;
+        var appShellRoute =
+          /^\/(?:dashboard|my-groups|create-post|scheduled|group(?:\/|$)|post(?:\/|$)|templates(?:\/|$)|reports(?:\/|$)|guides(?:\/|$)|generate-post|feedback)(?:\/|$|\?)/.test(
+            window.location.pathname + window.location.search,
+          );
+        window.__POSSBO_APP_SHELL_ROUTE__ = appShellRoute;
+        document.write(
+          "<style>body{margin:0;background:" +
+            bg +
+            "}#root{background:" +
+            bg +
+            ";min-height:100vh}#splash{background:" +
+            bg +
+            "}.app-shell-splash{padding-right:280px;box-sizing:border-box}@media(max-width:768px){.app-shell-splash{padding-right:0}}</style>",
+        );
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <!-- Inline splash – shown until React mounts, then overwritten -->
+      <div
+        id="splash"
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+        "
+      >
+        <img
+          src="/brand/possbo-mark-white.png"
+          alt=""
+          width="80"
+          height="80"
+          style="
+            width: 80px;
+            height: 80px;
+            max-width: 80px;
+            max-height: 80px;
+            object-fit: contain;
+            animation: sp 1.6s ease-in-out infinite;
+          "
+        />
+        <script>
+          document.currentScript.previousElementSibling.src =
+            window.__POSSBO_SPLASH_LOGO__;
+          if (window.__POSSBO_APP_SHELL_ROUTE__) {
+            document.getElementById("splash").classList.add("app-shell-splash");
+          }
+        </script>
+      </div>
+      <style>
+        @keyframes sp {
+          0%,
+          100% {
+            transform: scale(0.85);
+            opacity: 0.6;
+          }
+          50% {
+            transform: scale(1.2);
+            opacity: 1;
+          }
+        }
+      </style>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>

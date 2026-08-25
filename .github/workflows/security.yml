@@ -1,0 +1,53 @@
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [dev, pre-prod, prod, main]
+  schedule:
+    - cron: '0 8 * * 1' # Every Monday at 08:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: [server, client]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.directory }}
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: ${{ matrix.directory }}
+        run: |
+          echo "## npm audit - ${{ matrix.directory }}" >> $GITHUB_STEP_SUMMARY
+          npm audit --omit=dev --audit-level=high 2>&1 | tee audit-output.txt
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat audit-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  secret-scanning:
+    name: Secret Leak Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified

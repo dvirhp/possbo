@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react'
-import { useParams, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { screenshotService } from '../services/screenshotService'
 import { publishService } from '../services/publishService'
+import { groupsService } from '../services/groupsService'
 import GenericList from '../components/GenericList'
 import LocationAutocomplete from '../components/LocationAutocomplete'
 import locale from '../assets/i18n'
 import '../styles/group-details.css'
 
 export default function GroupDetails() {
-  const { id } = useParams()
+
   const location = useLocation()
   const navigate = useNavigate()
   const group = location.state
@@ -33,22 +34,20 @@ export default function GroupDetails() {
 
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    if (group?.url) {
-      loadPosts()
-    }
-  }, [group?.url])
-
-  const loadPosts = async () => {
+  const loadPosts = useCallback(async () => {
     try {
-      const res = await publishService.getHistory(group.url)
+      const res = await groupsService.getGroupPosts(group.id)
       if (res.data.success) {
         setPosts(res.data.posts)
       }
     } catch {
       // silent - history is optional
     }
-  }
+  }, [group?.id])
+
+  useEffect(() => {
+    if (group?.id) loadPosts()
+  }, [group?.id, loadPosts])
 
   if (!group) {
     return (
@@ -73,12 +72,11 @@ export default function GroupDetails() {
         setError(locale.groupDetails.captureFailed)
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.message
-      if (msg === 'FACEBOOK_SESSION_REQUIRED') {
+      if (err.response?.data?.error === 'FACEBOOK_SESSION_REQUIRED') {
         localStorage.removeItem('fbSessionReady')
         navigate('/')
       } else {
-        setError(`${locale.errors.generic} ${msg}`)
+        setError(err.userMessage || 'שגיאה בלתי צפויה')
       }
     } finally {
       setCapturing(false)
@@ -106,21 +104,22 @@ export default function GroupDetails() {
       if (res.data.success) {
         setPublishResult({
           success: true,
+          queued: res.data.queued,
+          jobId: res.data.jobId,
           screenshot: res.data.screenshot ? 'data:image/png;base64,' + res.data.screenshot : null,
           postUrl: res.data.savedPost?.postUrl || res.data.postUrl || null,
         })
         setShowPostForm(false)
-        loadPosts()
+        if (!res.data.queued) loadPosts()
       } else {
         setError(locale.publish.failed)
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.message
-      if (msg === 'FACEBOOK_SESSION_REQUIRED') {
+      if (err.response?.data?.error === 'FACEBOOK_SESSION_REQUIRED') {
         localStorage.removeItem('fbSessionReady')
         navigate('/')
       } else {
-        setError(`${locale.errors.generic} ${msg}`)
+        setError(err.userMessage || 'שגיאה בלתי צפויה')
       }
     } finally {
       setPublishing(false)
@@ -140,13 +139,29 @@ export default function GroupDetails() {
 
   return (
     <div className="group-details-page">
+      <header className="gd-topbar">
+        <div className="gd-topbar-spacer" />
+        <h1 className="gd-topbar-title">{group.name}</h1>
+        <button className="gd-back" onClick={() => navigate(-1)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+          </svg>
+        </button>
+      </header>
       <div className="group-details-card">
-        <button onClick={() => navigate('/dashboard')} className="back-btn">{locale.groupDetails.backToList} →</button>
 
         <div className="group-details-header">
           {group.image && <img src={group.image} alt="" className="group-details-image" />}
           <div>
             <h2 className="group-details-name">{group.name}</h2>
+            <div className="group-details-meta">
+              {group.memberCount && (
+                <span className="group-meta-item">👥 {group.memberCount.toLocaleString()} חברים</span>
+              )}
+              {group.privacyType && (
+                <span className="group-meta-item">{group.privacyType === 'private' ? '🔒 קבוצה פרטית' : '🌐 קבוצה ציבורית'}</span>
+              )}
+            </div>
             <a href={group.url} target="_blank" rel="noopener noreferrer" className="group-details-link">
               🔗 {locale.groupDetails.openInFacebook}
             </a>
@@ -159,6 +174,12 @@ export default function GroupDetails() {
           </button>
           <button onClick={() => setShowPostForm(true)} className="action-btn publish-action-btn">
             ✏️ {locale.groupDetails.publishPost}
+          </button>
+          <button
+            onClick={() => navigate('/create-post', { state: { group } })}
+            className="action-btn create-post-action-btn"
+          >
+            🚀 פרסם בקבוצה זו (+ קבוצות נוספות)
           </button>
         </div>
 
@@ -173,7 +194,14 @@ export default function GroupDetails() {
 
         {publishResult?.success && (
           <div className="publish-result">
-            <h3>✅ {locale.publish.success}</h3>
+            <h3>
+              {publishResult.queued
+                ? '⏳ הפרסום נכנס לתור'
+                : `✅ ${locale.publish.success}`}
+            </h3>
+            {publishResult.queued && (
+              <p>הפרסום יתבצע לפי סדר התור. אפשר להמשיך להשתמש באתר.</p>
+            )}
             {publishResult.postUrl && (
               <a href={publishResult.postUrl} target="_blank" rel="noopener noreferrer" className="post-url-link">
                 🔗 קישור לפוסט
@@ -187,11 +215,11 @@ export default function GroupDetails() {
 
         {showPostForm && (
           <div className="fb-create-post-overlay" onClick={resetPostForm}>
-            <div className="fb-create-post-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="fb-create-post-dialog" role="dialog" aria-modal="true" aria-label={locale.publish.title} onClick={(e) => e.stopPropagation()}>
               {/* Header */}
               <div className="fb-cp-header">
                 <h3>{locale.publish.title}</h3>
-                <button onClick={resetPostForm} className="fb-cp-close-btn">✕</button>
+                <button onClick={resetPostForm} className="fb-cp-close-btn" aria-label="סגור יצירת פוסט">✕</button>
               </div>
 
               <div className="fb-cp-divider" />

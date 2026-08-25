@@ -58,9 +58,10 @@ export default function GenericList({
             onChange={(e) => setSearch(e.target.value)}
             placeholder={locale.dashboard.searchPlaceholder}
             className="generic-list-search-input"
+            aria-label={locale.dashboard.searchPlaceholder}
           />
           {search && (
-            <button onClick={() => setSearch('')} className="generic-list-search-clear">✕</button>
+            <button onClick={() => setSearch('')} className="generic-list-search-clear" aria-label="נקה חיפוש">✕</button>
           )}
         </div>
       )}

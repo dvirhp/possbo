@@ -1,17 +1,27 @@
 # Dependencies
 node_modules/
+.tools/
+.codex-logs/
+.codex-tmp/
+client/certs.bak/
+.tmp-responsive-check/
 
 # Environment
 .env
 .env.local
 .env.production
+server/.env.docker
 
 # Build
 dist/
 build/
 
+# Coverage
+coverage/
+
 # Database
 *.db
+*.db-journal
 *.sqlite
 prisma/dev.db
 prisma/dev.db-journal
@@ -42,3 +52,8 @@ npm-debug.log*
 
 # Coverage
 coverage/
+server/nul
+.tmp-responsive-check/
+/facebook-page.png
+/home-desktop.png
+/home-mobile.png

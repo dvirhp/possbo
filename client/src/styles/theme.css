@@ -1,0 +1,178 @@
+/* ══════════════════════════════════════════════════════════════
+   Possbo — Theme Variables (Light & Dark)
+   Import this file FIRST before all other styles.
+   ══════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme="dark"] {
+  /* Backgrounds */
+  --bg-deep: #050505;
+  --bg-base: #080808;
+  --bg-card: #101010;
+  --bg-elevated: #151515;
+  --bg-hover: #1f1f1f;
+  --surface: rgba(18, 18, 18, 0.78);
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.11);
+  --border-hover: rgba(255, 255, 255, 0.24);
+
+  /* Text */
+  --text-primary: #ffffff;
+  --text-secondary: rgba(219, 230, 246, 0.84);
+  --text-muted: rgba(255, 255, 255, 0.58);
+  --text-dim: rgba(255, 255, 255, 0.38);
+
+  /* Brand */
+  --indigo: #3B82F6;
+  --indigo-soft: rgba(59, 130, 246, 0.14);
+  --blue: #3B82F6;
+  --blue-soft: rgba(59, 130, 246, 0.14);
+  --emerald: #22C55E;
+  --emerald-soft: rgba(34, 197, 94, 0.1);
+  --amber: #F59E0B;
+  --amber-soft: rgba(245, 158, 11, 0.1);
+  --rose: #EF4444;
+  --rose-soft: rgba(239, 68, 68, 0.1);
+  --violet: #cbd6e8;
+  --violet-soft: rgba(255, 255, 255, 0.08);
+  --sky: #3B82F6;
+  --sky-soft: rgba(59, 130, 246, 0.14);
+  --teal: #dbe6f6;
+  --teal-soft: rgba(255, 255, 255, 0.08);
+
+  /* Gradients */
+  --gradient-main: linear-gradient(135deg, #2563eb 0%, #3B82F6 54%, #60A5FA 100%);
+  --gradient-emerald: linear-gradient(135deg, #22C55E 0%, #10B981 100%);
+  --gradient-brand: var(--gradient-main);
+
+  /* Shapes */
+  --radius-sm: 14px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 12px 34px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.48);
+  --shadow-glow: 0 0 30px rgba(105, 127, 170, 0.28);
+
+  /* Misc */
+  --transition: 250ms ease;
+  --font: 'Rubik', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sidebar-w: 280px;
+  --sidebar-collapsed: 68px;
+
+  /* Overlay */
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+
+  /* Input */
+  --input-bg: #101010;
+  --input-border: rgba(255, 255, 255, 0.12);
+  --input-focus-border: var(--indigo);
+  --input-placeholder: rgba(255, 255, 255, 0.38);
+
+  /* Table */
+  --table-row-alt: rgba(255, 255, 255, 0.02);
+  --table-header-bg: transparent;
+
+  /* Bottom nav */
+  --bnav-bg: linear-gradient(180deg, rgba(14, 14, 14, 0.96) 0%, rgba(8, 8, 8, 0.98) 100%);
+  --bnav-border: rgba(255, 255, 255, 0.1);
+  --bnav-text: rgba(255, 255, 255, 0.65);
+  --bnav-active: var(--indigo);
+
+  /* Login specific */
+  --login-card-bg: #080808;
+  --login-header-gradient: var(--gradient-main);
+  --login-input-bg: #101010;
+  --login-input-border: rgba(255, 255, 255, 0.12);
+  --login-tab-border: rgba(255, 255, 255, 0.12);
+  --login-tab-active: var(--indigo);
+  --login-error-bg: rgba(239, 68, 68, 0.1);
+  --login-error-color: #f87171;
+  --login-text: rgba(219, 230, 246, 0.84);
+  --login-label: rgba(255, 255, 255, 0.58);
+}
+
+/* ─── Light Theme ─── */
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg-deep: #f8f9fa;
+  --bg-base: #ffffff;
+  --bg-card: #ffffff;
+  --bg-elevated: #f1f3f5;
+  --bg-hover: #e9ecef;
+  --surface: rgba(241, 243, 245, 0.9);
+
+  /* Borders */
+  --border: #e2e8f0;
+  --border-hover: #cbd5e1;
+
+  /* Text */
+  --text-primary: #1a1a2e;
+  --text-secondary: #4a5568;
+  --text-muted: #718096;
+  --text-dim: #a0aec0;
+
+  /* Brand */
+  --indigo: #0d0d0d;
+  --indigo-soft: rgba(13, 13, 13, 0.08);
+  --blue: #3B82F6;
+  --blue-soft: rgba(59, 130, 246, 0.08);
+  --emerald: #16a34a;
+  --emerald-soft: rgba(22, 163, 74, 0.08);
+  --amber: #d97706;
+  --amber-soft: rgba(217, 119, 6, 0.08);
+  --rose: #dc2626;
+  --rose-soft: rgba(220, 38, 38, 0.08);
+  --violet: #2f2f2f;
+  --violet-soft: rgba(13, 13, 13, 0.08);
+  --sky: #0284c7;
+  --sky-soft: rgba(2, 132, 199, 0.08);
+  --teal: #0d9488;
+  --teal-soft: rgba(13, 148, 136, 0.08);
+
+  /* Gradients */
+  --gradient-main: linear-gradient(135deg, #0d0d0d 0%, #2f2f2f 100%);
+  --gradient-emerald: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+  --gradient-brand: var(--gradient-main);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.08);
+  --shadow-glow: 0 4px 16px var(--indigo-soft);
+
+  /* Overlay */
+  --overlay-bg: rgba(0, 0, 0, 0.3);
+
+  /* Input */
+  --input-bg: #ffffff;
+  --input-border: #e2e8f0;
+  --input-focus-border: var(--indigo);
+  --input-placeholder: #a0aec0;
+
+  /* Table */
+  --table-row-alt: #f8fafc;
+  --table-header-bg: #f8f9fa;
+
+  /* Bottom nav */
+  --bnav-bg: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+  --bnav-border: #e2e8f0;
+  --bnav-text: #4a5568;
+  --bnav-active: var(--indigo);
+
+  /* Login specific */
+  --login-card-bg: #ffffff;
+  --login-header-gradient: var(--gradient-main);
+  --login-input-bg: #ffffff;
+  --login-input-border: #e2e8f0;
+  --login-tab-border: #e2e8f0;
+  --login-tab-active: var(--indigo);
+  --login-error-bg: rgba(220, 38, 38, 0.06);
+  --login-error-color: #dc2626;
+  --login-text: #4a5568;
+  --login-label: #718096;
+}

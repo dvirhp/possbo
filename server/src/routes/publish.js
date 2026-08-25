@@ -1,67 +1,128 @@
-import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import multer from 'multer';
-import { publishToGroup } from '../utils/facebook-automation.js';
-import { savePost, getAllPosts, getPostsByGroup } from '../utils/posts-storage.js';
+import express from "express";
+import { getAllPosts, getPostsByGroup } from "../utils/posts-storage.js";
+import { sanitizeText } from "../utils/security.js";
+import { asyncHandler } from "../utils/async-handler.js";
+import { createLogger } from "../utils/logger.js";
+import { requireAuth } from "../utils/auth-middleware.js";
+import { uploadImages } from "../utils/upload-service.js";
+import { queueImmediateFacebookPublication } from "../utils/immediate-publication.js";
+import {
+  dailyLimitResponse,
+  getDailyPublishUsage,
+  notifyDailyLimitReached,
+} from "../utils/daily-publish-limit.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
-
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.png';
-    cb(null, Date.now() + '-' + Math.round(Math.random() * 1e6) + ext);
-  },
-});
-const upload = multer({ storage });
-
+const log = createLogger("publish");
 const router = express.Router();
 
-// Publish a post to a Facebook group
-router.post('/', upload.single('image'), async (req, res) => {
-  const { groupUrl, groupName, text, anonymous, location } = req.body;
-  if (!groupUrl || !text) {
-    return res.status(400).json({ success: false, error: 'groupUrl and text are required' });
-  }
-  const imagePath = req.file ? req.file.path : null;
-  const isAnonymous = anonymous === 'true';
-  try {
-    const result = await publishToGroup(groupUrl, text, imagePath, { anonymous: isAnonymous, location });
+function queuedResponse(queued) {
+  return {
+    success: true,
+    queued: true,
+    duplicate: queued.duplicate,
+    jobId: queued.job.id,
+    postId: queued.postId,
+    status: queued.job.status,
+  };
+}
 
-    // Save post to storage
-    const saved = savePost({
+async function rejectWhenDailyLimitReached(req, res, next) {
+  const usage = await getDailyPublishUsage(req.user.id, new Date(), {
+    includeQueued: true,
+  });
+  if (!usage.reached) return next();
+  await notifyDailyLimitReached(req.user.id, usage);
+  return res.status(429).json(dailyLimitResponse(usage));
+}
+
+router.post(
+  "/",
+  requireAuth,
+  asyncHandler(rejectWhenDailyLimitReached),
+  uploadImages(),
+  asyncHandler(async (req, res) => {
+    const { groupUrl, groupName, text, anonymous, location, title } = req.body;
+    if (!groupUrl || !text) {
+      return res
+        .status(400)
+        .json({ success: false, error: "groupUrl and text are required" });
+    }
+    const sanitizedText = sanitizeText(text);
+    if (!sanitizedText) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Text is invalid or too long" });
+    }
+
+    const imagePaths = req.files?.map((file) => file.path) || [];
+    if (req.file) imagePaths.push(req.file.path);
+    const queued = await queueImmediateFacebookPublication({
+      userId: req.user.id,
+      targetType: "GROUP",
       groupUrl,
       groupName,
-      text,
-      postUrl: result.postUrl,
-      screenshot: result.screenshot,
-      anonymous: isAnonymous,
-      location: location || null,
+      text: sanitizedText,
+      title: title || null,
+      anonymous: anonymous === "true",
+      location: location ? sanitizeText(location, 200) : null,
+      imagePaths,
+      idempotencyKey: req.get("Idempotency-Key"),
     });
-    console.log('[publish] Post saved with id:', saved.id, 'postUrl:', saved.postUrl);
 
-    res.json({ ...result, savedPost: saved });
-  } catch (error) {
-    console.error('Publish error:', error.message);
-    if (error.message === 'FACEBOOK_SESSION_REQUIRED') {
-      return res.status(428).json({ success: false, error: 'FACEBOOK_SESSION_REQUIRED' });
-    }
-    res.status(500).json({ success: false, error: error.message });
-  } finally {
-    if (imagePath && fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
-    }
-  }
-});
+    log.info("Immediate group publication queued", {
+      jobId: queued.job.id,
+      postId: queued.postId,
+      duplicate: queued.duplicate,
+    });
+    return res.status(202).json(queuedResponse(queued));
+  }),
+);
 
-// Get all published posts history
-router.get('/history', async (req, res) => {
+router.get("/history", requireAuth, async (req, res) => {
   const { groupUrl } = req.query;
-  const posts = groupUrl ? getPostsByGroup(groupUrl) : getAllPosts();
+  const posts = groupUrl
+    ? await getPostsByGroup(groupUrl)
+    : await getAllPosts(req.user.id);
   res.json({ success: true, posts });
 });
+
+router.post(
+  "/profile",
+  requireAuth,
+  asyncHandler(rejectWhenDailyLimitReached),
+  uploadImages(),
+  asyncHandler(async (req, res) => {
+    const { text, location, title } = req.body;
+    if (!text) {
+      return res
+        .status(400)
+        .json({ success: false, error: "text is required" });
+    }
+    const sanitizedText = sanitizeText(text);
+    if (!sanitizedText) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Text is invalid or too long" });
+    }
+
+    const imagePaths = req.files?.map((file) => file.path) || [];
+    const queued = await queueImmediateFacebookPublication({
+      userId: req.user.id,
+      targetType: "PROFILE",
+      text: sanitizedText,
+      title: title || null,
+      location: location ? sanitizeText(location, 200) : null,
+      imagePaths,
+      idempotencyKey: req.get("Idempotency-Key"),
+    });
+
+    log.info("Immediate profile publication queued", {
+      jobId: queued.job.id,
+      postId: queued.postId,
+      duplicate: queued.duplicate,
+    });
+    return res.status(202).json(queuedResponse(queued));
+  }),
+);
 
 export default router;

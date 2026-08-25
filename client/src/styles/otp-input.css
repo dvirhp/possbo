@@ -1,0 +1,68 @@
+/* ══════════════════════════════════════════════════════════════
+   OTP Code Input — Circle Style
+   ══════════════════════════════════════════════════════════════ */
+
+.otp-container {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  direction: ltr;
+  margin: 8px 0;
+}
+
+.otp-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--border, rgba(255,255,255,0.08));
+  background: var(--bg-elevated, #2a2f3a);
+  color: var(--text-primary, #e8ecf0);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  transition: 0.2s ease;
+  caret-color: transparent;
+  padding: 0;
+}
+
+.otp-circle:focus {
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 3px var(--indigo-soft);
+  background: var(--bg-hover, #313743);
+}
+
+.otp-circle.filled {
+  border-color: var(--indigo);
+  background: var(--indigo-soft);
+}
+
+/* Light theme */
+[data-theme="light"] .otp-circle {
+  background: #f4f6f9;
+  border-color: #d1d5db;
+  color: #1a1a2e;
+}
+
+[data-theme="light"] .otp-circle:focus {
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 3px var(--indigo-soft);
+  background: #f7f7f8;
+}
+
+[data-theme="light"] .otp-circle.filled {
+  border-color: var(--indigo);
+  background: var(--indigo-soft);
+}
+
+/* Responsive */
+@media (max-width: 400px) {
+  .otp-container {
+    gap: 6px;
+  }
+  .otp-circle {
+    width: 42px;
+    height: 42px;
+    font-size: 18px;
+  }
+}

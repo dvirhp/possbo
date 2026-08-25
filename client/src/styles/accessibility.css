@@ -1,0 +1,681 @@
+/* ══════════════════════════════════════════════════════════════
+   Accessibility Widget
+   ══════════════════════════════════════════════════════════════ */
+
+/* FAB — Bookmark tab on left edge, vertically centered */
+.a11y-fab {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 80px;
+  border-radius: 0 10px 10px 0;
+  background: #050505;
+  color: #ffffff;
+  border: 2px solid rgba(255,255,255,0.24);
+  border-left: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 2px 0 18px rgba(5, 5, 5, 0.24);
+  z-index: 810;
+  transition: width 0.2s, background 0.2s;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 1px;
+  padding: 0;
+}
+.a11y-fab:hover { width: 38px; background: #000000; }
+.a11y-fab:focus-visible { outline: 3px solid currentColor; outline-offset: 2px; }
+.a11y-fab svg { transform: rotate(90deg); }
+
+/* Overlay */
+.a11y-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 900;
+}
+
+/* Panel — slides from left */
+.a11y-panel {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 320px;
+  max-width: calc(100vw - 48px);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 16px 16px 0;
+  z-index: 950;
+  padding: 20px;
+  box-shadow: 4px 0 40px rgba(0, 0, 0, 0.5);
+  animation: a11y-slide-in 0.3s ease;
+}
+
+@keyframes a11y-slide-in {
+  from { opacity: 0; transform: translateY(-50%) translateX(-20px); }
+  to { opacity: 1; transform: translateY(-50%) translateX(0); }
+}
+
+.a11y-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.a11y-panel-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+.a11y-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.a11y-close:hover { color: var(--text-primary); }
+
+/* Options */
+.a11y-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.a11y-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.15s;
+  text-align: right;
+}
+.a11y-option:hover { background: var(--bg-hover); }
+.a11y-option.active {
+  background: #050505;
+  border-color: #050505;
+  color: #ffffff;
+}
+
+.a11y-option-icon { font-size: 18px; min-width: 24px; text-align: center; }
+.a11y-option-label { flex: 1; }
+.a11y-option-value {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+.a11y-option-status { color: currentColor; font-weight: 700; font-size: 16px; min-width: 20px; text-align: center; }
+
+/* Reset */
+.a11y-reset {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.15s;
+  margin-bottom: 10px;
+}
+.a11y-reset:hover { background: var(--bg-elevated); color: var(--text-primary); }
+
+/* Footer */
+.a11y-footer {
+  text-align: center;
+}
+.a11y-footer p {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* ─── Accessibility Effects (applied to html) ─── */
+
+/* Font size — zoom the html element; browsers adjust viewport accordingly */
+html.a11y-font-large {
+  zoom: 1.12;
+}
+html.a11y-font-largest {
+  zoom: 1.25;
+}
+/* Counteract zoom on fixed accessibility/chatbot widgets */
+html.a11y-font-large .a11y-fab { zoom: calc(1 / 1.12); }
+html.a11y-font-largest .a11y-fab { zoom: calc(1 / 1.25); }
+html.a11y-font-large .a11y-panel { zoom: calc(1 / 1.12); }
+html.a11y-font-largest .a11y-panel { zoom: calc(1 / 1.25); }
+html.a11y-font-large .a11y-overlay { zoom: calc(1 / 1.12); }
+html.a11y-font-largest .a11y-overlay { zoom: calc(1 / 1.25); }
+html.a11y-font-large .chatbot-fab { zoom: calc(1 / 1.12); }
+html.a11y-font-largest .chatbot-fab { zoom: calc(1 / 1.25); }
+html.a11y-font-large .chatbot-panel { zoom: calc(1 / 1.12); }
+html.a11y-font-largest .chatbot-panel { zoom: calc(1 / 1.25); }
+html.a11y-font-large .bottom-nav { zoom: calc(1 / 1.12); }
+html.a11y-font-largest .bottom-nav { zoom: calc(1 / 1.25); }
+html.a11y-font-large .mobile-drawer { zoom: calc(1 / 1.12); }
+html.a11y-font-largest .mobile-drawer { zoom: calc(1 / 1.25); }
+html.a11y-font-large .mobile-drawer-overlay { zoom: calc(1 / 1.12); }
+html.a11y-font-largest .mobile-drawer-overlay { zoom: calc(1 / 1.25); }
+
+/* High contrast */
+html.a11y-high-contrast {
+  filter: contrast(1.4);
+}
+html.a11y-high-contrast body {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+/* Link highlight */
+html.a11y-link-highlight a,
+html.a11y-link-highlight button {
+  outline: 2px solid #ffeb3b !important;
+  outline-offset: 2px;
+}
+
+/* Grayscale */
+html.a11y-grayscale {
+  filter: grayscale(1);
+}
+
+/* No animations */
+html.a11y-no-animations *,
+html.a11y-no-animations *::before,
+html.a11y-no-animations *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0s !important;
+}
+
+/* Big cursor */
+html.a11y-big-cursor,
+html.a11y-big-cursor * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M4 4l20 8-8 4-4 8z' fill='%23000' stroke='%23fff' stroke-width='1'/%3E%3C/svg%3E") 4 4, auto !important;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .a11y-fab {
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+    height: 60px;
+    width: 28px;
+  }
+  .a11y-panel {
+    top: auto;
+    bottom: auto;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 85vw;
+    max-width: 320px;
+    height: auto;
+    max-height: 70vh;
+    border-radius: 16px;
+    overflow-y: auto;
+  }
+  @keyframes a11y-slide-in {
+    from { opacity: 0; transform: translateY(-50%) translateX(-20px); }
+    to { opacity: 1; transform: translateY(-50%) translateX(0); }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Light Mode — Accessibility Widget
+   ══════════════════════════════════════════════════════════════ */
+[data-theme="light"] .a11y-fab {
+  background: #050505;
+  color: #ffffff;
+  border-color: rgba(5, 5, 5, 0.92);
+  border-left: none;
+  box-shadow: 2px 0 18px rgba(5, 5, 5, 0.2), 0 0 0 1px rgba(255,255,255,0.7);
+}
+
+[data-theme="light"] .a11y-fab:hover {
+  background: #000000;
+  box-shadow: 3px 0 24px rgba(5, 5, 5, 0.26), 0 0 0 1px rgba(255,255,255,0.8);
+}
+
+[data-theme="light"] .a11y-overlay {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .a11y-panel {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-left: none;
+  box-shadow: 4px 0 40px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+[data-theme="light"] .a11y-panel-header h3 {
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .a11y-close {
+  background: rgba(0,0,0,0.06);
+  color: #6b7280;
+}
+[data-theme="light"] .a11y-close:hover {
+  color: #1a1a1a;
+  background: rgba(0,0,0,0.1);
+}
+
+[data-theme="light"] .a11y-option {
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.03);
+  color: #1a1a1a;
+}
+[data-theme="light"] .a11y-option:hover {
+  background: rgba(0,0,0,0.06);
+}
+[data-theme="light"] .a11y-option.active {
+  background: #050505;
+  border-color: #050505;
+  color: #ffffff;
+}
+
+[data-theme="light"] .a11y-option.active :is(span, svg, path) {
+  color: #ffffff;
+  stroke: currentColor;
+}
+
+[data-theme="light"] .a11y-option-value {
+  background: rgba(0,0,0,0.06);
+  color: #6b7280;
+}
+
+[data-theme="light"] .a11y-reset {
+  border: 1px solid rgba(0,0,0,0.1);
+  color: #6b7280;
+}
+[data-theme="light"] .a11y-reset:hover {
+  background: rgba(0,0,0,0.04);
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .a11y-footer p {
+  color: #9ca3af;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Dark Mode — Accessibility Widget
+   ══════════════════════════════════════════════════════════════ */
+[data-theme="dark"] .a11y-fab {
+  background: #ffffff;
+  color: #050505;
+  border-color: rgba(255, 255, 255, 0.86);
+  border-left: none;
+  box-shadow: 2px 0 22px rgba(255, 255, 255, 0.18), 0 0 0 1px rgba(5,5,5,0.9);
+}
+
+[data-theme="dark"] .a11y-fab:hover {
+  background: #f2f2f2;
+  box-shadow: 3px 0 30px rgba(255, 255, 255, 0.24), 0 0 0 1px rgba(5,5,5,0.9);
+}
+
+[data-theme="dark"] .a11y-overlay {
+  background: rgba(0, 0, 0, 0.58);
+}
+
+[data-theme="dark"] .a11y-panel {
+  background: rgba(8, 8, 8, 0.96);
+  border-color: rgba(255, 255, 255, 0.12);
+  border-left: none;
+  box-shadow: 4px 0 44px rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+[data-theme="dark"] .a11y-panel-header h3 {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .a11y-close {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.74);
+}
+
+[data-theme="dark"] .a11y-close:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .a11y-option {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+[data-theme="dark"] .a11y-option:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.26);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .a11y-option.active {
+  background: linear-gradient(180deg, #e9eef8 0%, #cbd6e8 100%);
+  border-color: rgba(255, 255, 255, 0.8);
+  color: #050505 !important;
+  box-shadow: 0 0 18px rgba(105, 127, 170, 0.28);
+}
+
+[data-theme="dark"] .a11y-option.active :is(span, svg, path) {
+  color: #050505 !important;
+  stroke: currentColor !important;
+}
+
+[data-theme="dark"] .a11y-option-value {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+[data-theme="dark"] .a11y-option.active .a11y-option-value {
+  background: rgba(5, 5, 5, 0.08);
+  color: #050505 !important;
+}
+
+[data-theme="dark"] .a11y-reset {
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+[data-theme="dark"] .a11y-reset:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .a11y-footer p {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ─── Zoom-Responsive Overrides ─── */
+/* When font zoom is active, ensure layouts don't overflow on any screen size */
+
+/* Global: prevent text overflow everywhere when zoomed */
+html.a11y-font-large,
+html.a11y-font-largest {
+  overflow-x: hidden;
+}
+html.a11y-font-large *,
+html.a11y-font-largest * {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* ── Desktop with zoom: treat 1280px as if it were smaller ── */
+@media (max-width: 1440px) {
+  html.a11y-font-largest .overview-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+  html.a11y-font-largest .reports-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 1280px) {
+  html.a11y-font-large .overview-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+  html.a11y-font-large .reports-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+}
+
+/* ── Tablet range: grids should collapse sooner ── */
+@media (max-width: 1100px) {
+  html.a11y-font-largest .overview-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  html.a11y-font-largest .reports-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  html.a11y-font-largest .ov2-layout { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .dash-posts-table-header,
+  html.a11y-font-largest .dash-posts-table-row { display: flex !important; flex-wrap: wrap; gap: 8px; }
+  html.a11y-font-largest .tpl-list-header,
+  html.a11y-font-largest .tpl-list-row { display: flex !important; flex-wrap: wrap; gap: 8px; }
+}
+
+@media (max-width: 1024px) {
+  html.a11y-font-large .overview-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  html.a11y-font-large .reports-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  html.a11y-font-large .ov2-layout { grid-template-columns: 1fr !important; }
+  html.a11y-font-large .dash-posts-table-header,
+  html.a11y-font-large .dash-posts-table-row { display: flex !important; flex-wrap: wrap; gap: 8px; }
+  html.a11y-font-large .tpl-list-header,
+  html.a11y-font-large .tpl-list-row { display: flex !important; flex-wrap: wrap; gap: 8px; }
+}
+
+/* ── Medium screens (768-1024): reduce padding, simplify layouts ── */
+@media (max-width: 900px) {
+  html.a11y-font-large .cp-layout,
+  html.a11y-font-large .cp-wizard-layout {
+    padding: 14px 10px 70px !important;
+  }
+  html.a11y-font-large .dash-body { padding: 14px 12px !important; }
+  html.a11y-font-large .ov2-wrapper { padding: 12px !important; }
+  html.a11y-font-large .reports-body { padding: 14px 12px !important; }
+
+  html.a11y-font-largest .cp-layout,
+  html.a11y-font-largest .cp-wizard-layout {
+    padding: 12px 8px 70px !important;
+  }
+  html.a11y-font-largest .dash-body { padding: 12px 8px !important; }
+  html.a11y-font-largest .ov2-wrapper { padding: 10px !important; }
+  html.a11y-font-largest .reports-body { padding: 12px 8px !important; }
+}
+
+/* ── Mobile: reduce everything, force single-column where needed ── */
+@media (max-width: 768px) {
+  html.a11y-font-large .cp-layout,
+  html.a11y-font-large .cp-wizard-layout {
+    padding: 12px 8px 60px !important;
+  }
+  html.a11y-font-large .overview-kpis { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+  html.a11y-font-large .reports-kpis { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+  html.a11y-font-large .tpl-grid { grid-template-columns: 1fr !important; }
+  html.a11y-font-large .sc-page { padding: 12px 8px !important; }
+
+  html.a11y-font-largest .cp-layout,
+  html.a11y-font-largest .cp-wizard-layout {
+    padding: 10px 6px 60px !important;
+  }
+  html.a11y-font-largest .overview-kpis { grid-template-columns: 1fr !important; gap: 8px !important; }
+  html.a11y-font-largest .reports-kpis { grid-template-columns: 1fr !important; gap: 8px !important; }
+  html.a11y-font-largest .tpl-grid { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .sc-page { padding: 10px 6px !important; }
+  html.a11y-font-largest .dash-posts-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ── Small phone: extreme zoom safeguards ── */
+@media (max-width: 480px) {
+  html.a11y-font-large .overview-kpis { grid-template-columns: 1fr !important; }
+  html.a11y-font-large .reports-kpis { grid-template-columns: 1fr !important; }
+  html.a11y-font-large .dash-section-header { flex-wrap: wrap; gap: 8px; }
+  html.a11y-font-large .reports-topbar { flex-wrap: wrap; gap: 8px; }
+  html.a11y-font-large .cp-stepper { gap: 0; }
+  html.a11y-font-large .cp-step-label { font-size: 9px !important; }
+
+  html.a11y-font-largest .overview-kpis { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .reports-kpis { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .dash-section-header { flex-wrap: wrap; gap: 6px; }
+  html.a11y-font-largest .reports-topbar { flex-wrap: wrap; gap: 6px; }
+  html.a11y-font-largest .cp-stepper { gap: 0; }
+  html.a11y-font-largest .cp-step-label { font-size: 8px !important; }
+  html.a11y-font-largest .dash-posts-grid { grid-template-columns: 1fr !important; }
+  html.a11y-font-largest .sc-calendar-grid { font-size: 10px !important; }
+}
+
+/* ── Modals & Panels: always fit viewport when zoomed ── */
+html.a11y-font-large .tpl-detail-modal,
+html.a11y-font-large .reports-detail-modal,
+html.a11y-font-large .reports-popup,
+html.a11y-font-large .notif-panel,
+html.a11y-font-large .confirm-dialog,
+html.a11y-font-large .post-details-modal {
+  max-width: calc(100vw - 24px) !important;
+  max-height: calc(100vh - 24px) !important;
+  overflow: auto;
+}
+html.a11y-font-largest .tpl-detail-modal,
+html.a11y-font-largest .reports-detail-modal,
+html.a11y-font-largest .reports-popup,
+html.a11y-font-largest .notif-panel,
+html.a11y-font-largest .confirm-dialog,
+html.a11y-font-largest .post-details-modal {
+  max-width: calc(100vw - 16px) !important;
+  max-height: calc(100vh - 16px) !important;
+  overflow: auto;
+}
+
+/* ── Tables: horizontal scroll instead of overflow ── */
+html.a11y-font-large .pdt-table-wrapper,
+html.a11y-font-large .reports-table-container,
+html.a11y-font-largest .pdt-table-wrapper,
+html.a11y-font-largest .reports-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Flex containers: allow wrapping when zoomed ── */
+html.a11y-font-large .overview-header-actions,
+html.a11y-font-large .dash-section-actions,
+html.a11y-font-large .tpl-topbar-actions,
+html.a11y-font-large .reports-topbar-actions,
+html.a11y-font-largest .overview-header-actions,
+html.a11y-font-largest .dash-section-actions,
+html.a11y-font-largest .tpl-topbar-actions,
+html.a11y-font-largest .reports-topbar-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── Sidebar: shrink or hide sidebar collapsed at larger breakpoint ── */
+@media (max-width: 1024px) {
+  html.a11y-font-largest .sidebar {
+    display: none !important;
+  }
+  html.a11y-font-largest .app-main {
+    margin-right: 0 !important;
+    max-width: 100vw;
+  }
+}
+@media (max-width: 900px) {
+  html.a11y-font-large .sidebar {
+    display: none !important;
+  }
+  html.a11y-font-large .app-main {
+    margin-right: 0 !important;
+    max-width: 100vw;
+  }
+}
+
+/* ── Facebook Preview: scale down when zoomed on small screens ── */
+@media (max-width: 768px) {
+  html.a11y-font-large .fbp-phone-frame,
+  html.a11y-font-largest .fbp-phone-frame {
+    width: 100% !important;
+    max-width: 320px !important;
+    margin: 0 auto;
+  }
+}
+
+/* ── Calendar: ensure cells don't overflow ── */
+html.a11y-font-large .sc-calendar-grid,
+html.a11y-font-largest .sc-calendar-grid {
+  overflow-x: auto;
+}
+@media (max-width: 768px) {
+  html.a11y-font-large .sc-calendar-grid,
+  html.a11y-font-largest .sc-calendar-grid {
+    font-size: 11px;
+  }
+  html.a11y-font-largest .sc-calendar-grid {
+    font-size: 10px;
+  }
+}
+
+/* ── Group details & My Groups: force wrapping ── */
+html.a11y-font-large .mg-group-card,
+html.a11y-font-largest .mg-group-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Landing page: ensure hero text doesn't overflow ── */
+@media (max-width: 768px) {
+  html.a11y-font-large .landing-hero-title { font-size: 24px !important; }
+  html.a11y-font-large .landing-hero-subtitle { font-size: 14px !important; }
+  html.a11y-font-largest .landing-hero-title { font-size: 20px !important; }
+  html.a11y-font-largest .landing-hero-subtitle { font-size: 13px !important; }
+}
+
+/* ── Generic: prevent any container from causing horizontal scroll ── */
+html.a11y-font-large .app-main,
+html.a11y-font-largest .app-main {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* ── Buttons & inputs: ensure they don't clip text ── */
+html.a11y-font-large button,
+html.a11y-font-large input,
+html.a11y-font-large select,
+html.a11y-font-largest button,
+html.a11y-font-largest input,
+html.a11y-font-largest select {
+  min-height: 1.5em;
+  overflow: visible;
+}
+
+/* ── Topbar: prevent action buttons from overflowing ── */
+html.a11y-font-large .cp-topbar,
+html.a11y-font-largest .cp-topbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── Posts Data Table: cards view on mobile when zoomed ── */
+@media (max-width: 768px) {
+  html.a11y-font-large .pdt-table-header,
+  html.a11y-font-largest .pdt-table-header {
+    display: none !important;
+  }
+  html.a11y-font-large .pdt-table-row,
+  html.a11y-font-largest .pdt-table-row {
+    display: flex !important;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px !important;
+    border-bottom: 1px solid var(--border, #2a2f3a);
+  }
+}
+
+/* ── Notification settings panel ── */
+html.a11y-font-large .notif-settings-panel,
+html.a11y-font-largest .notif-settings-panel {
+  max-width: calc(100vw - 20px) !important;
+}

@@ -1,0 +1,55 @@
+/* ══════════════════════════════════════════════════════════════
+   Guides Page
+   ══════════════════════════════════════════════════════════════ */
+
+.guides-page {
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.guides-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+  color: var(--text-primary, #e8ecf0);
+}
+
+.guides-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.guides-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  background: var(--bg-card, #1e2128);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 16px;
+  text-align: center;
+}
+
+.guides-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.guides-empty h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary, #e8ecf0);
+  margin: 0 0 8px;
+}
+
+.guides-empty p {
+  font-size: 14px;
+  color: var(--text-muted, #6b7684);
+  max-width: 400px;
+  margin: 0;
+  line-height: 1.6;
+}
