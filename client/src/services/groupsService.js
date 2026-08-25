@@ -18,6 +18,8 @@ export const groupsService = {
   getCampaigns: () => api.get("/scheduler/campaigns"),
   getRecentCampaigns: () => api.get("/scheduler/campaigns/recent"),
   getCampaign: (postId) => api.get(`/scheduler/campaigns/${postId}`),
+  getCampaignProgress: (postId) =>
+    api.get(`/scheduler/campaigns/${postId}/progress`),
   createCampaign: (data, images, igTypeMedia) => {
     const hasIgMedia =
       igTypeMedia && Object.values(igTypeMedia).some((arr) => arr?.length > 0);

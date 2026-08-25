@@ -181,6 +181,17 @@ npx prisma migrate dev  # Create migration
 | GET    | `/dashboard-kpis`                   | Yes  | Detailed KPIs with date range      |
 | GET    | `/top-posts`                        | Yes  | Best performing posts              |
 
+### Production scheduler
+
+Set `RUN_SCHEDULER=true` on exactly one production process and set it to
+`false` on additional web replicas. Each pass atomically claims up to
+`PUBLICATION_CLAIM_LIMIT` due jobs and processes up to
+`PUBLICATION_USER_CONCURRENCY` independent users concurrently. Jobs belonging
+to the same user remain sequential.
+
+For a separate worker service, run `npm run worker` and set
+`RUN_SCHEDULER=false` on every web service.
+
 ### Templates (`/api/templates`) — 6 endpoints
 
 | Method | Path       | Auth | Description                      |

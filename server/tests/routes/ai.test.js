@@ -295,3 +295,38 @@ describe("POST /api/ai/generate-post", () => {
     expect(prompt).toContain("This is a reference post example");
   });
 });
+
+describe("POST /api/ai/transform-post", () => {
+  it("validates text and operation", async () => {
+    const missingText = await request(app).post("/api/ai/transform-post").send({ operation: "rewrite" });
+    expect(missingText.status).toBe(400);
+    const invalidOperation = await request(app).post("/api/ai/transform-post").send({ text: "פוסט", operation: "delete" });
+    expect(invalidOperation.status).toBe(400);
+  });
+
+  it("transforms an existing post", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: "פוסט קצר ומשופר" }] } }] }),
+    });
+    const res = await request(app).post("/api/ai/transform-post").send({
+      text: "זהו טקסט ארוך שצריך לשפר",
+      operation: "shorten",
+      platform: "instagram",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ post: "פוסט קצר ומשופר", operation: "shorten", platform: "instagram" });
+    const prompt = JSON.parse(mockFetch.mock.calls[0][1].body).contents[0].parts[0].text;
+    expect(prompt).toContain("<source_text>");
+    expect(prompt).toContain("instagram");
+  });
+
+  it("rejects oversized input", async () => {
+    const res = await request(app).post("/api/ai/transform-post").send({
+      text: "א".repeat(12001),
+      operation: "rewrite",
+    });
+    expect(res.status).toBe(413);
+  });
+});

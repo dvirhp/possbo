@@ -9,7 +9,6 @@ import QRCode from "qrcode";
 import path from "path";
 import fs from "fs";
 import fsPromises from "fs/promises";
-import os from "os";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
@@ -66,14 +65,12 @@ async function restoreSessionFromDB(userId, folder) {
 async function persistSessionToDB(userId, folder) {
   const entries = await fsPromises.readdir(folder, { withFileTypes: true });
   const files = {};
-  await Promise.all(
-    entries
-      .filter((entry) => entry.isFile())
-      .map(async (entry) => {
-        const data = await fsPromises.readFile(path.join(folder, entry.name));
-        files[entry.name] = data.toString("base64");
-      }),
-  );
+  // Read sequentially. Baileys sessions can contain hundreds of key files;
+  // opening all of them concurrently exhausts Windows' file handle limit.
+  for (const entry of entries.filter((item) => item.isFile())) {
+    const data = await fsPromises.readFile(path.join(folder, entry.name));
+    files[entry.name] = data.toString("base64");
+  }
   const stateEncrypted = encrypt(JSON.stringify(files));
   await prisma.whatsAppSession.upsert({
     where: { userId },
@@ -157,7 +154,9 @@ async function useAtomicAuthState(userId, folder) {
 
   // Override saveCreds with atomic version + backup
   const originalSaveCreds = result.saveCreds;
-  result.saveCreds = async () => {
+  let saveChain = Promise.resolve();
+  result.saveCreds = () => {
+    saveChain = saveChain.catch(() => {}).then(async () => {
     // First, save normally (Baileys internal logic)
     await originalSaveCreds();
 
@@ -171,6 +170,8 @@ async function useAtomicAuthState(userId, folder) {
     } catch {
       /* ignore backup errors */
     }
+    });
+    return saveChain;
   };
 
   return result;

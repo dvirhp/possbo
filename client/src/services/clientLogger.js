@@ -27,14 +27,15 @@ function sendClientLog(payload) {
     componentStack: safeText(payload.componentStack, 500),
   })
 
-  if (navigator.sendBeacon) {
+  const token = getStoredAccessToken()
+  if (!token && navigator.sendBeacon) {
     const sent = navigator.sendBeacon(LOG_ENDPOINT, new globalThis.Blob([body], { type: 'application/json' }))
     if (sent) return
   }
 
   fetch(LOG_ENDPOINT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body,
     credentials: 'include',
     keepalive: true,
@@ -61,3 +62,4 @@ export function logClientWarning(event, message, extra = {}) {
     statusCode: extra.statusCode,
   })
 }
+import { getStoredAccessToken } from './tokenStore'

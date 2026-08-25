@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { X, Send, ChevronLeft, Image } from 'lucide-react'
 import { useAppData } from '../context/DataProvider'
 import { groupsService } from '../services/groupsService'
@@ -463,7 +462,7 @@ const FLOW_STEPS = {
 const DAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳']
 
 export default function ChatBot() {
-  const navigate = useNavigate()
+
   const { user, groups: cachedGroups, waGroups, waBroadcastLists, loadWaGroups, forceRefresh } = useAppData()
 
   const [open, setOpen] = useState(() => {
@@ -591,7 +590,7 @@ export default function ChatBot() {
       ])
       setCurrentTopic('welcome')
     }
-  }, [open])
+  }, [open, messages.length])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -956,7 +955,7 @@ export default function ChatBot() {
         setFlowActive(false)
         setFlowStep(null)
       }
-    } catch (err) {
+    } catch {
       setMessages(prev => [...prev, {
         type: 'bot', time: getTimeStr(),
         text: `לא הצלחנו להשלים את הפעולה כרגע. נסו שוב מאוחר יותר; אם הבעיה חוזרת, בדקו את חיבורי הפלטפורמות או פנו לתמיכה. 😕`,

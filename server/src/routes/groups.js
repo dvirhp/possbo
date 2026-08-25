@@ -7,9 +7,8 @@ import {
   bootstrapFacebookSession,
   captureGroupScreenshot,
   scrapeMyGroups,
-  publishToGroup,
 } from "../utils/facebook-automation.js";
-import { savePost } from "../utils/posts-storage.js";
+import { queueImmediateFacebookPublication } from "../utils/immediate-publication.js";
 import { createLogger } from "../utils/logger.js";
 import {
   refreshGroupsMetadataForUser,
@@ -231,6 +230,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const groups = await scrapeMyGroups(req.user.id);
+    let previousCount = 0;
 
     // Smart sync: compare old vs new, preserve posts for groups that still exist
     if (req.user) {
@@ -243,6 +243,7 @@ router.get(
       const existingGroups = await prisma.facebookGroup.findMany({
         where: { userId },
       });
+      previousCount = existingGroups.length;
       // Delete groups that no longer exist (and their related data)
       const groupsToDelete = existingGroups.filter(
         (g) => !newGroupIds.has(g.groupId),
@@ -355,6 +356,9 @@ router.get(
       }
     }
 
+    if (prisma.groupSyncHistory?.create) {
+      await prisma.groupSyncHistory.create({ data: { userId: req.user.id, groupsFound: groups.length, groupsAdded: Math.max(0, groups.length - previousCount), groupsRemoved: Math.max(0, previousCount - groups.length), status: "SUCCESS" } });
+    }
     res.json({ success: true, groups });
   }),
 );
@@ -622,30 +626,25 @@ router.post(
     const sanitizedLocation = location ? sanitizeText(location, 200) : null;
     const isAnonymous = anonymous === "true";
     const imagePath = req.file ? req.file.path : null;
-    try {
-      const result = await publishToGroup(groupUrl, sanitizedText, imagePath, {
-        anonymous: isAnonymous,
-        location: sanitizedLocation,
+    const queued = await queueImmediateFacebookPublication({
         userId: req.user.id,
-      });
-
-      const saved = await savePost({
-        userId: req.user.id,
+        targetType: "GROUP",
         groupUrl,
         groupName,
         text: sanitizedText,
-        postUrl: result.postUrl,
-        screenshot: result.screenshot,
         anonymous: isAnonymous,
         location: sanitizedLocation,
+        imagePaths: imagePath ? [imagePath] : [],
+        idempotencyKey: req.get("Idempotency-Key"),
       });
-
-      res.json({ ...result, savedPost: saved });
-    } finally {
-      if (imagePath && fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    }
+    res.status(202).json({
+      success: true,
+      queued: true,
+      duplicate: queued.duplicate,
+      jobId: queued.job.id,
+      postId: queued.postId,
+      status: queued.job.status,
+    });
   }),
 );
 

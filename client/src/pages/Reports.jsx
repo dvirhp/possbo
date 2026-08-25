@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
-import { groupsService } from '../services/groupsService'
-import { FileText, Download, Calendar, TrendingUp, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Eye, X, ExternalLink, Users } from 'lucide-react'
+import { FileText, Download, TrendingUp, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Eye, X, ExternalLink, Users } from 'lucide-react'
 import '../styles/overview.css'
 import '../styles/reports.css'
 
@@ -40,9 +39,23 @@ const PERIOD_OPTIONS = [
   { value: 'custom', label: 'מותאם אישית' },
 ]
 
-function toDateStr(d) {
-  return d.toISOString().split('T')[0]
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
 }
+
+function csvCell(value) {
+  let text = String(value ?? '')
+  // Prevent spreadsheet formula injection when a report is opened in Excel/Sheets.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`
+  return `"${text.replaceAll('"', '""')}"`
+}
+
+
 
 function ReportsDatePicker({ initialFrom, initialTo, onApply, onCancel, period, onPeriodChange }) {
   const toDS = (d) => d.toISOString().split('T')[0]
@@ -287,7 +300,7 @@ function FuturePublications({ item }) {
 export default function Reports() {
   const navigate = useNavigate()
   const {
-    user, authChecked, posts, campaigns, groups, jobs, ensureFresh, forceRefresh,
+    user, authChecked, posts, campaigns, jobs, ensureFresh, forceRefresh,
     waGroups, waBroadcastLists,
   } = useAppData()
   const [period, setPeriod] = useState('weekly')
@@ -331,7 +344,7 @@ export default function Reports() {
       window.removeEventListener('possbo-pull-refresh', handlePullRefresh)
       window.removeEventListener('focus', handleFocus)
     }
-  }, [])
+  }, [ensureFresh, forceRefresh])
 
   // Close date picker on outside click
   useEffect(() => {
@@ -759,11 +772,13 @@ export default function Reports() {
     setGenerating(true)
     try {
       // Generate PDF report using browser print
-      const content = document.querySelector('.reports-content')
-      const printWindow = window.open('', '_blank')
+
+      const printWindow = window.open('', '_blank', 'noopener,noreferrer')
+      if (!printWindow) throw new Error('POPUP_BLOCKED')
       printWindow.document.write(`
         <html dir="rtl">
         <head>
+          <meta charset="utf-8">
           <title>דוח Possbo - ${period === 'daily' ? 'יומי' : period === 'weekly' ? 'שבועי' : 'חודשי'}</title>
           <style>
             body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 40px; color: #222; direction: rtl; }
@@ -801,8 +816,8 @@ export default function Reports() {
             <tbody>
               ${recentActivity.map(a => `
                 <tr>
-                  <td>${a.campaignName}</td>
-                  <td>${a.groupName}</td>
+                  <td>${escapeHtml(a.campaignName)}</td>
+                  <td>${escapeHtml(a.groupName)}</td>
                   <td class="${a.status === 'SUCCESS' ? 'success' : 'failed'}">${a.status === 'SUCCESS' ? '✅ הצלחה' : '❌ נכשל'}</td>
                   <td>${formatDate(a.date)}</td>
                 </tr>
@@ -815,7 +830,7 @@ export default function Reports() {
             <table>
               <thead><tr><th>קבוצה</th><th>כותרת</th><th>תאריך תזמון</th></tr></thead>
               <tbody>
-                ${upcoming.map(u => `<tr><td>${u.groupName}</td><td>${u.postTitle || '-'}</td><td>${formatDate(u.scheduledAt)}</td></tr>`).join('')}
+                ${upcoming.map(u => `<tr><td>${escapeHtml(u.groupName)}</td><td>${escapeHtml(u.postTitle || '-')}</td><td>${escapeHtml(formatDate(u.scheduledAt))}</td></tr>`).join('')}
               </tbody>
             </table>
           ` : ''}
@@ -831,6 +846,28 @@ export default function Reports() {
     } finally {
       setGenerating(false)
     }
+  }
+
+  const handleDownloadCSV = () => {
+    const headers = ['שם קמפיין', 'יעד', 'פלטפורמה', 'סטטוס', 'תאריך']
+    const rows = recentActivity.map(item => [
+      item.campaignName,
+      item.groupName,
+      item.platform || 'FACEBOOK',
+      item.status,
+      formatDate(item.date),
+    ])
+    const csv = '\uFEFF' + [headers, ...rows]
+      .map(row => row.map(csvCell).join(','))
+      .join('\r\n')
+    const url = URL.createObjectURL(new window.Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `possbo-report-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
   }
 
   if (!authChecked || !user) return null
@@ -869,6 +906,10 @@ export default function Reports() {
           <button className="reports-download-btn" onClick={handleDownloadPDF} disabled={generating}>
             <Download size={16} />
             {generating ? 'מפיק...' : 'הורד PDF'}
+          </button>
+          <button className="reports-download-btn" onClick={handleDownloadCSV} disabled={recentActivity.length === 0}>
+            <Download size={16} />
+            הורד CSV
           </button>
         </div>
       </div>

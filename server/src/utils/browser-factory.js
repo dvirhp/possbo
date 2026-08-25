@@ -3,6 +3,35 @@ import { createLogger } from "./logger.js";
 
 const log = createLogger("browser");
 
+// A Chromium process is expensive (typically hundreds of MB under real pages).
+// Keep one process-wide budget so unrelated jobs cannot exhaust the container.
+const MEMORY_LIMIT_MB = Math.max(256, Number(process.env.WORKER_MEMORY_LIMIT_MB || 1024));
+const RESERVED_MEMORY_MB = Math.max(128, Number(process.env.WORKER_RESERVED_MEMORY_MB || 256));
+const CHROMIUM_MEMORY_MB = Math.max(128, Number(process.env.CHROMIUM_MEMORY_MB || 350));
+const configuredConcurrency = Number(process.env.CHROMIUM_CONCURRENCY || 0);
+export const CHROMIUM_CONCURRENCY = Math.max(
+  1,
+  configuredConcurrency || Math.floor((MEMORY_LIMIT_MB - RESERVED_MEMORY_MB) / CHROMIUM_MEMORY_MB),
+);
+let activeBrowsers = 0;
+const browserWaiters = [];
+
+async function acquireBrowserSlot() {
+  if (activeBrowsers >= CHROMIUM_CONCURRENCY) {
+    await new Promise((resolve) => browserWaiters.push(resolve));
+  }
+  activeBrowsers += 1;
+}
+
+function releaseBrowserSlot() {
+  activeBrowsers = Math.max(0, activeBrowsers - 1);
+  browserWaiters.shift()?.();
+}
+
+export function getBrowserResourceStats() {
+  return { active: activeBrowsers, waiting: browserWaiters.length, limit: CHROMIUM_CONCURRENCY };
+}
+
 // ─── Proxy configuration ─────────────────────────────────
 
 const PROXY_URL = process.env.PROXY_URL || ""; // e.g. http://user:pass@gate.brightdata.com:22225
@@ -164,7 +193,20 @@ export async function launchBrowser(options = {}) {
     log.debug("Launching browser with proxy");
   }
 
-  return chromium.launch(launchOpts);
+  await acquireBrowserSlot();
+  try {
+    const browser = await chromium.launch(launchOpts);
+    let released = false;
+    browser.on("disconnected", () => {
+      if (released) return;
+      released = true;
+      releaseBrowserSlot();
+    });
+    return browser;
+  } catch (error) {
+    releaseBrowserSlot();
+    throw error;
+  }
 }
 
 /**

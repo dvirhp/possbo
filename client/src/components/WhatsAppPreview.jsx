@@ -1,7 +1,7 @@
 import '../styles/wa-preview.css'
 
-export default function WhatsAppPreview({ text, images, userName, targetName }) {
-  const displayName = userName || 'את'
+export default function WhatsAppPreview({ text, images, targetName }) {
+
   const timeStr = '10:10'
 
   // Strip wa.me links from preview (not relevant in WhatsApp context)

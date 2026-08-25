@@ -59,6 +59,8 @@ enum JobStatus {
   RUNNING
   SUCCESS
   FAILED
+  UNKNOWN
+  DEAD
   CANCELLED
 }
 
@@ -82,6 +84,7 @@ model User {
   idNumber                 String?    @unique @map("id_number")
   passwordHash             String?    @map("password_hash")
   name                     String?
+  isAdmin                  Boolean    @default(false) @map("is_admin")
   firstName                String?    @map("first_name")
   lastName                 String?    @map("last_name")
   phone                    String?
@@ -126,6 +129,7 @@ model User {
   postGroups         PostGroup[]
   postTemplates      PostTemplate[]
   notifications      Notification[]
+  pushSubscriptions  PushSubscription[]
   auditLogs          AuditLog[]
   groupSyncs         GroupSyncHistory[]
   publicationHistory PublicationHistory[]
@@ -137,6 +141,7 @@ model User {
   whatsappSession    WhatsAppSession?
   botConversations   WhatsAppBotConversation[]
   botOtps            WhatsAppBotOtp[]
+  publishLock        UserPublishLock?
 
   @@map("users")
 }
@@ -472,8 +477,9 @@ model PostGroupSchedule {
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  postGroup PostGroup? @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
-  post      Post?      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postGroup PostGroup?       @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+  post      Post?            @relation(fields: [postId], references: [id], onDelete: Cascade)
+  jobs      PublicationJob[]
 
   @@index([postGroupId])
   @@index([postId])
@@ -482,31 +488,51 @@ model PostGroupSchedule {
 }
 
 model PublicationJob {
-  id            String    @id @default(uuid())
-  postGroupId   String?   @map("post_group_id")
-  postId        String?   @map("post_id")
-  targetType    String    @default("GROUP") @map("target_type") // GROUP | PROFILE | INSTAGRAM | WHATSAPP
-  platform      String    @default("FACEBOOK") @map("platform") // FACEBOOK | INSTAGRAM | WHATSAPP
-  igPublishType String?   @map("ig_publish_type") // FEED | STORY | REEL — which IG type this job handles
-  scheduledAt   DateTime  @map("scheduled_at")
-  startedAt     DateTime? @map("started_at")
-  completedAt   DateTime? @map("completed_at")
-  status        JobStatus @default(PENDING)
-  attempts      Int       @default(0)
-  maxAttempts   Int       @default(3) @map("max_attempts")
-  lastError     String?   @map("last_error")
-  lockedAt      DateTime? @map("locked_at")
-  lockedBy      String?   @map("locked_by")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  scheduleId     String?   @map("schedule_id")
+  occurrenceAt   DateTime? @map("occurrence_at")
+  postGroupId    String?   @map("post_group_id")
+  postId         String?   @map("post_id")
+  targetType     String    @default("GROUP") @map("target_type") // GROUP | PROFILE | INSTAGRAM | WHATSAPP
+  platform       String    @default("FACEBOOK") @map("platform") // FACEBOOK | INSTAGRAM | WHATSAPP
+  igPublishType  String?   @map("ig_publish_type") // FEED | STORY | REEL — which IG type this job handles
+  scheduledAt    DateTime  @map("scheduled_at")
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  status         JobStatus @default(PENDING)
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3) @map("max_attempts")
+  lastError      String?   @map("last_error")
+  lockedAt       DateTime? @map("locked_at")
+  lockedBy       String?   @map("locked_by")
+  idempotencyKey String?   @unique @map("idempotency_key")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
+  schedule     PostGroupSchedule?   @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   postGroup    PostGroup?           @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
   post         Post?                @relation(fields: [postId], references: [id], onDelete: Cascade)
   publications PublicationHistory[]
 
+  @@unique([scheduleId, occurrenceAt])
   @@index([status, scheduledAt])
+  @@index([scheduleId])
   @@index([lockedAt])
   @@map("publication_jobs")
+}
+
+model UserPublishLock {
+  userId      String   @id @map("user_id")
+  ownerToken  String   @map("owner_token")
+  lockedUntil DateTime @map("locked_until")
+  heartbeatAt DateTime @map("heartbeat_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([lockedUntil])
+  @@map("user_publish_locks")
 }
 
 // ─── PUBLICATION HISTORY & METRICS ──────────────────────
@@ -643,14 +669,15 @@ model PostVersion {
 // ─── BILLING ────────────────────────────────────────────
 
 model Plan {
-  id           String   @id @default(uuid())
-  name         String   @unique
-  priceMonthly Decimal  @map("price_monthly") @db.Decimal(10, 2)
-  maxPosts     Int?     @map("max_posts")
-  maxGroups    Int?     @map("max_groups")
-  aiCredits    Int?     @map("ai_credits")
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid())
+  name           String   @unique
+  priceMonthly   Decimal  @map("price_monthly") @db.Decimal(10, 2)
+  maxPosts       Int?     @map("max_posts")
+  maxGroups      Int?     @map("max_groups")
+  aiCredits      Int?     @map("ai_credits")
+  isActive       Boolean  @default(true) @map("is_active")
+  gatewayPriceId String?  @unique @map("gateway_price_id")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   subscriptions Subscription[]
 
@@ -666,7 +693,7 @@ model Subscription {
   endsAt                DateTime? @map("ends_at")
   cancelledAt           DateTime? @map("cancelled_at")
   gatewayCustomerId     String?   @map("gateway_customer_id")
-  gatewaySubscriptionId String?   @map("gateway_subscription_id")
+  gatewaySubscriptionId String?   @unique @map("gateway_subscription_id")
   paymentToken          String?   @map("payment_token")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
@@ -690,6 +717,9 @@ model Payment {
   periodEnd            DateTime @map("period_end")
   isProrated           Boolean  @default(false) @map("is_prorated")
   gatewayTransactionId String?  @map("gateway_transaction_id")
+  gatewayInvoiceId     String?  @unique @map("gateway_invoice_id")
+  invoiceUrl           String?  @map("invoice_url")
+  invoicePdfUrl        String?  @map("invoice_pdf_url")
   failureReason        String?  @map("failure_reason")
   createdAt            DateTime @default(now()) @map("created_at")
 
@@ -699,6 +729,19 @@ model Payment {
   @@index([userId])
   @@index([subscriptionId])
   @@map("payments")
+}
+
+model BillingWebhookEvent {
+  id          String    @id @default(uuid())
+  provider    String
+  eventId     String    @map("event_id")
+  eventType   String    @map("event_type")
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([provider, eventId])
+  @@index([createdAt])
+  @@map("billing_webhook_events")
 }
 
 model UsageLimit {
@@ -735,6 +778,22 @@ model Notification {
   @@map("notifications")
 }
 
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
 model AuditLog {
   id         String   @id @default(uuid())
   userId     String?  @map("user_id")
@@ -751,6 +810,34 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model OperationalEvent {
+  id         String   @id @default(uuid())
+  timestamp  DateTime @default(now())
+  level      String
+  service    String   @default("api")
+  module     String
+  event      String
+  message    String
+  requestId  String?  @map("request_id")
+  userId     String?  @map("user_id")
+  traceId    String?  @map("trace_id")
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  statusCode Int?     @map("status_code")
+  durationMs Int?     @map("duration_ms")
+  errorCode  String?  @map("error_code")
+  errorStack String?  @map("error_stack")
+  metadata   Json?
+
+  @@index([timestamp])
+  @@index([level, timestamp])
+  @@index([module, timestamp])
+  @@index([userId, timestamp])
+  @@index([requestId])
+  @@index([entityType, entityId])
+  @@map("operational_events")
 }
 
 model GroupSyncHistory {

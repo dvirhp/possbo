@@ -5,6 +5,7 @@ import { useNavigationGuard } from '../context/NavigationGuard'
 import { groupsService } from '../services/groupsService'
 import { templatesService } from '../services/templatesService'
 import { authAPI } from '../services/api'
+import { aiService } from '../services/aiService'
 import confetti from 'canvas-confetti'
 import LocationAutocomplete from '../components/LocationAutocomplete'
 import FacebookPreview from '../components/FacebookPreview'
@@ -442,7 +443,7 @@ export default function CreatePost() {
 
   // Template selector
   const [templates, setTemplates] = useState(cachedTemplates || [])
-  const [showTemplateSelector, setShowTemplateSelector] = useState(false)
+  const [, setShowTemplateSelector] = useState(false)
   const [selectedTemplateName, setSelectedTemplateName] = useState(fromTemplate?.name || null)
 
   // Sync from cache
@@ -452,6 +453,9 @@ export default function CreatePost() {
 
   const [campaignTitle, setCampaignTitle] = useState(fromTemplate?.title || republishData?.title || '')
   const [postText, setPostText] = useState(fromTemplate?.content || republishData?.content || generatedContent || createPostDraft?.postText || '')
+  const [aiTransforming, setAiTransforming] = useState('')
+  const [aiTone, setAiTone] = useState('professional')
+  const [aiTargetPlatform, setAiTargetPlatform] = useState('facebook')
   const [postImages, setPostImages] = useState([])
   const [postImagePreviews, setPostImagePreviews] = useState([])
   const [restoredImageUrls, setRestoredImageUrls] = useState(fromTemplate?.imageUrls || [])
@@ -540,7 +544,7 @@ export default function CreatePost() {
       const matched = cachedGroups.filter(g => republishData.groupIds.includes(g.id))
       if (matched.length) setSelectedGroups(matched)
     }
-  }, [republishData, cachedGroups])
+  }, [republishData, cachedGroups, selectedGroups.length])
 
   // Pre-select groups from template
   useEffect(() => {
@@ -548,7 +552,7 @@ export default function CreatePost() {
       const matched = cachedGroups.filter(g => fromTemplate.groupIds.includes(g.id))
       if (matched.length) setSelectedGroups(matched)
     }
-  }, [fromTemplate, cachedGroups])
+  }, [fromTemplate, cachedGroups, selectedGroups.length])
 
   // Templates already loaded from DataProvider cache
 
@@ -600,9 +604,6 @@ export default function CreatePost() {
     setShowTemplateSelector(false)
   }
 
-  const clearTemplate = () => {
-    setSelectedTemplateName(null)
-  }
   const [loadingGroups, setLoadingGroups] = useState(!cachedGroups?.length)
   const [groupSearch, setGroupSearch] = useState('')
   const [showAllChips, setShowAllChips] = useState(false)
@@ -643,7 +644,7 @@ export default function CreatePost() {
     } else {
       loadGroups()
     }
-  }, [authChecked, user, navigate, cachedGroups])
+  }, [authChecked, user, navigate, cachedGroups, whatsappNumber])
 
   // Recent campaigns loaded from DataProvider cache
 
@@ -864,7 +865,7 @@ export default function CreatePost() {
           setError(res.data.error || 'שגיאה ביצירת הקמפיין')
         }
       } catch (err) {
-        setError('לא הצלחנו ליצור את הקמפיין כרגע. נסו שוב מאוחר יותר.')
+        setError(err.userMessage || err.response?.data?.error || 'לא הצלחנו ליצור את הקמפיין כרגע. נסו שוב מאוחר יותר.')
       } finally {
         setPublishing(false)
       }
@@ -932,7 +933,7 @@ export default function CreatePost() {
         setError(res.data.error || 'שגיאה ביצירת הפרסום')
       }
     } catch (err) {
-      setError('לא הצלחנו ליצור את הפרסום כרגע. נסו שוב מאוחר יותר.')
+      setError(err.userMessage || err.response?.data?.error || 'לא הצלחנו ליצור את הפרסום כרגע. נסו שוב מאוחר יותר.')
     } finally {
       setPublishing(false)
     }
@@ -1050,7 +1051,7 @@ export default function CreatePost() {
   const [showRestore, setShowRestore] = useState(false)
   const [recentDrafts, setRecentDrafts] = useState(cachedRecent?.drafts || [])
   const [recentHistory, setRecentHistory] = useState(cachedRecent?.history || [])
-  const [loadingRecent, setLoadingRecent] = useState(false)
+  const [loadingRecent] = useState(false)
   const [showMoreHistory, setShowMoreHistory] = useState(false)
 
   // Sync from cache
@@ -1058,8 +1059,6 @@ export default function CreatePost() {
     if (cachedRecent?.drafts) setRecentDrafts(cachedRecent.drafts)
     if (cachedRecent?.history) setRecentHistory(cachedRecent.history)
   }, [cachedRecent])
-
-  const loadRecentCampaigns = () => {} // kept for compatibility, data comes from cache
 
   const handleRestore = (campaign) => {
     // Strip WhatsApp link from content if present
@@ -1310,6 +1309,25 @@ export default function CreatePost() {
     navigate('/generate-post', { state: { fromCreatePost: true, createPostDraft: draft } })
   }
 
+  const handleAiTransform = async (operation) => {
+    if (!postText.trim() || aiTransforming) return
+    setAiTransforming(operation)
+    setError(null)
+    try {
+      const response = await aiService.transformPost({
+        text: postText,
+        operation,
+        tone: aiTone,
+        platform: aiTargetPlatform,
+      })
+      if (response.data?.post) setPostText(response.data.post)
+    } catch (err) {
+      setError(err.response?.data?.error || err.userMessage || 'לא הצלחנו לעבד את הפוסט עם AI כרגע.')
+    } finally {
+      setAiTransforming('')
+    }
+  }
+
   // Clear errors automatically when user fixes the issue
   useEffect(() => {
     if (Object.keys(stepErrors).length === 0) return
@@ -1324,7 +1342,7 @@ export default function CreatePost() {
       setStepErrors(newErrors)
       if (Object.keys(newErrors).length === 0) setError(null)
     }
-  }, [postText, selectedGroups, publishToProfile, instagramEnabled, whatsappDistEnabled, postImages, scheduleMode, scheduleDate, scheduleTime, recurringDays, dayTimes, recurringStartDate, recurringEndDate])
+  }, [stepErrors, postText, selectedGroups, publishToProfile, instagramEnabled, whatsappDistEnabled, postImages, scheduleMode, scheduleDate, scheduleTime, recurringDays, dayTimes, recurringStartDate, recurringEndDate])
 
   const steps = [
     { id: 'content', label: 'תוכן', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> },
@@ -1781,6 +1799,34 @@ export default function CreatePost() {
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2L12 3Z"/><path d="m19 14-.8 2.2L16 17l2.2.8L19 20l.8-2.2L22 17l-2.2-.8L19 14Z"/></svg>
                     יצירת תוכן עם AI
                   </button>
+                  <div className="cp-ai-transform-tools" aria-label="כלי עריכת AI">
+                    <div className="cp-ai-transform-settings">
+                      <select value={aiTone} onChange={(event) => setAiTone(event.target.value)} aria-label="טון לכתיבת AI">
+                        <option value="professional">מקצועי</option>
+                        <option value="casual">קליל</option>
+                        <option value="inspiring">מעורר השראה</option>
+                        <option value="humorous">הומוריסטי</option>
+                        <option value="urgent">דחוף ומניע לפעולה</option>
+                      </select>
+                      <select value={aiTargetPlatform} onChange={(event) => setAiTargetPlatform(event.target.value)} aria-label="פלטפורמת יעד ל-AI">
+                        <option value="facebook">Facebook</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="whatsapp">WhatsApp</option>
+                      </select>
+                    </div>
+                    <div className="cp-ai-transform-actions">
+                      {[
+                        ['rewrite', 'שכתוב'],
+                        ['shorten', 'קיצור'],
+                        ['tone', 'שינוי טון'],
+                        ['repurpose', 'התאמה לפלטפורמה'],
+                      ].map(([operation, label]) => (
+                        <button key={operation} type="button" disabled={!postText.trim() || Boolean(aiTransforming)} onClick={() => handleAiTransform(operation)}>
+                          {aiTransforming === operation ? 'מעבד…' : label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   </div>
 
                   {postImagePreviews.length > 0 && (

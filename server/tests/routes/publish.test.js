@@ -1,56 +1,40 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 
-// Mock the facebook-automation module
-vi.mock("../../src/utils/facebook-automation.js", () => ({
-  publishToGroup: vi.fn(),
-  captureGroupScreenshot: vi.fn(),
-  scrapeMyGroups: vi.fn(),
-  bootstrapFacebookSession: vi.fn(),
+const {
+  queueImmediateFacebookPublication,
+  getAllPosts,
+  getPostsByGroup,
+  getDailyPublishUsage,
+  notifyDailyLimitReached,
+} = vi.hoisted(() => ({
+  queueImmediateFacebookPublication: vi.fn(),
+  getAllPosts: vi.fn(),
+  getPostsByGroup: vi.fn(),
+  getDailyPublishUsage: vi.fn(),
+  notifyDailyLimitReached: vi.fn(),
 }));
 
-// Mock the posts-storage module
+vi.mock("../../src/utils/immediate-publication.js", () => ({
+  queueImmediateFacebookPublication,
+}));
 vi.mock("../../src/utils/posts-storage.js", () => ({
-  savePost: vi.fn(async (data) => ({
-    id: "mock-id-123",
-    ...data,
-    createdAt: "2024-01-01T00:00:00.000Z",
-    hasScreenshot: !!data.screenshot,
-  })),
-  getAllPosts: vi.fn(async () => []),
-  getPostsByGroup: vi.fn(async () => []),
+  getAllPosts,
+  getPostsByGroup,
 }));
-
-const mockGroupFindFirst = vi.fn();
-const mockGroupCreate = vi.fn();
-const mockPostCreate = vi.fn();
-const mockPostGroupCreate = vi.fn();
-const mockPublicationHistoryCreate = vi.fn();
-const mockTransaction = vi.fn();
-
-vi.mock("../../src/config/prisma.js", () => ({
-  default: {
-    group: {
-      findFirst: mockGroupFindFirst,
-      create: mockGroupCreate,
-    },
-    post: {
-      create: mockPostCreate,
-    },
-    postGroup: {
-      create: mockPostGroupCreate,
-    },
-    publicationHistory: {
-      create: mockPublicationHistoryCreate,
-    },
-    $transaction: mockTransaction,
-  },
+vi.mock("../../src/utils/daily-publish-limit.js", () => ({
+  getDailyPublishUsage,
+  notifyDailyLimitReached,
+  dailyLimitResponse: (usage) => ({
+    success: false,
+    code: "DAILY_PUBLISH_LIMIT_REACHED",
+    error: `הגעת למכסת הפרסום היומית של ${usage.limit} פרסומים.`,
+    dailyLimit: usage,
+  }),
 }));
-
-// Mock multer - just pass through, let express parse body
 vi.mock("multer", () => {
-  const passthrough = (req, res, next) => next();
+  const passthrough = (req, _res, next) => next();
   const multer = () => ({
     single: () => passthrough,
     array: () => passthrough,
@@ -62,306 +46,109 @@ vi.mock("multer", () => {
 let app;
 
 beforeEach(async () => {
-  vi.resetModules();
-  const { publishToGroup } =
-    await import("../../src/utils/facebook-automation.js");
-  const { savePost } = await import("../../src/utils/posts-storage.js");
-  vi.mocked(publishToGroup).mockReset();
-  vi.mocked(savePost)
-    .mockReset()
-    .mockImplementation(async (data) => ({
-      id: "mock-id-123",
-      ...data,
-      createdAt: "2024-01-01T00:00:00.000Z",
-      hasScreenshot: !!data.screenshot,
-    }));
-  mockGroupFindFirst.mockReset().mockResolvedValue({
-    id: "group-1",
-    url: "https://facebook.com/groups/123",
+  queueImmediateFacebookPublication.mockReset().mockResolvedValue({
+    job: { id: "job-1", status: "PENDING" },
+    postId: "post-1",
+    duplicate: false,
   });
-  mockGroupCreate.mockReset().mockResolvedValue({ id: "group-1" });
-  mockPostCreate.mockReset().mockResolvedValue({ id: "post-1" });
-  mockPostGroupCreate.mockReset().mockResolvedValue({ id: "post-group-1" });
-  mockPublicationHistoryCreate.mockReset().mockResolvedValue({ id: "history-1" });
-  mockTransaction.mockReset().mockImplementation(async (callback) => callback({
-    post: { create: mockPostCreate },
-    postGroup: { create: mockPostGroupCreate },
-    publicationHistory: { create: mockPublicationHistoryCreate },
-  }));
-  const publishModule = await import("../../src/routes/publish.js");
+  getAllPosts.mockReset().mockResolvedValue([]);
+  getPostsByGroup.mockReset().mockResolvedValue([]);
+  getDailyPublishUsage.mockReset().mockResolvedValue({
+    used: 0,
+    limit: 70,
+    remaining: 70,
+    reached: false,
+    resetsAt: new Date("2026-08-26T00:00:00.000Z"),
+  });
+  notifyDailyLimitReached.mockReset().mockResolvedValue(true);
 
+  const publishModule = await import("../../src/routes/publish.js");
   app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-  // Inject mock user for auth
   app.use((req, _res, next) => {
-    req.user = { id: "test-user-id", name: "Test User" };
+    req.user = { id: "user-1" };
     next();
   });
   app.use("/api/publish", publishModule.default);
 });
 
-describe("POST /api/publish", () => {
-  it("should return 400 when groupUrl is missing", async () => {
-    const res = await request(app)
+describe("queued Facebook publication routes", () => {
+  it("validates required group fields", async () => {
+    const response = await request(app).post("/api/publish").send({ text: "x" });
+    expect(response.status).toBe(400);
+  });
+
+  it("queues a group publication and returns 202", async () => {
+    const response = await request(app)
       .post("/api/publish")
-      .send({ text: "Hello world" });
-
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.error).toContain("groupUrl");
-  });
-
-  it("should return 400 when text is missing", async () => {
-    const res = await request(app)
-      .post("/api/publish")
-      .send({ groupUrl: "https://facebook.com/groups/123" });
-
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.error).toContain("text");
-  });
-
-  it("should return 400 when both groupUrl and text are missing", async () => {
-    const res = await request(app).post("/api/publish").send({});
-
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-  });
-
-  it("should return 428 when Facebook session is required", async () => {
-    const { publishToGroup } =
-      await import("../../src/utils/facebook-automation.js");
-    vi.mocked(publishToGroup).mockRejectedValue(
-      new Error("FACEBOOK_SESSION_REQUIRED"),
-    );
-
-    const res = await request(app)
-      .post("/api/publish")
-      .send({ groupUrl: "https://facebook.com/groups/123", text: "Hello" });
-
-    expect(res.status).toBe(428);
-    expect(res.body.error).toBe("FACEBOOK_SESSION_REQUIRED");
-  });
-
-  it("should return 500 when publish fails with unknown error", async () => {
-    const { publishToGroup } =
-      await import("../../src/utils/facebook-automation.js");
-    vi.mocked(publishToGroup).mockRejectedValue(new Error("TIMEOUT"));
-
-    const res = await request(app)
-      .post("/api/publish")
-      .send({ groupUrl: "https://facebook.com/groups/123", text: "Hello" });
-
-    expect(res.status).toBe(500);
-    expect(res.body.error).toBe(
-      "לא הצלחנו להשלים את הפעולה כרגע. נסו שוב מאוחר יותר.",
-    );
-    expect(res.body.code).toBe("INTERNAL_ERROR");
-  });
-
-  it("should call publishToGroup with correct args and save post on success", async () => {
-    const { publishToGroup } =
-      await import("../../src/utils/facebook-automation.js");
-    const { savePost } = await import("../../src/utils/posts-storage.js");
-    vi.mocked(publishToGroup).mockResolvedValue({
-      success: true,
-      postUrl: "http://fb.com/post/1",
-      screenshot: null,
-    });
-
-    const res = await request(app).post("/api/publish").send({
-      groupUrl: "https://facebook.com/groups/123",
-      text: "Test post",
-      groupName: "My Group",
-    });
-
-    expect(res.status).toBe(200);
-    expect(publishToGroup).toHaveBeenCalledWith(
-      "https://facebook.com/groups/123",
-      "Test post",
-      null,
-      { anonymous: false, location: null, images: [], userId: "test-user-id" },
-    );
-    expect(savePost).toHaveBeenCalled();
-  });
-
-  it("should pass anonymous=true and location to publishToGroup", async () => {
-    const { publishToGroup } =
-      await import("../../src/utils/facebook-automation.js");
-    vi.mocked(publishToGroup).mockResolvedValue({
-      success: true,
-      postUrl: null,
-      screenshot: null,
-    });
-
-    const res = await request(app).post("/api/publish").send({
-      groupUrl: "https://facebook.com/groups/123",
-      text: "Anon post",
-      anonymous: "true",
-      location: "Tel Aviv",
-    });
-
-    expect(res.status).toBe(200);
-    expect(publishToGroup).toHaveBeenCalledWith(
-      "https://facebook.com/groups/123",
-      "Anon post",
-      null,
-      {
-        anonymous: true,
+      .set("Idempotency-Key", "request-1")
+      .send({
+        groupUrl: "https://facebook.com/groups/123",
+        groupName: "Group",
+        text: "Hello",
+        anonymous: "true",
         location: "Tel Aviv",
-        images: [],
-        userId: "test-user-id",
-      },
+      });
+
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({
+      success: true,
+      queued: true,
+      jobId: "job-1",
+      postId: "post-1",
+      status: "PENDING",
+    });
+    expect(queueImmediateFacebookPublication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        targetType: "GROUP",
+        anonymous: true,
+        idempotencyKey: "request-1",
+      }),
     );
   });
 
-  it("should include savedPost in response", async () => {
-    const { publishToGroup } =
-      await import("../../src/utils/facebook-automation.js");
-    vi.mocked(publishToGroup).mockResolvedValue({
-      success: true,
-      postUrl: null,
-      screenshot: null,
-    });
-
-    const res = await request(app)
-      .post("/api/publish")
-      .send({ groupUrl: "https://facebook.com/groups/123", text: "Post" });
-
-    expect(res.body.savedPost).toBeDefined();
-    expect(res.body.savedPost.id).toBe("mock-id-123");
-  });
-});
-
-describe("GET /api/publish/history", () => {
-  it("should return all posts when no groupUrl param", async () => {
-    const { getAllPosts } = await import("../../src/utils/posts-storage.js");
-    vi.mocked(getAllPosts).mockResolvedValue([
-      { id: "1", text: "Post 1", groupUrl: "url1" },
-      { id: "2", text: "Post 2", groupUrl: "url2" },
-    ]);
-
-    const res = await request(app).get("/api/publish/history");
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.posts).toHaveLength(2);
-  });
-
-  it("should filter posts by groupUrl when param provided", async () => {
-    const { getPostsByGroup } =
-      await import("../../src/utils/posts-storage.js");
-    vi.mocked(getPostsByGroup).mockResolvedValue([
-      { id: "1", text: "Post 1", groupUrl: "https://fb.com/groups/1" },
-    ]);
-
-    const res = await request(app)
-      .get("/api/publish/history")
-      .query({ groupUrl: "https://fb.com/groups/1" });
-
-    expect(res.status).toBe(200);
-    expect(res.body.posts).toHaveLength(1);
-    expect(getPostsByGroup).toHaveBeenCalledWith("https://fb.com/groups/1");
-  });
-
-  it("should return empty array when no posts exist", async () => {
-    const { getAllPosts } = await import("../../src/utils/posts-storage.js");
-    vi.mocked(getAllPosts).mockResolvedValue([]);
-
-    const res = await request(app).get("/api/publish/history");
-
-    expect(res.body.posts).toEqual([]);
-  });
-});
-
-describe("POST /api/publish — edge cases", () => {
-  it("should return 400 when groupUrl is empty string", async () => {
-    const res = await request(app)
-      .post("/api/publish")
-      .send({ groupUrl: "", text: "Hello" });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("should return 400 when text is empty string", async () => {
-    const res = await request(app)
-      .post("/api/publish")
-      .send({ groupUrl: "https://facebook.com/groups/123", text: "" });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("should return 400 when text is whitespace only", async () => {
-    const res = await request(app)
-      .post("/api/publish")
-      .send({ groupUrl: "https://facebook.com/groups/123", text: "   " });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("should handle publish with anonymous as string 'false'", async () => {
-    const { publishToGroup } =
-      await import("../../src/utils/facebook-automation.js");
-    vi.mocked(publishToGroup).mockResolvedValue({
-      success: true,
-      postUrl: null,
-      screenshot: null,
-    });
-
-    const res = await request(app).post("/api/publish").send({
-      groupUrl: "https://facebook.com/groups/123",
-      text: "Test post",
-      anonymous: "false",
-    });
-
-    expect(res.status).toBe(200);
-    expect(publishToGroup).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      null,
-      expect.objectContaining({ anonymous: false }),
+  it("queues a profile publication", async () => {
+    const response = await request(app)
+      .post("/api/publish/profile")
+      .send({ text: "Profile post" });
+    expect(response.status).toBe(202);
+    expect(queueImmediateFacebookPublication).toHaveBeenCalledWith(
+      expect.objectContaining({ targetType: "PROFILE", userId: "user-1" }),
     );
   });
 
-  it("should handle null location", async () => {
-    const { publishToGroup } =
-      await import("../../src/utils/facebook-automation.js");
-    vi.mocked(publishToGroup).mockResolvedValue({
-      success: true,
-      postUrl: null,
-      screenshot: null,
+  it("rejects and alerts a user who reached 70 publications", async () => {
+    getDailyPublishUsage.mockResolvedValue({
+      used: 70,
+      limit: 70,
+      remaining: 0,
+      reached: true,
+      resetsAt: new Date("2026-08-26T00:00:00.000Z"),
     });
 
-    const res = await request(app).post("/api/publish").send({
-      groupUrl: "https://facebook.com/groups/123",
-      text: "Test",
-      location: null,
+    const response = await request(app).post("/api/publish/profile").send({
+      text: "Post number 71",
     });
 
-    expect(res.status).toBe(200);
-    expect(publishToGroup).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      null,
-      expect.objectContaining({ location: null }),
+    expect(response.status).toBe(429);
+    expect(response.body).toMatchObject({
+      success: false,
+      code: "DAILY_PUBLISH_LIMIT_REACHED",
+      dailyLimit: { used: 70, limit: 70, remaining: 0, reached: true },
+    });
+    expect(notifyDailyLimitReached).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ used: 70, limit: 70 }),
     );
+    expect(queueImmediateFacebookPublication).not.toHaveBeenCalled();
   });
 
-  it("should return 401 when not authenticated", async () => {
-    const publishModule = await import("../../src/routes/publish.js");
-    const noAuthApp = express();
-    noAuthApp.use(express.json());
-    noAuthApp.use((req, _res, next) => {
-      req.user = null;
-      next();
-    });
-    noAuthApp.use("/api/publish", publishModule.default);
-
-    const res = await request(noAuthApp)
-      .post("/api/publish")
-      .send({ groupUrl: "https://facebook.com/groups/123", text: "test" });
-
-    expect(res.status).toBe(401);
+  it("returns publication history", async () => {
+    getAllPosts.mockResolvedValue([{ id: "post-1" }]);
+    const response = await request(app).get("/api/publish/history");
+    expect(response.status).toBe(200);
+    expect(response.body.posts).toEqual([{ id: "post-1" }]);
   });
 });

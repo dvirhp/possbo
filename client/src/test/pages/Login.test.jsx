@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const mockNavigate = vi.fn();
@@ -46,10 +46,8 @@ vi.mock('../../services/http.js', () => ({
 
 vi.mock('../../styles/auth.css', () => ({}));
 vi.mock('../../components/OAuthButtons', () => ({ default: () => <div data-testid="oauth-buttons" /> }));
-let mockCaptchaCallback = null;
 vi.mock('../../components/Turnstile', () => ({
   default: ({ onVerify }) => {
-    mockCaptchaCallback = onVerify;
     return <div data-testid="turnstile" onClick={() => onVerify('token-123')} />;
   },
 }));

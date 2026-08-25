@@ -87,6 +87,12 @@ export default function AuthLayout({ children }) {
       setActiveTab('history')
     } else if (path === '/guides') {
       setActiveTab('guides')
+    } else if (path === '/operations') {
+      setActiveTab('operations')
+    } else if (path === '/onboarding') {
+      setActiveTab('onboarding')
+    } else if (path === '/imports/csv') {
+      setActiveTab('csv-import')
     }
   }, [location, searchParams])
 
@@ -94,8 +100,10 @@ export default function AuthLayout({ children }) {
   useEffect(() => {
     if (authChecked && !user) {
       navigate('/login')
+    } else if (authChecked && user && location.pathname === '/operations' && !user.isAdmin) {
+      navigate('/dashboard', { replace: true })
     }
-  }, [authChecked, user, navigate])
+  }, [authChecked, user, navigate, location.pathname])
 
   // Enforce paywall: users without active subscription are blocked
   useEffect(() => {
@@ -107,7 +115,7 @@ export default function AuthLayout({ children }) {
     }
   }, [authChecked, user, location.pathname, navigate])
 
-  if (!authChecked) {
+  if (!authChecked || (location.pathname === '/operations' && !user?.isAdmin)) {
     return (
       <div className="app-layout">
         <div className="app-main" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

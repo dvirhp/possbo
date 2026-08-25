@@ -37,3 +37,14 @@ export function logRequestCompletion(req, res, next) {
   });
   next();
 }
+
+export function auditMutations(req, res, next) {
+  res.on("finish", () => {
+    if (!req.user || !["POST", "PUT", "PATCH", "DELETE"].includes(req.method) || res.statusCode >= 400 || req.path.includes("client-logs")) return;
+    import("../config/prisma.js").then(({ default: prisma }) => prisma.auditLog.create({ data: {
+      userId: req.user.id, action: `${req.method} ${req.originalUrl?.split("?")[0] || req.path}`,
+      entityType: req.path.split("/").filter(Boolean)[1] || "api", metadata: { requestId: req.requestId, statusCode: res.statusCode }, ipAddress: req.ip,
+    }})).catch(() => {});
+  });
+  next();
+}

@@ -9,13 +9,16 @@ import BrandLogo from './BrandLogo'
 import {
   LayoutDashboard, Users, FileText, CalendarDays, BarChart3,
   History, LayoutTemplate, Settings, Bell, SquarePen, Plus, RefreshCw, Sparkles,
-  Moon, Sun, LogOut, ChevronDown, ChevronLeft, ChevronUp, CreditCard, BookOpen, MessageSquareHeart
+  Moon, Sun, LogOut, ChevronDown, CreditCard, MessageSquareHeart, Activity, FileUp, ListChecks
 } from 'lucide-react'
 
 const NAV_ITEMS = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'דשבורד', action: 'navigate', path: '/dashboard', tab: 'overview' },
+  { id: 'onboarding', icon: ListChecks, label: 'התחלה מהירה', action: 'navigate', path: '/onboarding' },
+  { id: 'operations', icon: Activity, label: 'ניטור ולוגים', action: 'navigate', path: '/operations', adminOnly: true },
   { id: 'groups', icon: Users, label: 'קבוצות', action: 'navigate', path: '/dashboard', tab: 'groups' },
   { id: 'posts', icon: FileText, label: 'קמפיינים', action: 'navigate', path: '/dashboard', tab: 'campaigns' },
+  { id: 'csv-import', icon: FileUp, label: 'ייבוא CSV', action: 'navigate', path: '/imports/csv' },
   { id: 'calendar', icon: CalendarDays, label: 'יומן', action: 'navigate', path: '/scheduled' },
   { id: 'analytics', icon: BarChart3, label: 'סטטיסטיקות', action: 'navigate', path: '/dashboard', tab: 'stats' },
   { id: 'templates', icon: LayoutTemplate, label: 'טמפלייטים', action: 'navigate', path: '/templates' },
@@ -77,7 +80,7 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen }) {
 
       {/* Main Navigation */}
       <nav className="sidebar-nav">
-        {NAV_ITEMS.map(item => {
+        {NAV_ITEMS.filter(item => !item.adminOnly || user?.isAdmin).map(item => {
           const Icon = item.icon
           return (
             <button

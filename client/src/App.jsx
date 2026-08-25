@@ -37,6 +37,9 @@ const Guides = lazy(() => import('./pages/Guides'))
 const Subscription = lazy(() => import('./pages/Subscription'))
 const GeneratePost = lazy(() => import('./pages/GeneratePost'))
 const Feedback = lazy(() => import('./pages/Feedback'))
+const OperationsDashboard = lazy(() => import('./pages/OperationsDashboard'))
+const CsvImport = lazy(() => import('./pages/CsvImport'))
+const Onboarding = lazy(() => import('./pages/Onboarding'))
 const BotTargetSelector = lazy(() => import('./pages/BotTargetSelector'))
 
 const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password', '/facebook-groups-automation', '/instagram-scheduling', '/whatsapp-campaigns', '/ai-social-post-generator', '/resources']
@@ -119,11 +122,11 @@ function GlobalPublishBanner() {
         pollRef.current = setInterval(async () => {
           try {
             pollCycle++
-            const res = await groupsService.getCampaign(postId)
-            const campaign = res.data?.campaign
+            const res = await groupsService.getCampaignProgress(postId)
+            const campaign = res.data?.progress
             if (!campaign) return
             const history = campaign.publicationHistory || []
-            const totalJobs = campaign.totalJobs || (campaign.groups?.length || 0) + (campaign.publishToProfile ? 1 : 0) + (campaign.instagramPublishType ? campaign.instagramPublishType.split(',').length : 0)
+            const totalJobs = campaign.totalJobs || (campaign.groupsCount || 0) + (campaign.publishToProfile ? 1 : 0) + (campaign.instagramPublishType ? campaign.instagramPublishType.split(',').length : 0)
             const completed = campaign.completedJobs ?? history.length
             const pending = campaign.pendingJobs ?? (totalJobs - completed)
             if (pending <= 0 && totalJobs > 0) {
@@ -147,7 +150,7 @@ function GlobalPublishBanner() {
                 addBanner('publish', { type: 'error', msg: `⚠️ ${succeeded}/${totalJobs} פורסמו. ${failed} נכשלו.` })
               }
               setTimeout(() => removeBanner('publish'), 8000)
-              window.dispatchEvent(new CustomEvent('possbo-publish-done', { detail: { allSuccess: failed === 0, total: totalJobs, failed, targets: { groups: campaign.groups?.length || 0, profile: campaign.publishToProfile, instagram: campaign.instagramEnabled } } }))
+              window.dispatchEvent(new CustomEvent('possbo-publish-done', { detail: { allSuccess: failed === 0, total: totalJobs, failed, targets: { groups: campaign.groupsCount || 0, profile: campaign.publishToProfile, instagram: campaign.instagramEnabled, whatsapp: campaign.whatsappEnabled } } }))
               // Trigger dashboard data refresh
               window.dispatchEvent(new CustomEvent('possbo-pull-refresh'))
             } else if (completed > 0) {
@@ -299,6 +302,9 @@ function App() {
           <Route path="/subscription" element={<AuthLayout><Subscription /></AuthLayout>} />
           <Route path="/generate-post" element={<AuthLayout><GeneratePost /></AuthLayout>} />
           <Route path="/feedback" element={<AuthLayout><Feedback /></AuthLayout>} />
+          <Route path="/operations" element={<AuthLayout><OperationsDashboard /></AuthLayout>} />
+          <Route path="/imports/csv" element={<AuthLayout><CsvImport /></AuthLayout>} />
+          <Route path="/onboarding" element={<AuthLayout><Onboarding /></AuthLayout>} />
           <Route path="/oauth/github/callback" element={<OAuthCallback />} />
           <Route path="/oauth/linkedin/callback" element={<OAuthCallback />} />
           <Route path="/oauth/apple/callback" element={<OAuthCallback />} />

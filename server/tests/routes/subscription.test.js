@@ -5,11 +5,11 @@ import request from "supertest";
 // Mock prisma
 const mockPlanFindMany = vi.fn();
 const mockSubscriptionFindFirst = vi.fn();
-const mockSubscriptionCreate = vi.fn();
 const mockSubscriptionUpdate = vi.fn();
 const mockPlanFindFirst = vi.fn();
-const mockPaymentCreate = vi.fn();
 const mockPaymentFindMany = vi.fn();
+const mockCreateCheckout = vi.fn();
+const mockCancelProviderSubscription = vi.fn();
 
 vi.mock("../../src/config/prisma.js", () => ({
   default: {
@@ -19,14 +19,18 @@ vi.mock("../../src/config/prisma.js", () => ({
     },
     subscription: {
       findFirst: (...args) => mockSubscriptionFindFirst(...args),
-      create: (...args) => mockSubscriptionCreate(...args),
       update: (...args) => mockSubscriptionUpdate(...args),
     },
     payment: {
-      create: (...args) => mockPaymentCreate(...args),
       findMany: (...args) => mockPaymentFindMany(...args),
     },
   },
+}));
+
+vi.mock("../../src/services/billing-provider.js", () => ({
+  billingEnabled: () => true,
+  createCheckout: (...args) => mockCreateCheckout(...args),
+  cancelProviderSubscription: (...args) => mockCancelProviderSubscription(...args),
 }));
 
 vi.mock("../../src/utils/logger.js", () => ({
@@ -123,7 +127,7 @@ describe("GET /api/subscription/me", () => {
 });
 
 describe("POST /api/subscription/subscribe", () => {
-  it("should return 400 when user already has active subscription", async () => {
+  it("should return 409 when user already has an open subscription", async () => {
     mockSubscriptionFindFirst.mockResolvedValue({
       id: "sub-1",
       status: "ACTIVE",
@@ -132,7 +136,7 @@ describe("POST /api/subscription/subscribe", () => {
     const res = await request(app)
       .post("/api/subscription/subscribe")
       .send({ planId: "plan-1", token: "tok_123" });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
   });
 
   it("should return 404 when no active plan found", async () => {
@@ -145,35 +149,33 @@ describe("POST /api/subscription/subscribe", () => {
     expect(res.status).toBe(404);
   });
 
-  it("should create subscription successfully", async () => {
+  it("should create a hosted checkout session without activating locally", async () => {
     mockSubscriptionFindFirst.mockResolvedValue(null);
     mockPlanFindFirst.mockResolvedValue({
       id: "plan-1",
       name: "Basic",
       priceMonthly: 49,
     });
-    mockSubscriptionCreate.mockResolvedValue({
-      id: "sub-1",
-      status: "ACTIVE",
-      plan: { name: "Basic" },
-    });
-    mockPaymentCreate.mockResolvedValue({ id: "pay-1" });
+    mockCreateCheckout.mockResolvedValue({ id: "checkout-1", url: "https://billing.test/checkout-1" });
 
     const res = await request(app)
       .post("/api/subscription/subscribe")
       .send({ planId: "plan-1", token: "tok_123" });
-    expect(res.status).toBe(200);
-    expect(res.body.subscription.status).toBe("ACTIVE");
-    expect(res.body.message).toBeTruthy();
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ checkoutUrl: "https://billing.test/checkout-1", sessionId: "checkout-1" });
+    expect(mockCreateCheckout).toHaveBeenCalledWith(expect.objectContaining({
+      user: expect.objectContaining({ id: "user-1" }),
+      plan: expect.objectContaining({ id: "plan-1" }),
+    }));
   });
 
-  it("should return 500 on db error", async () => {
+  it("should return 502 when checkout creation fails", async () => {
     mockSubscriptionFindFirst.mockRejectedValue(new Error("DB error"));
 
     const res = await request(app)
       .post("/api/subscription/subscribe")
       .send({ planId: "plan-1", token: "tok_123" });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(502);
   });
 });
 
@@ -185,7 +187,7 @@ describe("POST /api/subscription/cancel", () => {
     expect(res.status).toBe(404);
   });
 
-  it("should cancel subscription and return prorated amount", async () => {
+  it("should schedule cancellation with the billing provider", async () => {
     const now = new Date();
     const startedAt = new Date(now);
     startedAt.setDate(startedAt.getDate() - 15);
@@ -195,24 +197,27 @@ describe("POST /api/subscription/cancel", () => {
     mockSubscriptionFindFirst.mockResolvedValue({
       id: "sub-1",
       status: "ACTIVE",
+      gatewaySubscriptionId: "provider-sub-1",
       startedAt,
       endsAt,
       plan: { priceMonthly: 49 },
     });
     mockSubscriptionUpdate.mockResolvedValue({ id: "sub-1", status: "CANCELLED" });
+    mockCancelProviderSubscription.mockResolvedValue({ cancel_at: Math.floor(endsAt.getTime() / 1000) });
 
     const res = await request(app).post("/api/subscription/cancel");
     expect(res.status).toBe(200);
-    expect(res.body.message).toBeTruthy();
-    expect(res.body.proratedAmount).toBeTruthy();
-    expect(res.body.usedDays).toBeGreaterThan(0);
+    expect(res.body.message).toBe("Cancellation scheduled");
+    expect(res.body.cancelAt).toBeTruthy();
+    expect(mockCancelProviderSubscription).toHaveBeenCalledWith("provider-sub-1");
+    expect(mockSubscriptionUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "sub-1" } }));
   });
 
-  it("should return 500 on db error", async () => {
+  it("should return 502 when cancellation fails", async () => {
     mockSubscriptionFindFirst.mockRejectedValue(new Error("DB error"));
 
     const res = await request(app).post("/api/subscription/cancel");
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(502);
   });
 });
 

@@ -15,6 +15,7 @@ router.use((req, res, next) => {
 });
 
 router.post("/generate-post", async (req, res) => {
+  const startedAt = Date.now();
   try {
     const { postType, otherType, topic, productOrService, audience, uniqueValue, tone, cta, useEmojis, referencePost, extraDetails, tags, contactWhatsapp, contactPhone, contactEmail, whatsappNum, whatsappMsg, phone, email } = req.body;
 
@@ -28,7 +29,7 @@ router.post("/generate-post", async (req, res) => {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      log.error("GEMINI_API_KEY not configured");
+      log.error("GEMINI_API_KEY not configured", { event: "ai_configuration_error", userId: req.user.id, requestId: req.requestId });
       return res.status(500).json({ error: "שירות AI לא מוגדר" });
     }
 
@@ -48,7 +49,7 @@ router.post("/generate-post", async (req, res) => {
 
     if (!response.ok) {
       const errData = await response.text();
-      log.error("Gemini API error:", errData);
+      log.error("Gemini API request failed", new Error(errData), { event: "ai_generation_failed", userId: req.user.id, requestId: req.requestId, statusCode: response.status, durationMs: Date.now() - startedAt, model: "gemini-2.0-flash" });
       return res.status(502).json({ error: "שגיאה בשירות AI" });
     }
 
@@ -56,13 +57,66 @@ router.post("/generate-post", async (req, res) => {
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!generatedText) {
+      log.warn("AI response did not contain generated text", { event: "ai_empty_response", userId: req.user.id, requestId: req.requestId, durationMs: Date.now() - startedAt, model: "gemini-2.0-flash" });
       return res.status(502).json({ error: "לא התקבלה תשובה מהAI" });
     }
 
+    log.info("AI post generated", { event: "ai_generation_completed", userId: req.user.id, requestId: req.requestId, durationMs: Date.now() - startedAt, model: "gemini-2.0-flash", promptTokens: data.usageMetadata?.promptTokenCount || 0, completionTokens: data.usageMetadata?.candidatesTokenCount || 0, totalTokens: data.usageMetadata?.totalTokenCount || 0, postType });
     res.json({ post: generatedText });
   } catch (err) {
-    log.error("AI generate error:", err.message);
+    log.error("AI generation crashed", err, { event: "ai_generation_failed", userId: req.user?.id, requestId: req.requestId, durationMs: Date.now() - startedAt, model: "gemini-2.0-flash" });
     res.status(500).json({ error: "שגיאה פנימית" });
+  }
+});
+
+const TRANSFORM_OPERATIONS = {
+  rewrite: "שכתב את הטקסט כך שיהיה ברור, זורם ומשכנע יותר, בלי לשנות עובדות או פרטי קשר",
+  shorten: "קצר את הטקסט בכ-40% תוך שמירה על המסר, העובדות והקריאה לפעולה",
+  tone: "שכתב את הטקסט בטון המבוקש תוך שמירה על העובדות, הקישורים ופרטי הקשר",
+  repurpose: "התאם את הפוסט לפלטפורמת היעד, כולל מבנה, אורך וסגנון מתאימים",
+};
+
+router.post("/transform-post", async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const text = String(req.body?.text || "").trim();
+    const operation = String(req.body?.operation || "");
+    const tone = String(req.body?.tone || "professional").slice(0, 50);
+    const platform = String(req.body?.platform || "facebook").slice(0, 30);
+    if (!text) return res.status(400).json({ error: "יש להזין טקסט לעיבוד" });
+    if (text.length > 12000) return res.status(413).json({ error: "הטקסט ארוך מדי לעיבוד AI" });
+    if (!TRANSFORM_OPERATIONS[operation]) return res.status(400).json({ error: "פעולת AI אינה נתמכת" });
+    if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: "שירות AI לא מוגדר" });
+
+    const prompt = `אתה עורך תוכן מקצועי בעברית. ${TRANSFORM_OPERATIONS[operation]}.
+טון מבוקש: ${tone}.
+פלטפורמת יעד: ${platform}.
+החזר רק את הטקסט המעובד, ללא הסבר, כותרת או מירכאות.
+אין להמציא מחירים, הבטחות, נתונים, קישורים או פרטי קשר חדשים.
+
+<source_text>
+${text}
+</source_text>`;
+    const response = await fetch(`${GEMINI_API_URL}?key=${process.env.GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: operation === "shorten" ? 0.35 : 0.65, maxOutputTokens: 1536 },
+      }),
+    });
+    if (!response.ok) {
+      log.warn("AI transformation provider error", { event: "ai_transform_failed", userId: req.user.id, operation, statusCode: response.status });
+      return res.status(502).json({ error: "שגיאה בשירות AI" });
+    }
+    const data = await response.json();
+    const transformedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!transformedText) return res.status(502).json({ error: "לא התקבלה תשובה מה-AI" });
+    log.info("AI post transformed", { event: "ai_transform_completed", userId: req.user.id, operation, platform, durationMs: Date.now() - startedAt });
+    return res.json({ post: transformedText, operation, platform });
+  } catch (error) {
+    log.error("AI transformation crashed", error, { event: "ai_transform_failed", userId: req.user?.id, durationMs: Date.now() - startedAt });
+    return res.status(500).json({ error: "שגיאה פנימית" });
   }
 });
 

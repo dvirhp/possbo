@@ -3,6 +3,11 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createLogger } from "./logger.js";
+import {
+  downloadObject,
+  publicObjectUrl,
+  storageDriver,
+} from "../services/object-storage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
@@ -22,6 +27,14 @@ export function resolveUploadPath(mediaUrl) {
   return resolved;
 }
 
+export async function materializeUploadPath(mediaUrl) {
+  const localPath = resolveUploadPath(mediaUrl);
+  if (fs.existsSync(localPath)) return localPath;
+  if (storageDriver() !== "s3") return localPath;
+  await downloadObject(mediaUrl, localPath);
+  return localPath;
+}
+
 /**
  * Get a publicly accessible URL for a local media file.
  * Uses MEDIA_PUBLIC_URL env var if set (e.g., ngrok URL).
@@ -31,6 +44,8 @@ export function resolveUploadPath(mediaUrl) {
  * @returns {Promise<string>} Public URL accessible by Instagram's servers
  */
 export async function getPublicMediaUrl(localPath) {
+  if (/^https?:\/\//i.test(localPath)) return localPath;
+  if (storageDriver() === "s3") return publicObjectUrl(localPath);
   // If a public base URL is configured (ngrok, production domain, etc.), use it directly
   const publicBase = process.env.MEDIA_PUBLIC_URL;
   if (publicBase) {
@@ -60,6 +75,7 @@ export async function getPublicMediaUrl(localPath) {
 }
 
 async function uploadToFreeImage(buffer, _fileName) {
+  if (!process.env.FREEIMAGE_API_KEY) return null;
   try {
     const base64 = buffer.toString("base64");
     const formData = new FormData();
@@ -68,7 +84,7 @@ async function uploadToFreeImage(buffer, _fileName) {
     formData.append("action", "upload");
 
     const res = await fetch(
-      "https://freeimage.host/api/1/upload?key=6d207e02198a847aa98d0a2a901485a5",
+      `https://freeimage.host/api/1/upload?key=${encodeURIComponent(process.env.FREEIMAGE_API_KEY)}`,
       { method: "POST", body: formData },
     );
 
@@ -85,6 +101,7 @@ async function uploadToFreeImage(buffer, _fileName) {
 }
 
 async function uploadToImgur(buffer, _fileName) {
+  if (!process.env.IMGUR_CLIENT_ID) return null;
   try {
     const base64 = buffer.toString("base64");
     const formData = new FormData();
@@ -94,7 +111,7 @@ async function uploadToImgur(buffer, _fileName) {
 
     const res = await fetch("https://api.imgur.com/3/image", {
       method: "POST",
-      headers: { Authorization: "Client-ID 546c25a59c58ad7" },
+      headers: { Authorization: `Client-ID ${process.env.IMGUR_CLIENT_ID}` },
       body: formData,
     });
 

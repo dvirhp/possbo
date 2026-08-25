@@ -1,16 +1,15 @@
-import { useState, useEffect } from 'react'
-import { useParams, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { screenshotService } from '../services/screenshotService'
 import { publishService } from '../services/publishService'
 import { groupsService } from '../services/groupsService'
 import GenericList from '../components/GenericList'
 import LocationAutocomplete from '../components/LocationAutocomplete'
-import BackButton from '../components/BackButton'
 import locale from '../assets/i18n'
 import '../styles/group-details.css'
 
 export default function GroupDetails() {
-  const { id } = useParams()
+
   const location = useLocation()
   const navigate = useNavigate()
   const group = location.state
@@ -35,13 +34,7 @@ export default function GroupDetails() {
 
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    if (group?.id) {
-      loadPosts()
-    }
-  }, [group?.id])
-
-  const loadPosts = async () => {
+  const loadPosts = useCallback(async () => {
     try {
       const res = await groupsService.getGroupPosts(group.id)
       if (res.data.success) {
@@ -50,7 +43,11 @@ export default function GroupDetails() {
     } catch {
       // silent - history is optional
     }
-  }
+  }, [group?.id])
+
+  useEffect(() => {
+    if (group?.id) loadPosts()
+  }, [group?.id, loadPosts])
 
   if (!group) {
     return (
@@ -107,11 +104,13 @@ export default function GroupDetails() {
       if (res.data.success) {
         setPublishResult({
           success: true,
+          queued: res.data.queued,
+          jobId: res.data.jobId,
           screenshot: res.data.screenshot ? 'data:image/png;base64,' + res.data.screenshot : null,
           postUrl: res.data.savedPost?.postUrl || res.data.postUrl || null,
         })
         setShowPostForm(false)
-        loadPosts()
+        if (!res.data.queued) loadPosts()
       } else {
         setError(locale.publish.failed)
       }
@@ -195,7 +194,14 @@ export default function GroupDetails() {
 
         {publishResult?.success && (
           <div className="publish-result">
-            <h3>✅ {locale.publish.success}</h3>
+            <h3>
+              {publishResult.queued
+                ? '⏳ הפרסום נכנס לתור'
+                : `✅ ${locale.publish.success}`}
+            </h3>
+            {publishResult.queued && (
+              <p>הפרסום יתבצע לפי סדר התור. אפשר להמשיך להשתמש באתר.</p>
+            )}
             {publishResult.postUrl && (
               <a href={publishResult.postUrl} target="_blank" rel="noopener noreferrer" className="post-url-link">
                 🔗 קישור לפוסט

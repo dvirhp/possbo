@@ -2,7 +2,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { aiService } from '../services/aiService'
-import { Sparkles, Copy, Check, RefreshCw, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight, Lightbulb, X, SquarePen, Pencil } from 'lucide-react'
+import { Sparkles, Copy, Check, RefreshCw, ArrowLeft, ChevronLeft, ChevronRight, Lightbulb, X, SquarePen, Pencil } from 'lucide-react'
 import '../styles/generate-post.css'
 
 const TONES = [
@@ -406,7 +406,7 @@ export default function GeneratePost() {
       const { data } = await aiService.generatePost(form)
       setGeneratedPost(data.post)
       setStep(3)
-    } catch (err) {
+    } catch {
       // Fallback demo mode when AI is not connected
       const demoPost = `✨ זהו פוסט לדוגמה (מצב דמו, הAI לא מחובר עדיין)\n\nתחום: ${form.topic}\nמה מפרסמים: ${form.productOrService}\nטון: ${form.tone}\n\n📌 כשהAPI יחובר, כאן יופיע פוסט אמיתי שנוצר על ידי AI.`
       setGeneratedPost(demoPost)

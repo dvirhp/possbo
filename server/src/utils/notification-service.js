@@ -1,6 +1,7 @@
 import prisma from "../config/prisma.js";
 import { sendPublicationNotificationEmail } from "./mailer.js";
 import { createLogger } from "./logger.js";
+import { sendWebPushToUser } from "./web-push.js";
 
 const log = createLogger("notifications");
 
@@ -74,12 +75,15 @@ export async function dispatchPublicationNotification({
 
   let inApp = false;
   let email = false;
+  let push = false;
 
   if (settings[config.pushKey]) {
     await prisma.notification.create({
       data: { userId, type: config.type, title: config.title, message },
     });
     inApp = true;
+    const pushResult = await sendWebPushToUser(userId, { title: config.title, body: message, url: "/reports", urgent: event === "failure" });
+    push = pushResult.sent > 0;
   }
 
   if (settings[config.emailKey] && user.email) {
@@ -96,7 +100,7 @@ export async function dispatchPublicationNotification({
   }
 
   log.info("Publication notification dispatched", {
-    userId, event, inApp, email,
+    userId, event, inApp, email, push,
   });
-  return { inApp, email };
+  return { inApp, email, push };
 }

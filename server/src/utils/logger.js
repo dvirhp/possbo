@@ -237,7 +237,7 @@ export function createLogger(module) {
       level,
       module,
       message,
-      meta: finalMeta,
+      meta: sanitizeMeta(finalMeta),
       error,
     };
 

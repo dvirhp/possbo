@@ -1,8 +1,9 @@
+import "dotenv/config";
+import { validateEnvironment } from "./config/validate-env.js";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-import dotenv from "dotenv";
 import path from "path";
 import https from "https";
 import fs from "fs";
@@ -11,6 +12,7 @@ import prisma from "./config/prisma.js";
 import { verifyAccessToken } from "./utils/jwt.js";
 import { startScheduler, stopScheduler } from "./jobs/index.js";
 import { createLogger } from "./utils/logger.js";
+import { initializeOperationalEvents, stopOperationalEvents } from "./utils/operational-events.js";
 import {
   generalLimiter,
   authLimiter,
@@ -20,10 +22,12 @@ import {
 import {
   attachRequestContext,
   logRequestCompletion,
+  auditMutations,
 } from "./middleware/request-logging.js";
+import billingWebhookRoutes from "./routes/billing-webhook.js";
+import { publicObjectUrl, storageDriver } from "./services/object-storage.js";
 
-// Initialize environment variables
-dotenv.config();
+validateEnvironment();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDistDir = path.join(__dirname, "..", "..", "client", "dist");
@@ -32,6 +36,11 @@ const clientDistDir = path.join(__dirname, "..", "..", "client", "dist");
 const app = express();
 const PORT = process.env.PORT || 5000;
 const log = createLogger("server");
+initializeOperationalEvents({ service: "api" });
+
+// Stripe requires the exact raw bytes for signature verification. This must
+// remain before express.json(), authentication and global API rate limiting.
+app.use("/webhooks/billing", express.raw({ type: "application/json", limit: "256kb" }), billingWebhookRoutes);
 
 // Hosting platforms terminate TLS at a reverse proxy. This keeps req.ip,
 // rate-limiting and secure-cookie detection correct behind one trusted hop.
@@ -67,6 +76,15 @@ app.use(
   },
   express.static(path.join(__dirname, "..", "uploads")),
 );
+app.get("/uploads/*", async (req, res, next) => {
+  if (storageDriver() !== "s3") return next();
+  try {
+    res.redirect(302, await publicObjectUrl(req.params[0]));
+  } catch (error) {
+    log.warn("Could not resolve object-storage media", { key: req.params[0], error: error.message });
+    res.status(404).json({ error: "Media not found" });
+  }
+});
 
 // JWT-based user loader - extracts user from Authorization header
 app.use(async (req, _res, next) => {
@@ -88,6 +106,7 @@ app.use(async (req, _res, next) => {
   next();
 });
 app.use(logRequestCompletion);
+app.use(auditMutations);
 
 // Import routes
 import authRoutes from "./routes/auth.js";
@@ -105,6 +124,9 @@ import clientLogRoutes from "./routes/client-logs.js";
 import instagramRoutes from "./routes/instagram.js";
 import whatsappRoutes from "./routes/whatsapp.js";
 import whatsappBotRoutes from "./routes/whatsapp-bot.js";
+import operationsRoutes from "./routes/operations.js";
+import importRoutes from "./routes/imports.js";
+import pushRoutes from "./routes/push.js";
 import {
   restoreWhatsAppSessions,
   closeAllWhatsAppSessions,
@@ -126,6 +148,9 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/client-logs", clientLogRoutes);
 app.use("/api/instagram", instagramRoutes);
 app.use("/api/whatsapp", whatsappRoutes);
+app.use("/api/operations", operationsRoutes);
+app.use("/api/imports", importRoutes);
+app.use("/api/push", pushRoutes);
 app.use("/webhooks/whatsapp", whatsappBotRoutes);
 
 // Public, token-protected WhatsApp target selector UI.
@@ -152,6 +177,16 @@ app.get("/health/ready", async (_req, res) => {
   }
 });
 
+// Minimal unauthenticated signal intended for an infrastructure autoscaler.
+app.get("/health/scaling", async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw`SELECT COUNT(*)::int AS scheduled_queue_depth, COUNT(*) FILTER (WHERE scheduled_at <= NOW())::int AS due_queue_depth, COALESCE(EXTRACT(EPOCH FROM (NOW() - (MIN(scheduled_at) FILTER (WHERE scheduled_at <= NOW())))), 0)::float AS oldest_due_seconds FROM publication_jobs WHERE status = 'PENDING'`;
+    res.json(rows[0] || { scheduled_queue_depth: 0, due_queue_depth: 0, oldest_due_seconds: 0 });
+  } catch {
+    res.status(503).json({ error: "metrics_unavailable" });
+  }
+});
+
 // Basic route
 app.get("/", (_req, res) => {
   res.json({ message: "Possbo API is running" });
@@ -159,7 +194,7 @@ app.get("/", (_req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, _next) => {
-  log.error(`${req.method} ${req.originalUrl} unhandled error`, err);
+  log.error(`${req.method} ${req.originalUrl} unhandled error`, err, { event: "unhandled_request_error", requestId: req.requestId, userId: req.user?.id || null, method: req.method, path: req.originalUrl?.split("?")[0] });
 
   // Multer file size errors
   if (err.code === "LIMIT_FILE_SIZE") {
@@ -172,7 +207,11 @@ app.use((err, req, res, _next) => {
 // Start server
 const server = app.listen(PORT, () => {
   log.info("Server started", { port: PORT, url: `http://localhost:${PORT}` });
-  startScheduler();
+  if (process.env.RUN_SCHEDULER !== "false") {
+    startScheduler();
+  } else {
+    log.info("Background scheduler disabled for this process");
+  }
   restoreWhatsAppSessions().catch((err) =>
     log.error("Failed to restore WhatsApp sessions", { error: err.message }),
   );
@@ -212,6 +251,7 @@ async function gracefulShutdown(signal) {
   log.info(`${signal} received, shutting down gracefully...`);
   stopScheduler();
   await closeAllWhatsAppSessions();
+  await stopOperationalEvents();
   server.close(() => {
     log.info("HTTP server closed");
   });

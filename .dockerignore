@@ -1,0 +1,12 @@
+.git
+.github
+**/node_modules
+**/dist
+**/coverage
+**/.env*
+!**/.env.example
+server/uploads
+server/certs
+server/*.log
+*.png
+.tmp-responsive-check
