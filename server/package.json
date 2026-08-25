@@ -7,6 +7,16 @@
   "scripts": {
     "dev": "node --watch-path=src src/index.js",
     "start": "node src/index.js",
+    "start:api": "node src/index.js",
+    "worker": "node src/worker.js",
+    "start:worker": "node src/worker.js",
+    "db:deploy": "prisma migrate deploy",
+    "db:validate": "prisma validate",
+    "db:drift": "prisma migrate diff --from-url $DIRECT_URL --to-schema-datamodel prisma/schema.prisma --exit-code",
+    "db:status": "prisma migrate status",
+    "db:backup": "node scripts/database-backup.mjs",
+    "db:restore:verify": "node scripts/database-restore-verify.mjs",
+    "validate:env": "node --input-type=module -e \"import 'dotenv/config'; import {validateEnvironment} from './src/config/validate-env.js'; validateEnvironment({production:true}); console.log('Environment is valid')\"",
     "bootstrap-session": "node scripts/bootstrap-session.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -14,9 +24,18 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src/"
+    "test:e2e": "node tests/e2e/browser-auth-flow.mjs",
+    "test:meta-sandbox": "node tests/e2e/meta-sandbox.mjs",
+    "lint": "eslint src/",
+    "load:api": "k6 run load/api.k6.js",
+    "load:seed-queue": "node scripts/seed-load-queue.mjs",
+    "load:queue": "node scripts/load-publication-queue.mjs",
+    "load:chromium": "node scripts/benchmark-chromium.mjs",
+    "load:api-node": "node load/api-node.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1117.0",
+    "@aws-sdk/s3-request-presigner": "^3.1117.0",
     "@prisma/client": "^5.7.1",
     "axios": "^1.6.2",
     "baileys": "^7.0.0-rc13",
@@ -35,15 +54,22 @@
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
     "playwright": "^1.61.0",
+    "prisma": "^5.7.1",
     "qrcode": "^1.5.4",
-    "sharp": "^0.35.3"
+    "rate-limit-redis": "^4.3.1",
+    "redis": "^5.12.1",
+    "sharp": "^0.35.3",
+    "stripe": "^22.5.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
     "@vitest/coverage-v8": "^3.2.6",
     "eslint": "^9.39.4",
-    "prisma": "^5.7.1",
     "supertest": "^7.2.2",
     "vitest": "^3.2.6"
+  },
+  "overrides": {
+    "esbuild": "0.28.2"
   }
 }

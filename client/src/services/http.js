@@ -1,5 +1,6 @@
 import axios from "axios";
 import { logClientError } from "./clientLogger";
+import { getStoredAccessToken, setStoredAccessToken } from './tokenStore'
 
 const API_BASE_URL = "/api";
 
@@ -10,24 +11,23 @@ const api = axios.create({
 });
 
 // Token management
-let accessToken = null;
-
 export function setAccessToken(token) {
-  accessToken = token;
+  setStoredAccessToken(token);
 }
 
 export function getAccessToken() {
-  return accessToken;
+  return getStoredAccessToken();
 }
 
 export function clearAccessToken() {
-  accessToken = null;
+  setStoredAccessToken(null);
 }
 
 // Request interceptor - attach access token
 api.interceptors.request.use((config) => {
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
+  const token = getStoredAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -82,7 +82,8 @@ function getUserFriendlyMessage(error) {
   if (status === 404) return "הפריט המבוקש לא נמצא.";
   if (status === 409) return serverMsg || "פעולה זו כבר בוצעה.";
   if (status === 413) return "הקובץ גדול מדי.";
-  if (status === 429) return "יותר מדי בקשות. נסה שוב בעוד מספר דקות.";
+  if (status === 429)
+    return serverMsg || "יותר מדי בקשות. נסה שוב בעוד מספר דקות.";
   if (status >= 500) return "שגיאת שרת. נסה שוב מאוחר יותר.";
   return serverMsg || "שגיאה בלתי צפויה. נסה שוב.";
 }

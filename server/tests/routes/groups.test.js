@@ -45,6 +45,13 @@ vi.mock("../../src/utils/posts-storage.js", () => ({
   })),
 }));
 
+const { queueImmediateFacebookPublication } = vi.hoisted(() => ({
+  queueImmediateFacebookPublication: vi.fn(),
+}));
+vi.mock("../../src/utils/immediate-publication.js", () => ({
+  queueImmediateFacebookPublication,
+}));
+
 // We need to spy on fs.existsSync at the module level
 vi.spyOn(fs, "existsSync").mockReturnValue(false);
 vi.spyOn(fs, "unlinkSync").mockImplementation(() => {});
@@ -87,6 +94,11 @@ vi.mock("multer", () => {
 let app;
 
 beforeEach(async () => {
+  queueImmediateFacebookPublication.mockReset().mockResolvedValue({
+    job: { id: "job-1", status: "PENDING" },
+    postId: "post-1",
+    duplicate: false,
+  });
   vi.resetModules();
   const groupsModule = await import("../../src/routes/groups.js");
 
@@ -263,35 +275,27 @@ describe("POST /api/groups/publish", () => {
   });
 
   it("should publish and return result on success", async () => {
-    const { publishToGroup } =
-      await import("../../src/utils/facebook-automation.js");
-    vi.mocked(publishToGroup).mockResolvedValue({
-      success: true,
-      postUrl: "url",
-    });
-
     const res = await request(app)
       .post("/api/groups/publish")
       .field("groupUrl", "https://fb.com/groups/1")
       .field("text", "Post text");
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(res.body.success).toBe(true);
+    expect(res.body.queued).toBe(true);
+    expect(res.body.jobId).toBe("job-1");
   });
 
-  it("should return 428 on session required", async () => {
-    const { publishToGroup } =
-      await import("../../src/utils/facebook-automation.js");
-    vi.mocked(publishToGroup).mockRejectedValue(
-      new Error("FACEBOOK_SESSION_REQUIRED"),
+  it("should return 500 when queue creation fails", async () => {
+    queueImmediateFacebookPublication.mockRejectedValue(
+      new Error("QUEUE_FAILED"),
     );
-
     const res = await request(app)
       .post("/api/groups/publish")
       .field("groupUrl", "https://fb.com/groups/1")
       .field("text", "Post text");
 
-    expect(res.status).toBe(428);
+    expect(res.status).toBe(500);
   });
 });
 

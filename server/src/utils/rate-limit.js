@@ -1,7 +1,22 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "./logger.js";
+import { createClient } from "redis";
+import { RedisStore } from "rate-limit-redis";
 
 const log = createLogger("rate-limit");
+let redisClient;
+if (process.env.REDIS_URL) {
+  try {
+    const redis = createClient({ url: process.env.REDIS_URL });
+    redis.on("error", (error) => log.error("Redis rate-limit error", error));
+    await redis.connect();
+    redisClient = redis;
+    log.info("Distributed Redis rate limiting enabled");
+  } catch (error) {
+    log.error("Redis unavailable; using in-process rate limits", error, { event: "redis_rate_limit_fallback" });
+  }
+}
+const storeOptions = (name) => redisClient ? { store: new RedisStore({ sendCommand: (...args) => redisClient.sendCommand(args), prefix: `possbo:rl:${name}:` }) } : {};
 
 function rateLimitHandler(message) {
   return (req, res) => {
@@ -20,6 +35,7 @@ function rateLimitHandler(message) {
  * General API rate limiter — 300 requests per 15 minutes per IP.
  */
 export const generalLimiter = rateLimit({
+  ...storeOptions("general"),
   windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
@@ -34,6 +50,7 @@ export const generalLimiter = rateLimit({
  * Skips /refresh, /logout, /me since they have their own protection or are harmless.
  */
 export const authLimiter = rateLimit({
+  ...storeOptions("auth"),
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
@@ -48,6 +65,7 @@ export const authLimiter = rateLimit({
  * More generous than authLimiter because refresh is cookie-protected.
  */
 export const refreshLimiter = rateLimit({
+  ...storeOptions("refresh"),
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: true,
@@ -60,8 +78,11 @@ export const refreshLimiter = rateLimit({
  * Publish limiter — 30 publishes per hour per IP.
  */
 export const publishLimiter = rateLimit({
+  ...storeOptions("publish"),
   windowMs: 60 * 60 * 1000,
   max: 30,
+  keyGenerator: (req) =>
+    req.user?.id ? `user:${req.user.id}` : `ip:${ipKeyGenerator(req.ip)}`,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "הגעת למגבלת הפרסום. נסה שוב בעוד שעה." },

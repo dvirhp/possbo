@@ -36,7 +36,10 @@ describe("publishService", () => {
         "/publish",
         expect.any(FormData),
         expect.objectContaining({
-          headers: { "Content-Type": "multipart/form-data" },
+          headers: expect.objectContaining({
+            "Content-Type": "multipart/form-data",
+            "Idempotency-Key": expect.any(String),
+          }),
           timeout: 120000,
         }),
       );

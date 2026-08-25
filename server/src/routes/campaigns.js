@@ -6,6 +6,11 @@ import { triggerImmediateProcess } from "../jobs/index.js";
 import { uploadFields } from "../utils/upload-service.js";
 import { createLogger } from "../utils/logger.js";
 import { dispatchPublicationNotification } from "../utils/notification-service.js";
+import {
+  dailyLimitResponse,
+  getDailyPublishUsage,
+  notifyDailyLimitReached,
+} from "../utils/daily-publish-limit.js";
 
 const router = express.Router();
 const log = createLogger("campaigns");
@@ -105,6 +110,36 @@ router.post(
 
     if (!text || !text.trim()) {
       return res.status(400).json({ error: "text is required" });
+    }
+
+    if (scheduleMode === "now") {
+      const selectedIgTypes = Array.isArray(instagramPublishTypes)
+        ? instagramPublishTypes
+        : instagramPublishType
+          ? instagramPublishType.split(",").filter(Boolean)
+          : instagramEnabled
+            ? ["FEED"]
+            : [];
+      const requestedPublications =
+        (Array.isArray(groupIds) ? groupIds.length : 0) +
+        (publishToProfile ? 1 : 0) +
+        (instagramEnabled ? selectedIgTypes.length : 0) +
+        (whatsappEnabled ? 1 : 0);
+      const usage = await getDailyPublishUsage(userId, new Date(), {
+        includeQueued: true,
+      });
+
+      if (requestedPublications > usage.remaining) {
+        await notifyDailyLimitReached(userId, usage);
+        return res.status(429).json({
+          ...dailyLimitResponse(usage),
+          requestedPublications,
+          error:
+            usage.remaining === 0
+              ? `הגעת למכסת הפרסום היומית של ${usage.limit} פרסומים. ניתן לפרסם שוב לאחר איפוס המכסה מחר.`
+              : `בקמפיין יש ${requestedPublications} פרסומים, אך נותרו לך רק ${usage.remaining} פרסומים להיום. יש לצמצם יעדים או לתזמן את הקמפיין למחר.`,
+        });
+      }
     }
 
     if (instagramEnabled) {
@@ -1104,6 +1139,30 @@ router.get(
 );
 
 // ─── Get single campaign with publication history ────────
+
+// Lightweight live progress endpoint. It avoids loading media and metrics on
+// every UI refresh while a publication is running.
+router.get(
+  "/campaigns/:postId/progress",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { postId } = req.params;
+    const userId = req.user.id;
+    const post = await prisma.post.findFirst({
+      where: { id: postId, userId },
+      select: { id: true, publishToProfile: true, instagramEnabled: true, whatsappEnabled: true, instagramPublishType: true, _count: { select: { postGroups: true } } },
+    });
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    const [jobCounts, history] = await Promise.all([
+      prisma.publicationJob.groupBy({ by: ["status"], where: { OR: [{ postGroup: { postId, userId } }, { postId, post: { userId } }] }, _count: true }),
+      prisma.publicationHistory.findMany({ where: { postId, userId }, orderBy: { publishedAt: "desc" }, select: { id: true, status: true, platform: true, targetType: true, externalPostUrl: true, errorMessage: true, publishedAt: true } }),
+    ]);
+    const count = (...statuses) => jobCounts.filter((row) => statuses.includes(row.status)).reduce((sum, row) => sum + row._count, 0);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ success: true, progress: { totalJobs: count("PENDING", "RUNNING", "SUCCESS", "FAILED", "CANCELLED"), pendingJobs: count("PENDING", "RUNNING"), completedJobs: count("SUCCESS", "FAILED", "CANCELLED"), publicationHistory: history, groupsCount: post._count.postGroups, publishToProfile: post.publishToProfile, instagramEnabled: post.instagramEnabled, whatsappEnabled: post.whatsappEnabled, instagramPublishType: post.instagramPublishType } });
+  }),
+);
 
 router.get(
   "/campaigns/:postId",

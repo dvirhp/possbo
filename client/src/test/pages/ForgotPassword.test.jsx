@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const mockNavigate = vi.fn();
@@ -112,7 +112,9 @@ describe('ForgotPassword page', () => {
     expect(screen.getByRole('button', { name: /שולח/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /שולח/ })).toBeDisabled();
     
-    resolvePromise({ data: { success: true } });
+    await act(async () => {
+      resolvePromise({ data: { success: true } });
+    });
   });
 
   it('shows step 2 header after sending code', async () => {

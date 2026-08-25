@@ -7,10 +7,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 4200,
-    https: fs.existsSync(path.resolve(__dirname, "certs/cert.pem"))
+    https: fs.existsSync(path.resolve(import.meta.dirname, "certs/cert.pem"))
       ? {
-          key: fs.readFileSync(path.resolve(__dirname, "certs/key.pem")),
-          cert: fs.readFileSync(path.resolve(__dirname, "certs/cert.pem")),
+          key: fs.readFileSync(path.resolve(import.meta.dirname, "certs/key.pem")),
+          cert: fs.readFileSync(path.resolve(import.meta.dirname, "certs/cert.pem")),
         }
       : undefined,
     watch: {
@@ -24,6 +24,25 @@ export default defineConfig({
       "/uploads": {
         target: "http://localhost:8000",
         changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    // @emoji-mart/data is a single lazy-loaded data module (~506 kB) that
+    // cannot be split further; all initial-route chunks remain well below it.
+    chunkSizeWarningLimit: 520,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: "charts", test: /node_modules[\\/]recharts|node_modules[\\/]d3-/, priority: 30 },
+            { name: "emoji", test: /node_modules[\\/]@emoji-mart/, priority: 30 },
+            { name: "capture", test: /node_modules[\\/]html2canvas/, priority: 30 },
+            { name: "react", test: /node_modules[\\/](react|react-dom|react-router)/, priority: 20 },
+            { name: "icons", test: /node_modules[\\/]lucide-react/, priority: 20 },
+            { name: "vendor", test: /node_modules/, maxSize: 250 * 1024, priority: 10 },
+          ],
+        },
       },
     },
   },

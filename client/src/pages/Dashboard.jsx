@@ -217,7 +217,6 @@ export default function Dashboard() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
   const [platformFilter, setPlatformFilter] = useState('all') // 'all' | 'facebook' | 'instagram' | 'both'
   const [groupFilter, setGroupFilter] = useState('all')
   const [groupFilterOpen, setGroupFilterOpen] = useState(false)
@@ -227,8 +226,8 @@ export default function Dashboard() {
   const [templateFilterSearch, setTemplateFilterSearch] = useState('')
   const [sortBy, setSortBy] = useState('date')
 
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom] = useState('')
+  const [dateTo] = useState('')
   const [refreshingGroups, setRefreshingGroups] = useState(false)
   const [filterSheetOpen, setFilterSheetOpen] = useState(false)
   const [sheetGroupExpand, setSheetGroupExpand] = useState(false)
@@ -294,7 +293,7 @@ export default function Dashboard() {
     ensureFresh()
   }, [location.key, ensureFresh])
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       const params = {}
       if (dateFrom) params.from = dateFrom
@@ -302,13 +301,13 @@ export default function Dashboard() {
       const res = await groupsService.getStats(params)
       if (res.data.stats) setStats(res.data.stats)
     } catch { /* ignore */ }
-  }
+  }, [dateFrom, dateTo, setStats])
 
   useEffect(() => {
     if (activeTab === 'stats' && (dateFrom || dateTo)) {
       loadStats()
     }
-  }, [dateFrom, dateTo])
+  }, [activeTab, dateFrom, dateTo, loadStats])
 
   const [mainConfirm, setMainConfirm] = useState(null)
   const [sessionRequired, setSessionRequired] = useState(false)
@@ -393,11 +392,6 @@ export default function Dashboard() {
   useEffect(() => () => {
     if (quickWhatsappPollRef.current) clearInterval(quickWhatsappPollRef.current)
   }, [])
-
-  const openAccountConnections = () => {
-    setShowConnectionsModal(false)
-    setActiveTab('account')
-  }
 
   const connections = [
     { id: 'facebook', name: 'Facebook', connected: Boolean(user?.fbSessionValid), icon: <FacebookLogo />, action: connectFacebook },
@@ -484,7 +478,7 @@ export default function Dashboard() {
     const urlSubTab = searchParams.get('subTab')
     setCampaignSubTab((urlSubTab === 'scheduled' || urlSubTab === 'published') ? urlSubTab : 'all')
     window.scrollTo(0, 0)
-  }, [activeTab])
+  }, [activeTab, searchParams])
 
   const hasActiveFilters = statusFilter !== 'all' || platformFilter !== 'all' || groupFilter !== 'all' || templateFilter !== 'all' || sortBy !== 'date' || Boolean(dashDateRange.from)
 
@@ -496,23 +490,6 @@ export default function Dashboard() {
     setSortBy(activeTab === 'groups' ? 'name' : 'date')
     setDashDateRange({ from: '', to: '' })
   }
-
-  const filteredJobs = useMemo(() => {
-    let list = jobs
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter(j =>
-        j.postGroup?.post?.content?.toLowerCase().includes(q) ||
-        j.postGroup?.group?.name?.toLowerCase().includes(q)
-      )
-    }
-    if (sortBy === 'date') {
-      list = [...list].sort((a, b) => new Date(b.scheduledAt || 0) - new Date(a.scheduledAt || 0))
-    } else if (sortBy === 'name') {
-      list = [...list].sort((a, b) => (a.postGroup?.group?.name || '').localeCompare(b.postGroup?.group?.name || ''))
-    }
-    return list
-  }, [jobs, search, sortBy])
 
   const filteredCampaigns = useMemo(() => {
     let list = campaigns
@@ -568,20 +545,6 @@ export default function Dashboard() {
     return list
   }, [campaigns, search, statusFilter, platformFilter, groupFilter, templateFilter, sortBy, dashDateRange])
 
-  const filteredGroups = useMemo(() => {
-    let list = groups
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter(g => g.name?.toLowerCase().includes(q))
-    }
-    if (sortBy === 'name') {
-      list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    } else if (sortBy === 'members') {
-      list = [...list].sort((a, b) => (b.memberCount || 0) - (a.memberCount || 0))
-    }
-    return list
-  }, [groups, search, sortBy])
-
   const filteredPosts = useMemo(() => {
     let list = posts
     if (dashDateRange.from) {
@@ -629,12 +592,6 @@ export default function Dashboard() {
   const campaignStatusCounts = useMemo(() => {
     const counts = {}
     campaigns.forEach(c => { counts[c.status] = (counts[c.status] || 0) + 1 })
-    return counts
-  }, [campaigns])
-
-  const campaignTypeCounts = useMemo(() => {
-    const counts = {}
-    campaigns.forEach(c => { counts[c.campaignType] = (counts[c.campaignType] || 0) + 1 })
     return counts
   }, [campaigns])
 
@@ -1439,7 +1396,7 @@ export default function Dashboard() {
 
 // ─── PANELS ─────────────────────────────────────────────
 
-function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdated, viewMode, posts, subTab }) {
+function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdated, viewMode, subTab }) {
   const [tooltipId, setTooltipId] = useState(null)
   const [menuId, setMenuId] = useState(null)
   const [editCampaign, setEditCampaign] = useState(null)
@@ -1985,9 +1942,9 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
 
 // ─── WHATSAPP SYNC PANEL ───────────────────────────────
 
-function WhatsAppSyncPanel({ user, navigate }) {
-  const { waGroups: groups, waBroadcastLists: broadcastLists, waSyncing: syncing, waQrDataUrl: qrDataUrl, waError: error,
-    loadWaGroups, syncWaGroups, clearWaQr, setUser, setWaBroadcastLists } = useAppData()
+function WhatsAppSyncPanel({ user }) {
+  const { waGroups: groups, waBroadcastLists: broadcastLists, waSyncing: syncing, waError: error,
+    loadWaGroups, syncWaGroups, setUser, setWaBroadcastLists } = useAppData()
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [waSubTab, setWaSubTab] = useState('groups') // 'groups' | 'broadcasts'
@@ -2825,13 +2782,13 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
   )
 }
 
-function PostsPanel({ posts, navigate, groups, onUpdate, viewMode }) {
+function PostsPanel({ posts, groups, onUpdate, viewMode }) {
   const [menuId, setMenuId] = useState(null)
   const [reschedulePost, setReschedulePost] = useState(null)
   const [detailPost, setDetailPost] = useState(null)
   const [loading, setLoading] = useState(false)
   const [localPosts, setLocalPosts] = useState(posts)
-  const [confirmAction, setConfirmAction] = useState(null)
+  const [, setConfirmAction] = useState(null)
   const menuRef = useRef(null)
 
   useEffect(() => { setLocalPosts(posts) }, [posts])
@@ -3743,46 +3700,10 @@ function AccountPanel({ user, logout, setUser, navigate, handleBootstrap, bootst
   )
 }
 
-function BillingPanel({ user, navigate }) {
-  const subscription = user?.subscription
 
-  return (
-    <div className="billing-panel">
-      <div className="billing-card">
-        <h3 className="billing-card-title">המנוי שלך</h3>
-        {subscription ? (
-          <div className="billing-status">
-            <div className="billing-status-badge active">
-              <span className="billing-dot"></span>
-              פעיל
-            </div>
-            <div className="billing-plan-info">
-              <span className="billing-plan-name">{subscription.planName || 'מסלול מקצועי'}</span>
-              <span className="billing-plan-price">300 ₪ / חודש</span>
-            </div>
-            {subscription.endsAt && (
-              <p className="billing-renewal">חידוש אוטומטי: {new Date(subscription.endsAt).toLocaleDateString('he-IL')}</p>
-            )}
-          </div>
-        ) : (
-          <div className="billing-status">
-            <div className="billing-status-badge inactive">
-              <span className="billing-dot"></span>
-              אין מנוי פעיל
-            </div>
-            <p className="billing-no-plan">לא הוגדר מנוי. הפעל מנוי כדי ליהנות מכל הפיצ'רים.</p>
-          </div>
-        )}
-        <button className="billing-manage-btn" onClick={() => navigate('/subscription')}>
-          {subscription ? 'נהל מנוי ותשלום' : 'הפעל מנוי'}
-        </button>
-      </div>
-    </div>
-  )
-}
 
 function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, bootstrapping }) {
-  const { theme, themeMode, setTheme } = useTheme()
+  const {  themeMode, setTheme } = useTheme()
   const { cancelWaSync } = useAppData()
   const [confirmAction, setConfirmAction] = useState(null)
   // Profile
@@ -5033,7 +4954,7 @@ function RescheduleModal({ post, groups, loading, onSchedule, onClose }) {
 
 // ─── Campaign Detail Modal ─────────────────────────────────
 
-function CampaignDetailModal({ campaign, onClose, onEdit, onPause, onDuplicate, onDelete, groups, loading, onSave, initialEditing }) {
+function CampaignDetailModal({ campaign, onClose, onPause, onDuplicate, onDelete, groups, loading, onSave, initialEditing }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(!!initialEditing)
   const [lightboxIdx, setLightboxIdx] = useState(null)

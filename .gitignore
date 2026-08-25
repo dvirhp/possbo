@@ -1,12 +1,16 @@
 # Dependencies
 node_modules/
 .tools/
+.codex-logs/
+.codex-tmp/
+client/certs.bak/
 .tmp-responsive-check/
 
 # Environment
 .env
 .env.local
 .env.production
+server/.env.docker
 
 # Build
 dist/

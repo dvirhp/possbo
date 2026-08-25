@@ -1,0 +1,98 @@
+projects:
+  - name: Possbo
+    environments:
+      - name: Production
+        permissions:
+          protection: enabled
+        services:
+          - type: web
+            name: possbo-api
+            runtime: docker
+            plan: starter
+            region: frankfurt
+            dockerfilePath: ./Dockerfile
+            dockerContext: .
+            dockerCommand: node src/index.js
+            preDeployCommand: npx prisma migrate deploy
+            healthCheckPath: /health/ready
+            maxShutdownDelaySeconds: 60
+            autoDeployTrigger: checksPass
+            envVars:
+              - key: NODE_ENV
+                value: production
+              - key: RUN_SCHEDULER
+                value: "false"
+              - key: CLIENT_URL
+                value: https://possbo-api.onrender.com
+              - key: DATABASE_URL
+                sync: false
+              - key: DIRECT_URL
+                sync: false
+              - key: JWT_SECRET
+                generateValue: true
+              - key: JWT_REFRESH_SECRET
+                generateValue: true
+              - key: SESSION_SECRET
+                generateValue: true
+              - key: ENCRYPTION_KEY
+                generateValue: true
+              - key: STORAGE_DRIVER
+                value: s3
+              - key: S3_BUCKET
+                value: possbo-production-media
+              - key: S3_REGION
+                value: auto
+              - key: S3_ENDPOINT
+                value: https://4602a56c57bff054b5079f90b5ed7360.r2.cloudflarestorage.com
+              - key: S3_FORCE_PATH_STYLE
+                value: "false"
+              - key: S3_ACCESS_KEY_ID
+                sync: false
+              - key: S3_SECRET_ACCESS_KEY
+                sync: false
+              - key: TURNSTILE_SECRET_KEY
+                sync: false
+
+          - type: worker
+            name: possbo-worker
+            runtime: docker
+            plan: starter
+            region: frankfurt
+            dockerfilePath: ./Dockerfile
+            dockerContext: .
+            dockerCommand: node src/worker.js
+            maxShutdownDelaySeconds: 300
+            autoDeployTrigger: checksPass
+            envVars:
+              - key: NODE_ENV
+                value: production
+              - key: RUN_SCHEDULER
+                value: "true"
+              - key: CLIENT_URL
+                value: https://possbo-api.onrender.com
+              - key: DATABASE_URL
+                fromService: { type: web, name: possbo-api, envVarKey: DATABASE_URL }
+              - key: DIRECT_URL
+                fromService: { type: web, name: possbo-api, envVarKey: DIRECT_URL }
+              - key: JWT_SECRET
+                fromService: { type: web, name: possbo-api, envVarKey: JWT_SECRET }
+              - key: JWT_REFRESH_SECRET
+                fromService: { type: web, name: possbo-api, envVarKey: JWT_REFRESH_SECRET }
+              - key: SESSION_SECRET
+                fromService: { type: web, name: possbo-api, envVarKey: SESSION_SECRET }
+              - key: ENCRYPTION_KEY
+                fromService: { type: web, name: possbo-api, envVarKey: ENCRYPTION_KEY }
+              - key: STORAGE_DRIVER
+                value: s3
+              - key: S3_BUCKET
+                value: possbo-production-media
+              - key: S3_REGION
+                value: auto
+              - key: S3_ENDPOINT
+                value: https://4602a56c57bff054b5079f90b5ed7360.r2.cloudflarestorage.com
+              - key: S3_FORCE_PATH_STYLE
+                value: "false"
+              - key: S3_ACCESS_KEY_ID
+                fromService: { type: web, name: possbo-api, envVarKey: S3_ACCESS_KEY_ID }
+              - key: S3_SECRET_ACCESS_KEY
+                fromService: { type: web, name: possbo-api, envVarKey: S3_SECRET_ACCESS_KEY }

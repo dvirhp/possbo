@@ -1,179 +1,81 @@
 import { Router } from "express";
 import prisma from "../config/prisma.js";
 import { requireAuth } from "../utils/auth-middleware.js";
+import { createCheckout, cancelProviderSubscription, billingEnabled } from "../services/billing-provider.js";
 import { createLogger } from "../utils/logger.js";
 
 const router = Router();
 const log = createLogger("subscription");
-
-// Auth middleware
 router.use(requireAuth);
 
-// ─── GET /api/subscription/plans ─────────────────────────
-router.get("/plans", async (req, res) => {
+router.get("/plans", async (_req, res) => {
   try {
-    const plans = await prisma.plan.findMany({
-      where: { isActive: true },
-      orderBy: { priceMonthly: "asc" },
-    });
-    res.json({ plans });
-  } catch (err) {
-    log.error("Failed to fetch plans", err);
-    res.status(500).json({ error: "שגיאה בטעינת המסלולים" });
+    const plans = await prisma.plan.findMany({ where: { isActive: true }, orderBy: { priceMonthly: "asc" } });
+    res.json({ plans, billingAvailable: billingEnabled() });
+  } catch (error) {
+    log.error("Failed to fetch plans", error);
+    res.status(500).json({ error: "Failed to load plans" });
   }
 });
 
-// ─── GET /api/subscription/me ────────────────────────────
 router.get("/me", async (req, res) => {
   try {
     const subscription = await prisma.subscription.findFirst({
-      where: { userId: req.user.id, status: { in: ["ACTIVE", "CANCELLED"] } },
-      include: { plan: true },
-      orderBy: { createdAt: "desc" },
+      where: { userId: req.user.id, status: { in: ["ACTIVE", "PAST_DUE", "CANCELLED", "PENDING"] } },
+      include: { plan: true }, orderBy: { createdAt: "desc" },
     });
     res.json({ subscription });
-  } catch (err) {
-    log.error("Failed to fetch subscription", err);
-    res.status(500).json({ error: "שגיאה בטעינת המנוי" });
+  } catch (error) {
+    log.error("Failed to fetch subscription", error);
+    res.status(500).json({ error: "Failed to load subscription" });
   }
 });
 
-// ─── POST /api/subscription/subscribe ────────────────────
+// Creates a hosted checkout session. Activation happens only after a signed webhook.
 router.post("/subscribe", async (req, res) => {
   try {
-    const { planId: _planId, token: _token } = req.body; // eslint-disable-line no-unused-vars
-    const userId = req.user.id;
-
-    // Check if user already has an active subscription
-    const existing = await prisma.subscription.findFirst({
-      where: { userId, status: "ACTIVE" },
-    });
-    if (existing) {
-      return res.status(400).json({ error: "כבר יש לך מנוי פעיל" });
+    const planId = String(req.body?.planId || "");
+    if (!planId) return res.status(400).json({ error: "planId is required" });
+    const existing = await prisma.subscription.findFirst({ where: { userId: req.user.id, status: { in: ["ACTIVE", "PAST_DUE", "PENDING"] } } });
+    if (existing) return res.status(409).json({ error: "An open subscription already exists" });
+    const plan = await prisma.plan.findFirst({ where: { id: planId, isActive: true } });
+    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    const checkout = await createCheckout({ user: req.user, plan });
+    res.status(201).json({ checkoutUrl: checkout.url, sessionId: checkout.id });
+  } catch (error) {
+    log.error("Failed to create checkout", error);
+    if (error.code === "BILLING_NOT_CONFIGURED" || error.code === "PLAN_NOT_CONFIGURED") {
+      return res.status(503).json({ error: error.message, code: error.code });
     }
-
-    // Find the plan
-    const plan = await prisma.plan.findFirst({
-      where: { isActive: true },
-    });
-    if (!plan) {
-      return res.status(404).json({ error: "מסלול לא נמצא" });
-    }
-
-    // TODO: In production, process payment with provider using the token
-    // const paymentResult = await paymentProvider.charge({
-    //   token,
-    //   amount: plan.priceMonthly * 100, // in agorot
-    //   currency: 'ILS',
-    //   description: `Possbo - ${plan.name}`,
-    //   recurring: true
-    // })
-
-    const now = new Date();
-    const endsAt = new Date(now);
-    endsAt.setMonth(endsAt.getMonth() + 1);
-
-    // Create subscription
-    const subscription = await prisma.subscription.create({
-      data: {
-        userId,
-        planId: plan.id,
-        status: "ACTIVE",
-        startedAt: now,
-        endsAt,
-        // gatewayCustomerId: paymentResult.customerId,
-        // gatewaySubscriptionId: paymentResult.subscriptionId,
-        // paymentToken: paymentResult.token,
-      },
-      include: { plan: true },
-    });
-
-    // Create payment record
-    await prisma.payment.create({
-      data: {
-        userId,
-        subscriptionId: subscription.id,
-        amount: plan.priceMonthly,
-        currency: "ILS",
-        status: "SUCCESS",
-        periodStart: now,
-        periodEnd: endsAt,
-        // gatewayTransactionId: paymentResult.transactionId,
-      },
-    });
-
-    log.info(`User ${userId} subscribed to plan ${plan.name}`);
-    res.json({ subscription, message: "המנוי הופעל בהצלחה" });
-  } catch (err) {
-    log.error("Failed to create subscription", err);
-    res.status(500).json({ error: "שגיאה ביצירת המנוי" });
+    res.status(502).json({ error: "Billing provider is temporarily unavailable" });
   }
 });
 
-// ─── POST /api/subscription/cancel ───────────────────────
 router.post("/cancel", async (req, res) => {
   try {
-    const userId = req.user.id;
-
     const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: "ACTIVE" },
-      include: { plan: true },
+      where: { userId: req.user.id, status: { in: ["ACTIVE", "PAST_DUE"] } },
     });
-
-    if (!subscription) {
-      return res.status(404).json({ error: "לא נמצא מנוי פעיל" });
-    }
-
-    // Calculate prorated amount
-    const now = new Date();
-    const periodStart = new Date(subscription.startedAt);
-    const periodEnd = new Date(subscription.endsAt);
-    const totalDays = Math.ceil(
-      (periodEnd - periodStart) / (1000 * 60 * 60 * 24),
-    );
-    const usedDays = Math.ceil((now - periodStart) / (1000 * 60 * 60 * 24));
-    const proratedAmount =
-      (Number(subscription.plan.priceMonthly) / totalDays) * usedDays;
-
-    // TODO: In production, cancel recurring billing with provider
-    // await paymentProvider.cancelSubscription(subscription.gatewaySubscriptionId)
-
-    // Update subscription
-    await prisma.subscription.update({
-      where: { id: subscription.id },
-      data: {
-        status: "CANCELLED",
-        cancelledAt: now,
-      },
-    });
-
-    log.info(
-      `User ${userId} cancelled subscription. Prorated: ${proratedAmount.toFixed(2)} ILS`,
-    );
-    res.json({
-      message: "המנוי בוטל בהצלחה",
-      proratedAmount: proratedAmount.toFixed(2),
-      usedDays,
-      totalDays,
-    });
-  } catch (err) {
-    log.error("Failed to cancel subscription", err);
-    res.status(500).json({ error: "שגיאה בביטול המנוי" });
+    if (!subscription) return res.status(404).json({ error: "Active subscription not found" });
+    if (!subscription.gatewaySubscriptionId) return res.status(409).json({ error: "Subscription is not managed by the billing provider" });
+    const providerSubscription = await cancelProviderSubscription(subscription.gatewaySubscriptionId);
+    // Webhook remains authoritative; reflect the scheduled cancellation without revoking paid access.
+    await prisma.subscription.update({ where: { id: subscription.id }, data: { cancelledAt: new Date() } });
+    res.json({ message: "Cancellation scheduled", cancelAt: providerSubscription.cancel_at ? new Date(providerSubscription.cancel_at * 1000) : subscription.endsAt });
+  } catch (error) {
+    log.error("Failed to cancel subscription", error);
+    if (error.code === "BILLING_NOT_CONFIGURED") return res.status(503).json({ error: error.message, code: error.code });
+    res.status(502).json({ error: "Could not cancel at billing provider" });
   }
 });
 
-// ─── GET /api/subscription/payments ──────────────────────
 router.get("/payments", async (req, res) => {
   try {
-    const payments = await prisma.payment.findMany({
-      where: { userId: req.user.id },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    });
+    const payments = await prisma.payment.findMany({ where: { userId: req.user.id }, orderBy: { createdAt: "desc" }, take: 20 });
     res.json({ payments });
-  } catch (err) {
-    log.error("Failed to fetch payments", err);
-    res.status(500).json({ error: "שגיאה בטעינת היסטוריית התשלומים" });
+  } catch (error) {
+    log.error("Failed to fetch payments", error);
+    res.status(500).json({ error: "Failed to load payments" });
   }
 });
 

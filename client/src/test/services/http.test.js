@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-let mockAxiosInstance;
+
 
 vi.mock("axios", () => {
   const instance = {

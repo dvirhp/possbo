@@ -198,14 +198,6 @@ export function DataProvider({ children }) {
     }
   }, [])
 
-  // Check auth on mount (guard against Strict Mode double invocation)
-  const authCheckStartedRef = useRef(false)
-  useEffect(() => {
-    if (authCheckStartedRef.current) return
-    authCheckStartedRef.current = true
-    checkAuth()
-  }, [])
-
   // Reconcile the persisted user flag with the live WhatsApp socket status.
   // This prevents different screens from showing conflicting connection states.
   useEffect(() => {
@@ -265,6 +257,14 @@ export function DataProvider({ children }) {
     setDataReady(false)
     return false
   }, [fetchAll])
+
+  // Check auth on mount (guard against Strict Mode double invocation)
+  const authCheckStartedRef = useRef(false)
+  useEffect(() => {
+    if (authCheckStartedRef.current) return
+    authCheckStartedRef.current = true
+    checkAuth()
+  }, [checkAuth])
 
   // Called after successful login/register — sets auth state and immediately fetches data
   const loginSuccess = useCallback((userData) => {

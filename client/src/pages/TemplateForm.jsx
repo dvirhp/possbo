@@ -395,35 +395,21 @@ export default function TemplateForm() {
     setExistingImages(returnedDraft.existingImages || [])
     setNewImages(returnedDraft.newImages || [])
     setNewImagePreviews(returnedDraft.newImagePreviews || [])
-  }, []) // restore the form once after returning from the AI generator
+  }, [generatedContent, returnedDraft, user?.whatsappMessage])
   const [error, setError] = useState(null)
   const [showGroupsPicker, setShowGroupsPicker] = useState(false)
   const [showAllSelectedGroups, setShowAllSelectedGroups] = useState(false)
 
-  useEffect(() => {
-    if (authChecked && !user) {
-      navigate('/login')
-      return
-    }
-    if (cachedGroups?.length) {
-      setGroups(cachedGroups)
-      setLoadingGroups(false)
-    } else {
-      loadGroups()
-    }
-    if (isEdit) loadTemplate()
-  }, [authChecked, user, id])
-
-  const loadGroups = async () => {
+  const loadGroups = useCallback(async () => {
     setLoadingGroups(true)
     try {
       const res = await groupsService.getSavedGroups()
       if (res.data.success && res.data.groups) setGroups(res.data.groups)
     } catch { /* silent */ }
     finally { setLoadingGroups(false) }
-  }
+  }, [])
 
-  const loadTemplate = async () => {
+  const loadTemplate = useCallback(async () => {
     setLoading(true)
     try {
       const res = await templatesService.get(id)
@@ -478,12 +464,11 @@ export default function TemplateForm() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [generatedContent, id, user?.whatsappMessage])
 
   const handleImageSelect = (e) => {
     const files = Array.from(e.target.files)
     if (files.length === 0) return
-    const total = existingImages.length + newImages.length + files.length
     const allowed = files.slice(0, Math.max(0, 10 - existingImages.length - newImages.length))
     if (allowed.length === 0) return
     const updated = [...newImages, ...allowed]
@@ -603,6 +588,20 @@ export default function TemplateForm() {
         : [...prev, { id: item.id, type: item.type, name: item.name }]
     })
   }
+
+  useEffect(() => {
+    if (authChecked && !user) {
+      navigate('/login')
+      return
+    }
+    if (cachedGroups?.length) {
+      setGroups(cachedGroups)
+      setLoadingGroups(false)
+    } else {
+      loadGroups()
+    }
+    if (isEdit) loadTemplate()
+  }, [authChecked, cachedGroups, isEdit, loadGroups, loadTemplate, navigate, user])
 
   if (!authChecked || !user) return null
   if (loading) return (
@@ -792,7 +791,7 @@ export default function TemplateForm() {
                       setShowWhatsapp(true)
                       setWaLinking(false)
                     }
-                  } catch (e) { /* ignore */ }
+                  } catch { /* ignore */ }
                   setWaSaving(false)
                 }}>{waSaving ? '⏳' : '💾 שמור וקשר'}</button>
                 <button type="button" className="cp-wa-cancel-btn" onClick={() => setWaLinking(false)}>ביטול</button>

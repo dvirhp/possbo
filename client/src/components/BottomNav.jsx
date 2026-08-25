@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import { useNavigationGuard } from '../context/NavigationGuard'
 import {
   LayoutDashboard, SquarePen, Users, CalendarDays, BarChart3,
-  LayoutTemplate, History, BookOpen, Settings, Moon, Sun, LogOut,
-  Menu, X, Bell, Home, Sparkles, ChevronLeft, ChevronDown, CreditCard, MessageSquareHeart
+  LayoutTemplate, History, Settings, Moon, Sun, LogOut,
+  Menu, X, Bell, Home, Sparkles, ChevronLeft, ChevronDown, CreditCard, MessageSquareHeart, Activity
 } from 'lucide-react'
 import NotificationSettings from './NotificationSettings'
 import BrandLogo from './BrandLogo'
@@ -23,6 +23,7 @@ const MAIN_ITEMS = [
 
 const DRAWER_ITEMS = [
   { path: '/dashboard?tab=overview', icon: LayoutDashboard, label: 'דשבורד' },
+  { path: '/operations', icon: Activity, label: 'ניטור ולוגים', adminOnly: true },
   { path: '/dashboard?tab=groups', icon: Users, label: 'קבוצות' },
   { path: '/dashboard?tab=campaigns', icon: SquarePen, label: 'קמפיינים' },
   { path: '/scheduled', icon: CalendarDays, label: 'יומן' },
@@ -178,7 +179,7 @@ export default function BottomNav() {
           </button>
         </div>
         <nav className="mobile-drawer-nav" id="mobile-drawer" aria-label="תפריט מובייל">
-          {DRAWER_ITEMS.map(item => {
+          {DRAWER_ITEMS.filter(item => !item.adminOnly || user?.isAdmin).map(item => {
             const Icon = item.icon
             return (
               <button

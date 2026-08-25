@@ -10,6 +10,7 @@ import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
 import { safeFilename, imageFileFilter, MAX_FILE_SIZE } from "./security.js";
+import { persistUpload } from "../services/object-storage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const uploadsDir = path.join(__dirname, "..", "..", "uploads");
@@ -39,14 +40,27 @@ function createMulter(category = "") {
   });
 }
 
+function persistFiles(category, req, res, next) {
+  const files = req.files ? (Array.isArray(req.files) ? req.files : Object.values(req.files).flat()) : req.file ? [req.file] : [];
+  Promise.all(files.map((file) => persistUpload(file.path, category ? `${category}/${file.filename}` : file.filename, file.mimetype)))
+    .then(() => next()).catch(next);
+}
+
+function withPersistence(middleware, category) {
+  return (req, res, next) => middleware(req, res, (error) => {
+    if (error) return next(error);
+    persistFiles(category, req, res, next);
+  });
+}
+
 /** Upload up to `maxFiles` images to `uploads/<category>`. */
 export function uploadImages(category = "", maxFiles = 10) {
-  return createMulter(category).array("images", maxFiles);
+  return withPersistence(createMulter(category).array("images", maxFiles), category);
 }
 
 /** Upload a single image to `uploads/<category>`. */
 export function uploadSingle(category = "", fieldName = "image") {
-  return createMulter(category).single(fieldName);
+  return withPersistence(createMulter(category).single(fieldName), category);
 }
 
 /**
@@ -57,5 +71,5 @@ export function uploadSingle(category = "", fieldName = "image") {
  * @param {Array<{name: string, maxCount: number}>} fields
  */
 export function uploadFields(category = "", fields = []) {
-  return createMulter(category).fields(fields);
+  return withPersistence(createMulter(category).fields(fields), category);
 }

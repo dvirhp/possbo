@@ -2,7 +2,6 @@ import express from "express";
 import prisma from "../config/prisma.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { requireAuth } from "../utils/auth-middleware.js";
-import { uploadFields } from "../utils/upload-service.js";
 import campaignsRouter from "./campaigns.js";
 import analyticsRouter from "./analytics.js";
 import { dispatchPublicationNotification } from "../utils/notification-service.js";
@@ -12,13 +11,6 @@ const router = express.Router();
 // Mount sub-routers
 router.use(campaignsRouter);
 router.use(analyticsRouter);
-
-const campaignUpload = uploadFields("", [
-  { name: "images", maxCount: 10 },
-  { name: "igMedia_FEED", maxCount: 5 },
-  { name: "igMedia_STORY", maxCount: 5 },
-  { name: "igMedia_REEL", maxCount: 5 },
-]);
 
 // ─── Schedule a post for publishing ──────────────────────
 
@@ -292,6 +284,67 @@ router.delete(
 
 // ─── Cancel a scheduled job ──────────────────────────────
 
+router.get(
+  "/jobs/:jobId",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const job = await prisma.publicationJob.findFirst({
+      where: {
+        id: req.params.jobId,
+        OR: [
+          { postGroup: { userId: req.user.id } },
+          { post: { userId: req.user.id } },
+        ],
+      },
+      include: {
+        publications: {
+          orderBy: { publishedAt: "desc" },
+          take: 1,
+          select: {
+            status: true,
+            externalPostUrl: true,
+            errorMessage: true,
+            publishedAt: true,
+          },
+        },
+      },
+    });
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
+    res.json({
+      success: true,
+      job: {
+        id: job.id,
+        postId: job.postId,
+        status: job.status,
+        scheduledAt: job.scheduledAt,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+        attempts: job.attempts,
+        lastError: job.lastError,
+        publication: job.publications[0] || null,
+      },
+    });
+  }),
+);
+
+router.post(
+  "/jobs/:jobId/replay",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const failed = await prisma.publicationJob.findFirst({ where: { id: req.params.jobId, status: { in: ["FAILED", "DEAD", "UNKNOWN"] }, OR: [{ postGroup: { userId: req.user.id } }, { post: { userId: req.user.id } }] } });
+    if (!failed) return res.status(404).json({ error: "Replayable job not found" });
+    if (failed.status === "UNKNOWN" && req.body?.confirmPossibleDuplicate !== true) {
+      return res.status(409).json({
+        error: "ייתכן שהפרסום כבר פורסם. יש לבדוק בפלטפורמה ולאשר במפורש ניסיון חוזר.",
+        code: "POSSIBLE_DUPLICATE_CONFIRMATION_REQUIRED",
+      });
+    }
+    const replay = await prisma.publicationJob.create({ data: { postGroupId: failed.postGroupId, postId: failed.postId, targetType: failed.targetType, platform: failed.platform, igPublishType: failed.igPublishType, scheduledAt: new Date(), maxAttempts: failed.maxAttempts, idempotencyKey: `replay:${failed.id}:${Date.now()}` }, select: { id: true, status: true, scheduledAt: true } });
+    res.status(201).json({ success: true, replayOf: failed.id, job: replay });
+  }),
+);
+
 router.delete(
   "/jobs/:jobId",
   requireAuth,
@@ -301,7 +354,10 @@ router.delete(
     const job = await prisma.publicationJob.findFirst({
       where: {
         id: jobId,
-        postGroup: { userId: req.user.id },
+        OR: [
+          { postGroup: { userId: req.user.id } },
+          { post: { userId: req.user.id } },
+        ],
       },
     });
 

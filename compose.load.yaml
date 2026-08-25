@@ -1,0 +1,28 @@
+# Isolated override for local load tests. Never reads or writes the remote DB.
+x-load-env: &load-env
+  DATABASE_URL: postgresql://possbo:possbo_local_only@postgres:5432/possbo_dev?schema=public
+  DIRECT_URL: postgresql://possbo:possbo_local_only@postgres:5432/possbo_dev?schema=public
+  REDIS_URL: redis://redis:6379
+
+services:
+  migrate:
+    environment:
+      <<: *load-env
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    environment:
+      <<: *load-env
+      NODE_ENV: development
+      RUN_SCHEDULER: "false"
+
+  worker:
+    environment:
+      <<: *load-env
+      NODE_ENV: development
+      RUN_SCHEDULER: "true"

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Bell, BellOff, Mail, Smartphone, CheckCircle, XCircle, Clock } from 'lucide-react'
 import { authAPI } from '../services/api'
+import { disablePush, enablePush, getPushSubscription, pushSupported, sendTestPush } from '../services/pushService'
 import '../styles/notification-settings.css'
 
 export default function NotificationSettings({ open, onClose }) {
@@ -16,6 +17,9 @@ export default function NotificationSettings({ open, onClose }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
+  const [pushActive, setPushActive] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushMessage, setPushMessage] = useState('')
 
   useEffect(() => {
     if (open) {
@@ -25,6 +29,7 @@ export default function NotificationSettings({ open, onClose }) {
           setSettings(prev => ({ ...prev, ...res.data.notificationSettings }))
         }
       }).catch(() => {})
+      getPushSubscription().then(subscription => setPushActive(Boolean(subscription))).catch(() => setPushActive(false))
     }
   }, [open])
 
@@ -32,6 +37,17 @@ export default function NotificationSettings({ open, onClose }) {
     setSettings(prev => ({ ...prev, [key]: !prev[key] }))
     setSaved(false)
     setSaveError(false)
+  }
+
+  const handlePushDevice = async () => {
+    setPushBusy(true)
+    setPushMessage('')
+    try {
+      if (pushActive) { await disablePush(); setPushActive(false); setPushMessage('התראות Push כובו במכשיר הזה.') }
+      else { await enablePush(); setPushActive(true); setPushMessage('המכשיר מחובר להתראות Push.') }
+    } catch (error) {
+      setPushMessage(error.message === 'PUSH_PERMISSION_DENIED' ? 'הדפדפן לא אישר התראות. ניתן לשנות זאת בהגדרות האתר.' : 'לא הצלחנו להפעיל Push במכשיר הזה.')
+    } finally { setPushBusy(false) }
   }
 
   const handleMasterToggle = () => {
@@ -108,7 +124,6 @@ export default function NotificationSettings({ open, onClose }) {
                 <Mail size={16} />
                 התראות מייל
               </div>
-
               <div className="notif-option">
                 <div className="notif-option-info">
                   <CheckCircle size={16} className="notif-opt-icon success" />
@@ -161,6 +176,11 @@ export default function NotificationSettings({ open, onClose }) {
                 <Smartphone size={16} />
                 התראות לטלפון
               </div>
+              <div className="notif-push-device">
+                <span>{!pushSupported() ? 'הדפדפן הזה אינו תומך ב-Push' : pushActive ? 'המכשיר מחובר ל-Push' : 'Push עדיין לא הופעל במכשיר הזה'}</span>
+                {pushSupported() && <div><button type="button" onClick={handlePushDevice} disabled={pushBusy}>{pushBusy ? 'מעדכן…' : pushActive ? 'כיבוי במכשיר' : 'הפעלת Push'}</button>{pushActive && <button type="button" onClick={() => sendTestPush().then(() => setPushMessage('התראת בדיקה נשלחה.')).catch(() => setPushMessage('שליחת הבדיקה נכשלה.'))}>שליחת בדיקה</button>}</div>}
+              </div>
+              {pushMessage && <p className="notif-push-message" role="status">{pushMessage}</p>}
 
               <div className="notif-option">
                 <div className="notif-option-info">

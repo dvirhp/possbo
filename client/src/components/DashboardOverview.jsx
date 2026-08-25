@@ -68,18 +68,7 @@ function formatDateRange(from, to) {
   return `${f.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })} - ${t.toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' })}`
 }
 
-function formatRelativeDate(dateStr) {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  const diffDays = Math.round((target - today) / (1000 * 60 * 60 * 24))
-  if (diffDays === 0) return 'היום'
-  if (diffDays === 1) return 'מחר'
-  if (diffDays === -1) return 'אתמול'
-  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
-}
+
 
 function formatTime(dateStr) {
   if (!dateStr) return ''
@@ -621,17 +610,6 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
       window.removeEventListener('resize', handleResize)
     }
   }, [])
-
-  // Filter posts by date range
-  const filteredPosts = useMemo(() => {
-    if (!posts) return []
-    const from = new Date(dateRange.from)
-    const to = new Date(dateRange.to + 'T23:59:59')
-    return posts.filter(p => {
-      const d = new Date(p.publishedAt || p.createdAt)
-      return d >= from && d <= to
-    })
-  }, [posts, dateRange])
 
   const publishedCount = totalPublished
 

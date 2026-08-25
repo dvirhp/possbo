@@ -83,7 +83,9 @@ export function formatUserResponse(user, extras = {}) {
   return {
     id: user.id,
     email: user.email,
+    emailVerified: Boolean(user.emailVerifiedAt),
     name: user.name,
+    isAdmin: user.isAdmin === true,
     profileImage: recoveredProfileImage,
     avatarUrl: validImageUrl(user.avatarUrl),
     fbSessionValid: user.fbSessionValid || false,

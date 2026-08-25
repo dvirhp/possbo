@@ -1,6 +1,12 @@
 import "@testing-library/jest-dom";
+import React from "react";
 import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
+
+// Some tests contain JSX without importing React. Vite's application build uses
+// the automatic JSX runtime, while Vitest may compile those test modules with
+// the classic runtime, which expects React to exist in the global scope.
+globalThis.React = React;
 
 // Vitest does not enable Testing Library's automatic cleanup in every runtime.
 // Keeping it explicit prevents rendered trees and router state leaking between tests.

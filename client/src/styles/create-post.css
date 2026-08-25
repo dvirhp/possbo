@@ -5153,6 +5153,12 @@
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
+.cp-ai-transform-tools { display: grid; gap: 8px; margin-top: 10px; }
+.cp-ai-transform-settings, .cp-ai-transform-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cp-ai-transform-settings select, .cp-ai-transform-actions button { min-height: 36px; padding: 7px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-card); color: var(--text-primary); font: inherit; }
+.cp-ai-transform-actions button { cursor: pointer; color: var(--indigo); background: var(--indigo-soft); border-color: transparent; font-weight: 600; }
+.cp-ai-transform-actions button:disabled { cursor: not-allowed; opacity: .55; }
+
 @media (max-width: 600px) {
   .cp-content-editor .cp-ai-generate-inline {
     right: 8px;

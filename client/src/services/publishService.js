@@ -34,7 +34,10 @@ export const publishService = {
       formData.append("images", images);
     }
     return api.post("/publish", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers: {
+        "Content-Type": "multipart/form-data",
+        "Idempotency-Key": globalThis.crypto.randomUUID(),
+      },
       timeout: 120000,
     });
   },
@@ -58,8 +61,13 @@ export const publishService = {
       formData.append("images", images);
     }
     return api.post("/publish/profile", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers: {
+        "Content-Type": "multipart/form-data",
+        "Idempotency-Key": globalThis.crypto.randomUUID(),
+      },
       timeout: 120000,
     });
   },
+
+  getJobStatus: (jobId) => api.get(`/scheduler/jobs/${jobId}`),
 };

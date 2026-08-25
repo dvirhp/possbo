@@ -2,8 +2,9 @@
   "name": "Possbo",
   "short_name": "Possbo",
   "id": "/",
-  "description": "פרסום אוטומטי לקבוצות פייסבוק",
-  "start_url": "/",
+  "description": "יצירה, תזמון וניהול פרסומים בפייסבוק, אינסטגרם ווואטסאפ",
+  "start_url": "/dashboard?source=pwa",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
@@ -15,7 +16,7 @@
       "src": "/brand/possbo-favicon-dark-v5.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ]
 }

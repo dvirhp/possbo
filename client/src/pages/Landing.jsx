@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, BarChart3, BookOpen, CalendarDays, Check, ChevronDown, CircleHelp, Clock3,
   Bot, CreditCard, Globe2, Grid2X2, Layers3, Menu, Moon, PencilLine, ShieldCheck, Zap,
-  MousePointer2, Pause, Play, Sparkles, Sun, Users, WandSparkles,
+  Maximize2, MousePointer2, Play, Sparkles, Sun, Users,
   X,
 } from 'lucide-react'
 import { useAppData } from '../context/DataProvider'
@@ -172,123 +172,7 @@ Pure Glow הוא סרום היאלורוני טבעי שמעניק לחות עמ
   },
 ]
 
-function ProductDemo() {
-  const [step, setStep] = useState(0)
-  const [isPlaying, setIsPlaying] = useState(true)
 
-  useEffect(() => {
-    if (!isPlaying) return undefined
-    const timer = window.setInterval(() => setStep(current => (current + 1) % 3), 2800)
-    return () => window.clearInterval(timer)
-  }, [isPlaying])
-
-  const selectStep = (nextStep) => {
-    setStep(nextStep)
-    setIsPlaying(false)
-  }
-
-  return (
-    <div className="product-demo" aria-label="הדגמה של תהליך יצירת קמפיין">
-      <div className="demo-window-bar">
-        <div className="demo-dots"><i /><i /><i /></div>
-        <span>Possbo Workspace</span>
-        <span className="demo-live"><i /> פעיל</span>
-      </div>
-      <div className="demo-shell">
-        <aside className="demo-sidebar">
-          <div className="demo-brand"><BrandLogo decorative /><b>ossbo</b></div>
-          {[Layers3, Users, CalendarDays, BarChart3].map((Icon, index) => (
-            <span key={index} className={index === step ? 'active' : ''}><Icon size={16} /></span>
-          ))}
-        </aside>
-        <div className="demo-content">
-          <div className="demo-heading">
-            <div><small>קמפיין חדש</small><strong>מעלים תוכן לכל מקום</strong></div>
-            <span>טיוטה נשמרה</span>
-          </div>
-          <div className="demo-progress">
-            {['תוכן', 'יעדים', 'תזמון'].map((label, index) => (
-              <button key={label} className={step === index ? 'active' : ''} onClick={() => selectStep(index)}>
-                <i>{index < step ? <Check size={12} /> : index + 1}</i>{label}
-              </button>
-            ))}
-          </div>
-          <div className="demo-stage" key={step} onClick={() => selectStep((step + 1) % 3)}>
-            <span className={`demo-cursor demo-cursor-${step}`}><MousePointer2 size={22} fill="currentColor" /><i /></span>
-            {step === 0 && (
-              <>
-                <div className="demo-editor">
-                  <div className="demo-editor-top"><Sparkles size={15} /> כתיבה חכמה עם AI</div>
-                  <span className="demo-line long" /><span className="demo-line" /><span className="demo-line short" />
-                  <div className="demo-media"><Play size={22} fill="currentColor" /></div>
-                </div>
-                <div className="demo-preview">
-                  <small>תצוגה מקדימה</small>
-                  <div className="demo-post-user"><i /> <span /></div>
-                  <div className="demo-post-image" />
-                </div>
-              </>
-            )}
-            {step === 1 && (
-              <div className="demo-targets">
-                <small>לאן לפרסם?</small>
-                {[
-                  [FacebookLogo, 'Facebook', '12 קבוצות + פרופיל'],
-                  [InstagramLogo, 'Instagram', 'פיד + סטורי'],
-                  [WhatsAppLogo, 'WhatsApp', '4 קבוצות + רשימה'],
-                ].map(([Icon, name, detail], index) => (
-                  <div key={name} style={{ '--delay': `${index * 90}ms` }}>
-                    <span className={`target-icon target-${index}`}><Icon size={18} /></span>
-                    <b>{name}<small>{detail}</small></b>
-                    <i><Check size={13} /></i>
-                  </div>
-                ))}
-              </div>
-            )}
-            {step === 2 && (
-              <div className="demo-calendar">
-                <small>מתי לפרסם?</small>
-                <div className="demo-time-options">
-                  <span>עכשיו</span><span className="active">תזמון</span><span>מחזורי</span>
-                </div>
-                <div className="demo-calendar-grid">
-                  {Array.from({ length: 21 }, (_, index) => <i key={index} className={[6, 10, 15].includes(index) ? 'selected' : ''}>{index + 1}</i>)}
-                </div>
-                <div className="demo-schedule-confirm"><Clock3 size={15} /> יום רביעי · 19:30 <Check size={15} /></div>
-              </div>
-            )}
-          </div>
-          <div className="demo-player">
-            <button onClick={() => setIsPlaying(current => !current)} aria-label={isPlaying ? 'עצירת ההדגמה' : 'הפעלת ההדגמה'}>
-              {isPlaying ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-            </button>
-            <div className="demo-player-track"><i key={`${step}-${isPlaying}`} className={isPlaying ? 'playing' : ''} /></div>
-            <span>{step === 0 ? 'יוצרים תוכן' : step === 1 ? 'בוחרים ערוצים וקבוצות' : 'קובעים מועד לפרסום'}</span>
-            <small>00:0{step + 1} / 00:08</small>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const REAL_TOUR = [
-  {
-    image: '/landing/possbo-create-real.webp',
-    title: 'יוצרים קמפיין אמיתי מתוך Possbo',
-    text: 'כתיבת תוכן, יצירה מלאה עם AI, מדיה, מיקום, אנונימיות ותצוגה מקדימה לכל פלטפורמה.',
-  },
-  {
-    image: '/landing/possbo-dashboard-real.webp',
-    title: 'כל הפעילות מרוכזת בדשבורד אחד',
-    text: 'קמפיינים, קבוצות, יומן, פרסומים מובילים ופעולות מהירות, בדיוק כפי שהם נראים במערכת.',
-  },
-  {
-    image: '/landing/possbo-stats-real.webp',
-    title: 'רואים תוצאות ולא רק פרסומים',
-    text: 'מדדי ביצוע, חשיפה, לייקים, תגובות ושיתופים עם פילוח לפי פלטפורמה וטווח זמן.',
-  },
-]
 
 function RealProductTour() {
   const videoRef = useRef(null)
@@ -297,7 +181,7 @@ function RealProductTour() {
   useEffect(() => {
     const video = videoRef.current
     if (!video) return undefined
-    const observer = new IntersectionObserver(([entry]) => {
+    const observer = new window.IntersectionObserver(([entry]) => {
       if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
         video.play().catch(() => {})
       } else {
@@ -756,6 +640,10 @@ export default function Landing() {
             </div>
           </div>
           <div className="ai-video-wrap landing-reveal">
+            <div className="ai-video-toolbar" aria-hidden="true">
+              <span className="ai-video-toolbar-dots"><i /><i /><i /></span>
+              <span>Possbo AI</span>
+            </div>
             <video
               autoPlay
               muted
@@ -770,6 +658,18 @@ export default function Landing() {
             >
               <source src="/landing/video/possbo-ai-post-demo.webm" type="video/webm" />
             </video>
+            <button
+              type="button"
+              className="ai-video-expand"
+              aria-label="הגדלת סרטון ההדגמה למסך מלא"
+              onClick={event => {
+                const video = event.currentTarget.parentElement?.querySelector('video')
+                if (video?.requestFullscreen) video.requestFullscreen()
+                else if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen()
+              }}
+            >
+              <Maximize2 size={17} /> הגדלת ההדגמה
+            </button>
             <div className="ai-video-status"><i /> הדגמה מתוך המערכת</div>
             <div className={`ai-video-robot ${aiVideoCelebrating ? 'is-celebrating' : ''}`} aria-hidden="true">
               <img className="ai-robot-watching" src="/brand/possbo-robot-mascot-v1.png" alt="" />

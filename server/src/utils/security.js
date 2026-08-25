@@ -2,6 +2,8 @@
  * Security utilities for input validation and sanitization.
  */
 
+import { randomBytes } from "node:crypto";
+
 const MAX_TEXT_LENGTH = 5000;
 const MAX_URL_LENGTH = 2048;
 
@@ -124,5 +126,6 @@ const MIME_TO_EXT = {
  */
 export function safeFilename(mimetype) {
   const ext = MIME_TO_EXT[mimetype] || ".bin";
-  return `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
+  const randomSuffix = BigInt(`0x${randomBytes(8).toString("hex")}`).toString();
+  return `${Date.now()}-${randomSuffix}${ext}`;
 }

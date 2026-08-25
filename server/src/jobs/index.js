@@ -12,14 +12,17 @@ import {
 } from "./metrics-collector.js";
 import { refreshExpiringInstagramTokens } from "./instagram-token-refresh.js";
 import { createLogger } from "../utils/logger.js";
+import prisma from "../config/prisma.js";
+import { runRetentionCleanup } from "./retention-cleanup.js";
+import { sendExternalAlert } from "../utils/external-alerts.js";
 
 const log = createLogger("scheduler");
 
 const INTERVALS = {
   // Check for pending publication jobs every 60 seconds
   PROCESS_JOBS: 60 * 1000,
-  // Generate new jobs from schedules every 5 minutes
-  GENERATE_JOBS: 5 * 60 * 1000,
+  // Materialize recurring occurrences every minute to keep schedule drift low.
+  GENERATE_JOBS: 60 * 1000,
   // Keep-alive check every 7.5 hours
   SESSION_KEEPALIVE: 7.5 * 60 * 60 * 1000,
   // Refresh group metadata once a day
@@ -27,9 +30,25 @@ const INTERVALS = {
   // Scan daily; each token refreshes only inside its 30-day expiry window.
   INSTAGRAM_TOKEN_REFRESH: 24 * 60 * 60 * 1000,
   INSTAGRAM_STORY_METRICS: 60 * 60 * 1000,
+  HEARTBEAT: 60 * 1000,
+  RETENTION: 24 * 60 * 60 * 1000,
 };
 
 let timers = [];
+const runningTasks = new Set();
+
+async function runExclusive(name, task) {
+  if (runningTasks.has(name)) {
+    log.warn("Skipping overlapping background task", { task: name });
+    return;
+  }
+  runningTasks.add(name);
+  try {
+    return await task();
+  } finally {
+    runningTasks.delete(name);
+  }
+}
 
 /**
  * Start all background jobs.
@@ -38,10 +57,32 @@ let timers = [];
 export function startScheduler() {
   log.info("Starting background job scheduler");
 
+  const heartbeat = setInterval(async () => {
+    try {
+      const [pending, running, failed] = await Promise.all([
+        prisma.publicationJob.count({ where: { status: "PENDING", scheduledAt: { lte: new Date() } } }),
+        prisma.publicationJob.count({ where: { status: "RUNNING" } }),
+        prisma.publicationJob.count({ where: { status: "FAILED", updatedAt: { gte: new Date(Date.now() - 3600000) } } }),
+      ]);
+      const meta = { event: "worker_heartbeat", pendingJobs: pending, runningJobs: running, failedJobsLastHour: failed, runningTasks: [...runningTasks], memoryMb: Math.round(process.memoryUsage().rss / 1048576) };
+      if (failed >= Number(process.env.ALERT_FAILED_JOBS_PER_HOUR || 5)) {
+        log.warn("Worker failure threshold exceeded", { ...meta, event: "worker_failure_threshold" });
+        void sendExternalAlert("worker_failure_threshold", meta);
+      }
+      if (pending >= Number(process.env.ALERT_QUEUE_DEPTH || 1000)) {
+        log.warn("Publication queue depth threshold exceeded", { ...meta, event: "queue_depth_threshold" });
+        void sendExternalAlert("queue_depth_threshold", meta);
+      }
+      else log.info("Worker heartbeat", meta);
+    } catch (error) { log.error("Worker heartbeat failed", error, { event: "worker_heartbeat_failed" }); }
+  }, INTERVALS.HEARTBEAT);
+  heartbeat.unref?.();
+  timers.push(heartbeat);
+
   // Process pending publication jobs every minute
   const jobProcessor = setInterval(async () => {
     try {
-      await processPublicationJobs();
+      await runExclusive("publication-jobs", processPublicationJobs);
     } catch (error) {
       log.error("Error processing publication jobs", error);
     }
@@ -51,7 +92,8 @@ export function startScheduler() {
   // Generate new jobs from schedules every 5 minutes
   const jobGenerator = setInterval(async () => {
     try {
-      await generateScheduledJobs();
+      await runExclusive("stale-job-recovery", recoverStaleJobs);
+      await runExclusive("schedule-generator", generateScheduledJobs);
     } catch (error) {
       log.error("Error generating scheduled jobs", error);
     }
@@ -61,7 +103,7 @@ export function startScheduler() {
   // Session keep-alive every 7.5 hours
   const keepAlive = setInterval(async () => {
     try {
-      await runSessionKeepAlive();
+      await runExclusive("session-keepalive", runSessionKeepAlive);
     } catch (error) {
       log.error("Error in session keep-alive", error);
     }
@@ -71,7 +113,7 @@ export function startScheduler() {
   // Group metadata refresh once a day
   const groupMeta = setInterval(async () => {
     try {
-      await runDailyGroupMetadataRefresh();
+      await runExclusive("group-metadata", runDailyGroupMetadataRefresh);
     } catch (error) {
       log.error("Error in group metadata refresh", error);
     }
@@ -80,7 +122,10 @@ export function startScheduler() {
 
   const instagramTokenRefresh = setInterval(async () => {
     try {
-      await refreshExpiringInstagramTokens();
+      await runExclusive(
+        "instagram-token-refresh",
+        refreshExpiringInstagramTokens,
+      );
     } catch (error) {
       log.error("Error refreshing Instagram tokens", error);
     }
@@ -89,21 +134,39 @@ export function startScheduler() {
 
   const instagramStoryMetrics = setInterval(async () => {
     try {
-      await collectRecentInstagramStoryMetrics();
+      await runExclusive(
+        "instagram-story-metrics",
+        collectRecentInstagramStoryMetrics,
+      );
     } catch (error) {
       log.error("Error collecting Instagram story metrics", error);
     }
   }, INTERVALS.INSTAGRAM_STORY_METRICS);
   timers.push(instagramStoryMetrics);
 
+  const retention = setInterval(() => {
+    runExclusive("retention-cleanup", runRetentionCleanup).catch((error) =>
+      log.error("Retention cleanup failed", error),
+    );
+  }, INTERVALS.RETENTION);
+  retention.unref?.();
+  timers.push(retention);
+
   // Run job generator immediately on startup to catch any missed schedules
   setTimeout(async () => {
     try {
-      await recoverStaleJobs();
-      await generateScheduledJobs();
-      await processPublicationJobs();
-      await refreshExpiringInstagramTokens();
-      await collectRecentInstagramStoryMetrics();
+      await runExclusive("stale-job-recovery", recoverStaleJobs);
+      await runExclusive("schedule-generator", generateScheduledJobs);
+      await runExclusive("publication-jobs", processPublicationJobs);
+      await runExclusive(
+        "instagram-token-refresh",
+        refreshExpiringInstagramTokens,
+      );
+      await runExclusive(
+        "instagram-story-metrics",
+        collectRecentInstagramStoryMetrics,
+      );
+      await runExclusive("retention-cleanup", runRetentionCleanup);
     } catch (error) {
       log.error("Error on startup run", error);
     }
@@ -129,6 +192,7 @@ export function stopScheduler() {
   log.info("Stopping background jobs");
   timers.forEach((t) => clearInterval(t));
   timers = [];
+  runningTasks.clear();
   stopMetricsScheduler();
 }
 
@@ -137,9 +201,13 @@ export function stopScheduler() {
  * Used when "now" mode campaigns are created.
  */
 export function triggerImmediateProcess() {
+  if (process.env.RUN_SCHEDULER === "false") {
+    log.debug("Immediate processing delegated to the worker");
+    return;
+  }
   setTimeout(async () => {
     try {
-      await processPublicationJobs();
+      await runExclusive("publication-jobs", processPublicationJobs);
     } catch (error) {
       log.error("Error in immediate job processing", error);
     }

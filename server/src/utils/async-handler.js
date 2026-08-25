@@ -12,12 +12,28 @@ const log = createLogger("handler");
 export function asyncHandler(fn) {
   return (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch((error) => {
-      log.error(`${req.method} ${req.originalUrl}`, error);
+      log.error(`${req.method} ${req.originalUrl}`, error, {
+        event: "request_handler_error",
+        requestId: req.requestId,
+        userId: req.user?.id || null,
+        method: req.method,
+        path: req.originalUrl?.split("?")[0],
+      });
 
       if (error.message === "FACEBOOK_SESSION_REQUIRED") {
         return res.status(428).json({
           success: false,
           error: "FACEBOOK_SESSION_REQUIRED",
+        });
+      }
+
+      if (error.code === "DAILY_PUBLISH_LIMIT_REACHED") {
+        const usage = error.dailyLimit || { limit: 70, remaining: 0 };
+        return res.status(429).json({
+          success: false,
+          code: error.code,
+          error: `הגעת למכסת הפרסום היומית של ${usage.limit} פרסומים. ניתן לפרסם שוב לאחר איפוס המכסה מחר.`,
+          dailyLimit: usage,
         });
       }
 

@@ -35,18 +35,6 @@ const STATUS_CONFIG = {
   'one-time': { label: 'חד פעמי', color: '#60A5FA', bg: 'rgba(59,130,246,0.15)', border: '#3B82F6', Icon: CheckCircle2 },
 }
 
-const BORDER_COLORS = {
-  active: '#3B82F6',
-  scheduled: '#3B82F6',
-  recurring: '#2f2f2f',
-  both: '#10B981',
-  draft: '#64748B',
-  published: '#22C55E',
-  paused: '#F59E0B',
-  failed: '#EF4444',
-  'one-time': '#3B82F6',
-}
-
 function formatDate(dateStr) {
   if (!dateStr) return '—'
   const d = new Date(dateStr)
@@ -57,11 +45,7 @@ function formatDate(dateStr) {
   return { date: `${day} ${month}`, time }
 }
 
-function formatExposure(n) {
-  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
-  return String(n)
-}
+
 
 export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) {
   const navigate = useNavigate()
@@ -149,13 +133,11 @@ export default function PostsDataTable({ campaigns, onUpdate, onViewCampaign }) 
           const type = (campaign.campaignType || '').toLowerCase()
           const statusKey = type === 'both' ? 'both' : type === 'recurring' ? 'recurring' : type === 'one-time' ? 'one-time' : status
           const statusConf = STATUS_CONFIG[statusKey] || STATUS_CONFIG[status] || STATUS_CONFIG.draft
-          const borderColor = BORDER_COLORS[statusKey] || BORDER_COLORS[status] || '#64748B'
           const StatusIcon = statusConf.Icon
           const title = campaign.title || campaign.content?.substring(0, 40) || 'ללא כותרת'
           const subtitle = campaign.content?.substring(0, 60) || ''
           const image = isRenderableImageUrl(campaign.imageUrl) ? campaign.imageUrl : null
           const groupCount = campaign.groupCount || campaign.groups?.length || 0
-          const groups = campaign.groups || []
           const nextRun = formatDate(campaign.createdAt)
 
           return (

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTheme } from '../context/ThemeProvider'
 
 const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY
@@ -9,7 +9,9 @@ export default function Turnstile({ onVerify, onExpire }) {
   const widgetIdRef = useRef(null)
   const retryRef = useRef(0)
   const onVerifyRef = useRef(onVerify)
+  const onExpireRef = useRef(onExpire)
   onVerifyRef.current = onVerify
+  onExpireRef.current = onExpire
 
   useEffect(() => {
     // If no site key configured, auto-pass immediately (dev mode)
@@ -45,7 +47,7 @@ export default function Turnstile({ onVerify, onExpire }) {
         sitekey: SITE_KEY,
         callback: (token) => onVerifyRef.current?.(token),
         'expired-callback': () => {
-          onExpire?.()
+          onExpireRef.current?.()
           onVerifyRef.current?.(null)
         },
         'error-callback': () => {

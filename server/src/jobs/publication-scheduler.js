@@ -1,4 +1,5 @@
 import prisma from "../config/prisma.js";
+import { Prisma } from "@prisma/client";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -10,15 +11,117 @@ import {
 import { decrypt } from "../utils/encryption.js";
 import {
   getPublicMediaUrl,
+  materializeUploadPath,
   resolveUploadPath,
 } from "../utils/media-upload.js";
 import { sendInstagramReconnectEmail } from "../utils/mailer.js";
 import { dispatchPublicationNotification } from "../utils/notification-service.js";
 import { createLogger } from "../utils/logger.js";
+import { withUserPublishLock } from "../utils/user-publish-lock.js";
+import {
+  DAILY_PUBLISH_LIMIT,
+  getDailyPublishUsage,
+  notifyDailyLimitReached,
+} from "../utils/daily-publish-limit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 const log = createLogger("pub-scheduler");
+
+const JOB_CLAIM_LIMIT = Math.max(
+  1,
+  Number.parseInt(process.env.PUBLICATION_CLAIM_LIMIT || "10", 10),
+);
+const USER_CONCURRENCY = Math.max(
+  1,
+  Number.parseInt(process.env.PUBLICATION_USER_CONCURRENCY || "10", 10),
+);
+const JOB_LEASE_HEARTBEAT_MS = Math.max(
+  5_000,
+  Number.parseInt(process.env.PUBLICATION_JOB_HEARTBEAT_MS || "30000", 10),
+);
+
+function startJobLeaseHeartbeat(jobId, workerId) {
+  let stopped = false;
+  let pending = Promise.resolve();
+  const refresh = () => {
+    pending = prisma.publicationJob
+      .updateMany({
+        where: { id: jobId, status: "RUNNING", lockedBy: workerId },
+        data: { lockedAt: new Date() },
+      })
+      .catch((error) => {
+        log.error("Publication job lease heartbeat failed", error, {
+          jobId,
+          workerId,
+        });
+      });
+  };
+  const timer = setInterval(refresh, JOB_LEASE_HEARTBEAT_MS);
+  timer.unref?.();
+
+  return async () => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(timer);
+    await pending;
+  };
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runNext() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  const settled = await Promise.allSettled(
+    Array.from({ length: Math.min(concurrency, items.length) }, () =>
+      runNext(),
+    ),
+  );
+  const failedWorker = settled.find((result) => result.status === "rejected");
+  if (failedWorker) throw failedWorker.reason;
+  return results;
+}
+
+async function claimDuePublicationJobs(now, workerId) {
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw(
+      Prisma.sql`
+        SELECT id
+        FROM "publication_jobs"
+        WHERE status = 'PENDING'::"JobStatus"
+          AND "scheduled_at" <= ${now}
+          AND "locked_at" IS NULL
+        ORDER BY "scheduled_at" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT ${JOB_CLAIM_LIMIT}
+      `,
+    );
+    const ids = rows.map((row) => row.id);
+    if (ids.length === 0) return [];
+
+    await tx.publicationJob.updateMany({
+      where: {
+        id: { in: ids },
+        status: "PENDING",
+        lockedAt: null,
+      },
+      data: {
+        status: "RUNNING",
+        lockedAt: now,
+        lockedBy: workerId,
+        startedAt: now,
+      },
+    });
+    return ids;
+  });
+}
 
 // ─── Anti-Detection Configuration ─────────────────────────
 const ANTI_DETECT = {
@@ -39,10 +142,10 @@ const ANTI_DETECT = {
   MAX_DELAY: 20 * 60 * 1000, // 20 minutes
 
   // Daily publication limit per user
-  DAILY_LIMIT: 80,
+  DAILY_LIMIT: DAILY_PUBLISH_LIMIT,
 
   // Max concurrent jobs per user in a single batch
-  USER_BATCH_SIZE: 5,
+  USER_BATCH_SIZE: 1,
 };
 
 // ─── Delay Utilities ──────────────────────────────────────
@@ -91,16 +194,7 @@ function generateDailyJitter() {
  * Check how many publications a user has made today.
  */
 async function getUserDailyCount(userId) {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
-  return prisma.publicationHistory.count({
-    where: {
-      userId,
-      publishedAt: { gte: todayStart },
-      status: "SUCCESS",
-    },
-  });
+  return (await getDailyPublishUsage(userId)).used;
 }
 
 // ─── Instagram Publishing ─────────────────────────────────
@@ -624,11 +718,17 @@ export async function processPublicationJobs() {
 
   log.debug("Checking for pending publication jobs");
 
-  // Find pending jobs that are due
+  const claimedIds = await claimDuePublicationJobs(now, workerId);
+  if (claimedIds.length === 0) {
+    return { processed: 0, succeeded: 0, failed: 0 };
+  }
+
+  // Load full relations only after this worker owns the jobs.
   const pendingJobs = await prisma.publicationJob.findMany({
     where: {
-      status: "PENDING",
-      scheduledAt: { lte: now },
+      id: { in: claimedIds },
+      status: "RUNNING",
+      lockedBy: workerId,
     },
     include: {
       postGroup: {
@@ -640,12 +740,12 @@ export async function processPublicationJobs() {
           user: true,
         },
       },
+      post: { select: { id: true, title: true, userId: true } },
       post: {
         include: { media: true, user: true },
       },
     },
     orderBy: { scheduledAt: "asc" },
-    take: 20,
   });
 
   if (pendingJobs.length === 0) {
@@ -656,19 +756,42 @@ export async function processPublicationJobs() {
 
   // Group jobs by user for per-user queue management
   const jobsByUser = new Map();
+  const orphanJobIds = [];
   for (const job of pendingJobs) {
     const userId = job.postGroup?.user?.id || job.post?.user?.id;
-    if (!userId) continue; // Skip invalid jobs
+    if (!userId) {
+      orphanJobIds.push(job.id);
+      continue;
+    }
     if (!jobsByUser.has(userId)) jobsByUser.set(userId, []);
     jobsByUser.get(userId).push(job);
+  }
+  if (orphanJobIds.length > 0) {
+    await prisma.publicationJob.updateMany({
+      where: { id: { in: orphanJobIds }, lockedBy: workerId },
+      data: {
+        status: "FAILED",
+        lastError: "Missing post or user data",
+        completedAt: new Date(),
+        lockedAt: null,
+        lockedBy: null,
+      },
+    });
   }
 
   let succeeded = 0;
   let failed = 0;
   let skippedLimit = 0;
 
-  // Process each user's queue sequentially with delays
-  for (const [userId, userJobs] of jobsByUser) {
+  // Preserve ordering for each user, but do not let one user's queue block
+  // unrelated users that requested the same publication time.
+  await mapWithConcurrency(
+    [...jobsByUser.entries()],
+    USER_CONCURRENCY,
+    async ([userId, userJobs]) => {
+    const userLock = await withUserPublishLock(
+      userId,
+      async () => {
     // Check daily limit
     const todayCount = await getUserDailyCount(userId);
     if (todayCount >= ANTI_DETECT.DAILY_LIMIT) {
@@ -676,6 +799,13 @@ export async function processPublicationJobs() {
         userId,
         count: todayCount,
         limit: ANTI_DETECT.DAILY_LIMIT,
+      });
+
+      await notifyDailyLimitReached(userId, {
+        used: todayCount,
+        limit: ANTI_DETECT.DAILY_LIMIT,
+        remaining: 0,
+        reached: true,
       });
 
       // Reschedule remaining jobs to tomorrow with jitter
@@ -691,11 +821,16 @@ export async function processPublicationJobs() {
 
         await prisma.publicationJob.update({
           where: { id: job.id },
-          data: { scheduledAt: tomorrow },
+          data: {
+            status: "PENDING",
+            scheduledAt: tomorrow,
+            lockedAt: null,
+            lockedBy: null,
+          },
         });
       }
       skippedLimit += userJobs.length;
-      continue;
+      return;
     }
 
     // Process up to USER_BATCH_SIZE jobs for this user in this cycle
@@ -714,7 +849,12 @@ export async function processPublicationJobs() {
         const deferredTime = new Date(Date.now() + deferOffset);
         await prisma.publicationJob.update({
           where: { id: dJob.id },
-          data: { scheduledAt: deferredTime },
+          data: {
+            status: "PENDING",
+            scheduledAt: deferredTime,
+            lockedAt: null,
+            lockedBy: null,
+          },
         });
       }
       log.info("Deferred excess jobs for user", {
@@ -737,26 +877,6 @@ export async function processPublicationJobs() {
           delaySec: Math.round(delay / 1000),
         });
         await new Promise((r) => setTimeout(r, delay));
-      }
-
-      // Try to lock the job (optimistic locking)
-      const locked = await prisma.publicationJob.updateMany({
-        where: {
-          id: job.id,
-          status: "PENDING",
-          lockedAt: null,
-        },
-        data: {
-          status: "RUNNING",
-          lockedAt: new Date(),
-          lockedBy: workerId,
-          startedAt: new Date(),
-          attempts: { increment: 1 },
-        },
-      });
-
-      if (locked.count === 0) {
-        continue;
       }
 
       // Get post data from postGroup relation or direct post relation (profile jobs)
@@ -786,7 +906,17 @@ export async function processPublicationJobs() {
         continue;
       }
 
+      let stopJobLeaseHeartbeat = async () => {};
       try {
+        // A claim is not an attempt. Consume retry budget only when this job
+        // is about to call the external publishing system.
+        const claimedAttempt = await prisma.publicationJob.update({
+          where: { id: job.id },
+          data: { attempts: { increment: 1 }, lockedAt: new Date() },
+          select: { attempts: true },
+        });
+        job.attempts = claimedAttempt.attempts;
+        stopJobLeaseHeartbeat = startJobLeaseHeartbeat(job.id, workerId);
         let result;
 
         if (isInstagramJob) {
@@ -822,10 +952,13 @@ export async function processPublicationJobs() {
             ]);
 
           // Get first image if available
-          const mediaPaths = (post.media || [])
+          const mediaUrls = (post.media || [])
             .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
             .filter((m) => !m.igType)
-            .map((m) => resolveUploadPath(m.url));
+            .map((m) => m.url);
+          const mediaPaths = await Promise.all(
+            mediaUrls.map((url) => materializeUploadPath(url)),
+          );
           const imagePath = mediaPaths[0] || null;
 
           // Strip wa.me links from WhatsApp messages (not relevant in WA context)
@@ -894,10 +1027,12 @@ export async function processPublicationJobs() {
           }
 
           // Get image paths — convert relative URLs to absolute filesystem paths
-          const mediaPaths = (post.media || [])
+          const mediaUrls = (post.media || [])
             .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-            .map((m) => resolveUploadPath(m.url))
-            .filter((p) => p);
+            .map((m) => m.url);
+          const mediaPaths = await Promise.all(
+            mediaUrls.map((url) => materializeUploadPath(url)),
+          );
           const imagePath = mediaPaths[0] || null;
 
           if (isProfileJob) {
@@ -915,7 +1050,7 @@ export async function processPublicationJobs() {
             // Publish to group
             result = await publishToGroup(groupUrl, post.content, imagePath, {
               userId: user.id,
-              isAnonymous: post.isAnonymous,
+              anonymous: post.isAnonymous,
               location: post.location,
               images: mediaPaths,
             });
@@ -1042,7 +1177,8 @@ export async function processPublicationJobs() {
         }
       } catch (error) {
         const errorMsg = error.message || "Unknown error";
-        const newAttempts = job.attempts + 1;
+        // Attempts are incremented only immediately before the external call.
+        const newAttempts = job.attempts;
         failed++;
         log.error("Publication job failed", error, {
           jobId: job.id,
@@ -1253,9 +1389,36 @@ export async function processPublicationJobs() {
             backoffMin: backoffMinutes,
           });
         }
+      } finally {
+        await stopJobLeaseHeartbeat();
       }
     }
-  }
+      },
+      { ownerToken: `${workerId}:${userId}` },
+    );
+
+    if (!userLock.acquired) {
+      const retryAt = new Date(Date.now() + 30_000);
+      await prisma.publicationJob.updateMany({
+        where: {
+          id: { in: userJobs.map((job) => job.id) },
+          status: "RUNNING",
+          lockedBy: workerId,
+        },
+        data: {
+          status: "PENDING",
+          scheduledAt: retryAt,
+          lockedAt: null,
+          lockedBy: null,
+          lastError: "Waiting for another publication by this user",
+        },
+      });
+      log.debug("Deferred jobs because user publish lock is held", {
+        userId,
+        count: userJobs.length,
+      });
+    }
+  });
 
   log.info("Publication batch completed", {
     processed: pendingJobs.length,
@@ -1276,7 +1439,8 @@ export async function processPublicationJobs() {
  * - Otherwise → reset to PENDING for retry
  */
 export async function recoverStaleJobs() {
-  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000); // 10 min ago
+  // A legitimate per-user anti-detection pause can last up to 20 minutes.
+  const staleThreshold = new Date(Date.now() - 30 * 60 * 1000);
 
   const staleJobs = await prisma.publicationJob.findMany({
     where: {
@@ -1291,6 +1455,7 @@ export async function recoverStaleJobs() {
           user: { select: { id: true } },
         },
       },
+      post: { select: { id: true, title: true, userId: true } },
     },
   });
 
@@ -1301,15 +1466,46 @@ export async function recoverStaleJobs() {
   });
 
   for (const job of staleJobs) {
-    const userId = job.postGroup?.user?.id;
-    const newAttempts = job.attempts + 1;
+    const userId = job.postGroup?.user?.id || job.post?.userId;
+    // The interrupted run was already counted when it was claimed.
+    const newAttempts = job.attempts;
 
-    if (newAttempts >= job.maxAttempts) {
+    const uncertainFacebookAttempt =
+      job.platform === "FACEBOOK" && newAttempts > 0;
+
+    if (uncertainFacebookAttempt) {
+      await prisma.publicationJob.update({
+        where: { id: job.id },
+        data: {
+          status: "UNKNOWN",
+          lastError:
+            "ה-worker נקטע לאחר תחילת הפרסום. ייתכן שהפרסום פורסם ולכן לא יבוצע retry אוטומטי.",
+          completedAt: new Date(),
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+      if (userId) {
+        await prisma.notification.create({
+          data: {
+            userId,
+            type: "PUBLICATION_STATUS_UNKNOWN",
+            title: "נדרשת בדיקת פרסום",
+            message:
+              "השרת נקטע בזמן הפרסום. כדי למנוע פרסום כפול לא בוצע ניסיון חוזר אוטומטי. יש לבדוק אם הפוסט פורסם לפני הפעלה ידנית.",
+          },
+        });
+      }
+      log.warn("Stale Facebook job moved to UNKNOWN", {
+        jobId: job.id,
+        attempt: newAttempts,
+      });
+    } else if (newAttempts >= job.maxAttempts) {
       // Max retries exceeded — mark as FAILED
       await prisma.publicationJob.update({
         where: { id: job.id },
         data: {
-          status: "FAILED",
+          status: "DEAD",
           lastError: "השרת קרס במהלך הפרסום — נוצלו כל הניסיונות החוזרים",
           completedAt: new Date(),
           lockedAt: null,
@@ -1321,8 +1517,8 @@ export async function recoverStaleJobs() {
       if (userId) {
         await prisma.publicationHistory.create({
           data: {
-            postId: job.postGroup.post?.id || null,
-            groupId: job.postGroup.group?.id || null,
+            postId: job.postGroup?.post?.id || job.post?.id,
+            groupId: job.postGroup?.group?.id || null,
             userId,
             postGroupId: job.postGroupId,
             publicationJobId: job.id,
@@ -1335,10 +1531,10 @@ export async function recoverStaleJobs() {
         await dispatchPublicationNotification({
           userId,
           event: "failure",
-          postTitle: job.postGroup.post?.title || "",
+          postTitle: job.postGroup?.post?.title || job.post?.title || "",
           targetType: job.targetType || "GROUP",
           platform: job.platform || "FACEBOOK",
-          target: job.postGroup.group?.name || "",
+          target: job.postGroup?.group?.name || "",
           scheduledAt: job.scheduledAt,
           errorMessage: "הפרסום לא הושלם לאחר התאוששות מתקלה בשרת",
         }).catch((notificationError) => {
@@ -1349,7 +1545,7 @@ export async function recoverStaleJobs() {
         });
       }
 
-      log.info("Stale job marked as FAILED", { jobId: job.id });
+      log.info("Stale job moved to DEAD", { jobId: job.id });
     } else {
       // Reset to PENDING for retry
       await prisma.publicationJob.update({
@@ -1411,9 +1607,10 @@ export async function generateScheduledJobs() {
     }
 
     // Apply daily jitter to the job's actual execution time
+    const occurrenceAt = schedule.nextRunAt || now;
     const jitterMs = generateDailyJitter();
     const jitteredTime = new Date(
-      (schedule.nextRunAt || now).getTime() + jitterMs,
+      occurrenceAt.getTime() + jitterMs,
     );
 
     // Don't schedule in the past — use now if jitter pushed it back
@@ -1423,16 +1620,34 @@ export async function generateScheduledJobs() {
 
     if (isGroupSchedule) {
       // Group-based schedule (Facebook groups) — existing behavior
-      await prisma.publicationJob.create({
-        data: {
+      await prisma.publicationJob.upsert({
+        where: {
+          scheduleId_occurrenceAt: {
+            scheduleId: schedule.id,
+            occurrenceAt,
+          },
+        },
+        update: {},
+        create: {
+          scheduleId: schedule.id,
+          occurrenceAt,
           postGroupId: schedule.postGroupId,
           scheduledAt,
         },
       });
     } else {
       // Non-group schedule (Profile, Instagram, or WhatsApp)
-      await prisma.publicationJob.create({
-        data: {
+      await prisma.publicationJob.upsert({
+        where: {
+          scheduleId_occurrenceAt: {
+            scheduleId: schedule.id,
+            occurrenceAt,
+          },
+        },
+        update: {},
+        create: {
+          scheduleId: schedule.id,
+          occurrenceAt,
           postId: schedule.postId,
           scheduledAt,
           targetType: schedule.targetType || "PROFILE",

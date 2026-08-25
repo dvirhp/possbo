@@ -66,6 +66,8 @@ describe("formatUserResponse", () => {
     expect(result).toEqual({
       id: "u1",
       email: "a@b.com",
+      emailVerified: false,
+      isAdmin: false,
       name: "Test",
       profileImage: "/img.jpg",
       avatarUrl: null,

@@ -31,8 +31,8 @@ const browser = await chromium.launch({
   executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
 })
 const context = await browser.newContext({
-  viewport: { width: 1100, height: 900 },
-  recordVideo: { dir: outputDir, size: { width: 1100, height: 900 } },
+  viewport: { width: 1440, height: 1080 },
+  recordVideo: { dir: outputDir, size: { width: 1440, height: 1080 } },
   locale: 'he-IL',
 })
 const page = await context.newPage()
@@ -125,9 +125,9 @@ try {
     .pull-refresh-indicator,.ptr-indicator{display:none!important}
     html,body,#root{width:100%!important;min-width:0!important;height:100%!important;margin:0!important;overflow:hidden!important;background:#f7f9fd!important}
     .app-layout{display:block!important;width:100%!important;min-height:100vh!important}
-    .app-main{width:100%!important;max-width:none!important;height:100vh!important;margin:0!important;padding:0!important;overflow:hidden!important}
+    .app-main{width:100%!important;max-width:none!important;height:100vh!important;margin:0!important;padding:0!important;overflow:auto!important}
     .generate-post-page{box-sizing:border-box!important;width:100%!important;min-height:100vh!important;padding:10px 24px 20px!important;align-items:flex-start!important}
-    .generate-post-container{width:min(980px,100%)!important;max-width:980px!important;margin:0 auto!important;zoom:.48}
+    .generate-post-container{width:min(1120px,100%)!important;max-width:1120px!important;margin:0 auto!important;zoom:.72}
     .generate-post-header{margin-bottom:10px!important}
     .generate-post-header h1{font-size:25px!important}
     .header-tip{margin:5px 0 8px!important;padding:7px 10px!important}

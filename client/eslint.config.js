@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import reactPlugin from "eslint-plugin-react";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
+import unusedImports from "eslint-plugin-unused-imports";
 
 export default [
   js.configs.recommended,
@@ -9,6 +10,7 @@ export default [
     plugins: {
       react: reactPlugin,
       "react-hooks": reactHooksPlugin,
+      "unused-imports": unusedImports,
     },
     languageOptions: {
       ecmaVersion: 2022,
@@ -43,9 +45,12 @@ export default [
       react: { version: "detect" },
     },
     rules: {
-      "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "no-unused-vars": "off",
+      "unused-imports/no-unused-imports": "error",
+      "unused-imports/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "no-console": "off",
       "react/react-in-jsx-scope": "off",
+      "react/jsx-uses-vars": "error",
       "react/prop-types": "off",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
