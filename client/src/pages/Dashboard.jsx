@@ -239,6 +239,8 @@ export default function Dashboard() {
   const [connectingPlatform, setConnectingPlatform] = useState(null)
   const [quickWhatsappQr, setQuickWhatsappQr] = useState(null)
   const quickWhatsappPollRef = useRef(null)
+  const [facebookLiveUrl, setFacebookLiveUrl] = useState(null)
+  const facebookConnectPollRef = useRef(null)
   const [dashDateRange, setDashDateRange] = useState({ from: '', to: '' })
   const [showDashDatePicker, setShowDashDatePicker] = useState(false)
   const groupFilterRef = useRef(null)
@@ -328,16 +330,38 @@ export default function Dashboard() {
   }
 
   const connectFacebook = async () => {
-    if (import.meta.env.PROD) {
-      window.alert('חיבור Facebook עדיין אינו זמין באתר הפרודקשיין. החיבור הקיים דורש דפדפן מקומי ולא ניתן לפתוח אותו מתוך Render. חיבור מאובטח דרך Meta יתווסף לפני הפעלת פרסום Facebook.')
-      return
-    }
     setShowConnectionsModal(false)
     setConnectingPlatform('facebook')
     try {
-      await handleBootstrap()
-    } finally {
+      const response = await groupsService.startRemoteFacebookSession()
+      if (!response.data?.liveUrl) throw new Error(response.data?.error || 'connection_failed')
+      setFacebookLiveUrl(response.data.liveUrl)
+      if (facebookConnectPollRef.current) clearInterval(facebookConnectPollRef.current)
+      facebookConnectPollRef.current = setInterval(async () => {
+        try {
+          const status = await groupsService.getRemoteFacebookSessionStatus()
+          if (status.data?.status === 'connected') {
+            clearInterval(facebookConnectPollRef.current)
+            facebookConnectPollRef.current = null
+            setFacebookLiveUrl(null)
+            setConnectingPlatform(null)
+            setUser(prev => ({ ...prev, fbSessionValid: true }))
+          } else if (['expired', 'error', 'cancelled'].includes(status.data?.status)) {
+            clearInterval(facebookConnectPollRef.current)
+            facebookConnectPollRef.current = null
+            setFacebookLiveUrl(null)
+            setConnectingPlatform(null)
+            window.alert('חיבור Facebook לא הושלם. אפשר לנסות שוב ולהשלים גם אימות דו־שלבי אם Facebook מבקש.')
+          }
+        } catch { /* keep polling while the remote browser is visible */ }
+      }, 2000)
+    } catch (err) {
+      logClientError('quick_facebook_connect_failed', err, { source: 'Dashboard' })
       setConnectingPlatform(null)
+      const reason = err.response?.data?.error || err.message
+      window.alert(reason === 'not_configured'
+        ? 'שירות החיבור המאובטח ל-Facebook עדיין לא הוגדר בשרת.'
+        : 'לא ניתן לפתוח כרגע את חיבור Facebook. נסו שוב בעוד רגע.')
     }
   }
 
@@ -403,6 +427,7 @@ export default function Dashboard() {
 
   useEffect(() => () => {
     if (quickWhatsappPollRef.current) clearInterval(quickWhatsappPollRef.current)
+    if (facebookConnectPollRef.current) clearInterval(facebookConnectPollRef.current)
   }, [])
 
   const connections = [
@@ -738,6 +763,37 @@ export default function Dashboard() {
                       <button type="button" onClick={() => setShowConnectionsModal(false)}>אעשה זאת אחר כך</button>
                       <small>תוכלו לנהל את החיבורים בכל עת דרך ניהול החשבון.</small>
                     </footer>
+                  </section>
+                </div>
+              )}
+
+              {facebookLiveUrl && (
+                <div className="connections-modal-backdrop facebook-browser-backdrop" role="presentation">
+                  <section className="facebook-browser-modal" role="dialog" aria-modal="true" aria-labelledby="facebook-browser-title">
+                    <header>
+                      <div>
+                        <h2 id="facebook-browser-title">חיבור מאובטח ל־Facebook</h2>
+                        <p>התחברו ישירות בחלון Facebook. Possbo לא שומרת את הסיסמה שלכם.</p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="סגירה"
+                        onClick={async () => {
+                          if (facebookConnectPollRef.current) clearInterval(facebookConnectPollRef.current)
+                          facebookConnectPollRef.current = null
+                          setFacebookLiveUrl(null)
+                          setConnectingPlatform(null)
+                          await groupsService.cancelRemoteFacebookSession().catch(() => {})
+                        }}
+                      >×</button>
+                    </header>
+                    <iframe
+                      src={facebookLiveUrl}
+                      title="Facebook secure connection"
+                      allow="clipboard-read; clipboard-write"
+                      referrerPolicy="no-referrer"
+                    />
+                    <footer>החלון ייסגר אוטומטית לאחר השלמת הכניסה. ניתן להשלים גם 2FA או checkpoint.</footer>
                   </section>
                 </div>
               )}

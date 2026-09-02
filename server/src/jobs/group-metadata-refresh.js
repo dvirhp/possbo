@@ -1,6 +1,7 @@
 import prisma from "../config/prisma.js";
 import { scrapeGroupsMetadata } from "../utils/facebook-automation.js";
 import { createLogger } from "../utils/logger.js";
+import { withUserPublishLock } from "../utils/user-publish-lock.js";
 const log = createLogger("group-meta");
 
 // Per-user lock to prevent concurrent metadata refreshes
@@ -62,7 +63,13 @@ export async function refreshGroupsMetadataForUser(userId) {
   });
 
   try {
-    const results = await scrapeGroupsMetadata(userId, groupsToScrape);
+    const lockResult = await withUserPublishLock(userId, async () =>
+      scrapeGroupsMetadata(userId, groupsToScrape),
+    );
+    if (!lockResult.acquired) {
+      return { updated: 0, skipped: true, reason: "facebook_operation_in_progress" };
+    }
+    const results = lockResult.value;
 
     let updated = 0;
     for (const result of results) {

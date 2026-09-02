@@ -5,34 +5,20 @@ import {
   launchBrowser,
   createBrowserContext,
 } from "../utils/browser-factory.js";
+import { withUserPublishLock } from "../utils/user-publish-lock.js";
 
 const log = createLogger("keep-alive");
 
-/**
- * Check if a Facebook session (storage state) is still valid.
- * Opens a headless browser, loads cookies, visits Facebook, checks login status.
- * Returns { valid: boolean, newState?: object }
- */
 async function checkAndRefreshSession(storageState, userId) {
   const browser = await launchBrowser();
-
   try {
-    const context = await createBrowserContext(browser, {
-      userId,
-      storageState,
-    });
-
+    const context = await createBrowserContext(browser, { userId, storageState });
     const page = await context.newPage();
     await page.goto("https://www.facebook.com/", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
-
-    // Wait a bit for page to settle
     await page.waitForTimeout(3000);
-
-    // Scroll down and back up to simulate real user activity, then reload
-    // so Facebook refreshes session cookies before we capture them
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(1500);
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -40,102 +26,99 @@ async function checkAndRefreshSession(storageState, userId) {
     await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
     await page.waitForTimeout(3000);
 
-    // Check if we're still logged in by looking for login cookies
     const cookies = await context.cookies("https://www.facebook.com");
-    const cookieNames = new Set(cookies.map((c) => c.name));
-    const isLoggedIn = cookieNames.has("c_user") && cookieNames.has("xs");
-
-    if (isLoggedIn) {
-      // Session is valid — save refreshed state (cookies may have been updated)
-      const newState = await context.storageState();
-      return { valid: true, newState };
+    const cookieNames = new Set(cookies.map((cookie) => cookie.name));
+    if (!cookieNames.has("c_user") || !cookieNames.has("xs")) {
+      return { valid: false };
     }
-
-    return { valid: false };
+    return { valid: true, newState: await context.storageState() };
   } finally {
     await browser.close();
   }
 }
 
-/**
- * Run session keep-alive for all users that have a stored Facebook session.
- * - Checks each user's session validity
- * - Updates storage state if refreshed
- * - Notifies user if session expired
- */
 export async function runSessionKeepAlive() {
   log.info("Starting session keep-alive job");
-
   const users = await prisma.user.findMany({
-    where: {
-      facebookStorageState: { not: null },
-      status: "ACTIVE",
-    },
-    select: {
-      id: true,
-      email: true,
-      facebookStorageState: true,
-    },
+    where: { facebookStorageState: { not: null }, status: "ACTIVE" },
+    select: { id: true },
   });
 
+  // Randomize account order to avoid a uniform access pattern on each run.
+  users.sort(() => Math.random() - 0.5);
   log.info("Found users with active sessions", { count: users.length });
 
   let refreshed = 0;
   let expired = 0;
   let errors = 0;
+  let locked = 0;
 
   for (const user of users) {
     try {
-      // Decrypt stored state
-      const storageState = JSON.parse(decrypt(user.facebookStorageState));
-
-      const result = await checkAndRefreshSession(storageState, user.id);
-
-      if (result.valid) {
-        // Update with refreshed cookies
-        const encryptedState = encrypt(JSON.stringify(result.newState));
-        await prisma.user.update({
+      const lockResult = await withUserPublishLock(user.id, async () => {
+        // Re-read after acquiring the same distributed lock used by publishing.
+        // This prevents keep-alive from overwriting a newer publication session.
+        const current = await prisma.user.findUnique({
           where: { id: user.id },
-          data: { facebookStorageState: encryptedState, fbSessionValid: true },
+          select: { facebookStorageState: true },
         });
+        if (!current?.facebookStorageState) return { status: "missing" };
+
+        const storageState = JSON.parse(decrypt(current.facebookStorageState));
+        const result = await checkAndRefreshSession(storageState, user.id);
+        if (result.valid) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              facebookStorageState: encrypt(JSON.stringify(result.newState)),
+              fbSessionValid: true,
+            },
+          });
+          return { status: "refreshed" };
+        }
+
+        await prisma.$transaction([
+          prisma.notification.create({
+            data: {
+              userId: user.id,
+              type: "SESSION_EXPIRED",
+              title: "חיבור Facebook פג תוקף",
+              message:
+                "החיבור שלך ל-Facebook פג. יש להתחבר מחדש כדי שהפרסומים המתוזמנים ימשיכו לפעול.",
+            },
+          }),
+          prisma.user.update({
+            where: { id: user.id },
+            data: { facebookStorageState: null, fbSessionValid: false },
+          }),
+        ]);
+        return { status: "expired" };
+      });
+
+      if (!lockResult.acquired) {
+        locked++;
+        log.info("Skipping session refresh while user is publishing", {
+          userId: user.id,
+        });
+      } else if (lockResult.value.status === "refreshed") {
         refreshed++;
         log.info("Session refreshed successfully", { userId: user.id });
-      } else {
-        // Session expired — notify user
+      } else if (lockResult.value.status === "expired") {
         expired++;
         log.warn("Session expired", { userId: user.id });
-
-        await prisma.notification.create({
-          data: {
-            userId: user.id,
-            type: "SESSION_EXPIRED",
-            title: "חיבור הפייסבוק פג תוקף",
-            message:
-              "ה-session של פייסבוק שלך פג. אנא התחבר מחדש כדי שפוסטים מתוזמנים ימשיכו לפעול.",
-          },
-        });
-
-        // Mark user's storage state as null so system knows it's expired
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { facebookStorageState: null, fbSessionValid: false },
-        });
       }
 
-      // Small delay between users to avoid rate limiting
-      await new Promise((r) => setTimeout(r, 5000));
+      // Jitter prevents request bursts and identical timing across accounts.
+      await new Promise((resolve) =>
+        setTimeout(resolve, 2000 + Math.random() * 6000),
+      );
     } catch (error) {
       errors++;
       log.error("Error checking session for user", error, { userId: user.id });
     }
   }
 
-  log.info("Session keep-alive completed", {
-    refreshed,
-    expired,
-    errors,
-    total: users.length,
-  });
-
-  return { refreshed, expired, errors, total: users.length };
+  const summary = { refreshed, expired, errors, locked, total: users.length };
+  log.info("Session keep-alive completed", summary);
+  return summary;
 }

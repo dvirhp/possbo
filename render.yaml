@@ -62,8 +62,22 @@ projects:
                 sync: false
               - key: TURNSTILE_SECRET_KEY
                 sync: false
+              # Remote, user-visible Playwright session used only for the
+              # initial Facebook login and reconnect flow.
+              - key: BROWSERBASE_API_KEY
+                sync: false
+              - key: BROWSERBASE_PROJECT_ID
+                sync: false
+              # Optional official Meta OAuth identity layer. Browser cookies
+              # for Playwright remain isolated from these API credentials.
+              - key: FACEBOOK_APP_ID
+                sync: false
+              - key: FACEBOOK_APP_SECRET
+                sync: false
               # Public site key compiled into the Vite bundle via Docker ARG.
               - key: VITE_TURNSTILE_SITE_KEY
+                sync: false
+              - key: VITE_FACEBOOK_APP_ID
                 sync: false
 
           - type: worker
