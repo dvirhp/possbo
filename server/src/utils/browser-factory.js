@@ -172,6 +172,9 @@ function simpleHash(str) {
 
 const COMMON_ARGS = [
   "--disable-blink-features=AutomationControlled",
+  // Docker's /dev/shm is small by default; use container memory instead of
+  // letting Chromium crash when a Facebook page fills shared memory.
+  "--disable-dev-shm-usage",
   "--no-sandbox",
 ];
 
