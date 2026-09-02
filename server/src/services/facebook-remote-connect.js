@@ -54,28 +54,36 @@ async function createRemoteSession(client, userId) {
     userMetadata: { purpose: "facebook-connect", userId },
   };
 
+  const privacySettings = {
+    viewport: { width: 430, height: 860 },
+    blockAds: false,
+    // Login sessions may contain passwords and 2FA codes. These settings
+    // must be preserved even when the selected plan rejects proxy access.
+    recordSession: false,
+    logSession: false,
+  };
+
   try {
-    return await client.sessions.create({
+    const session = await client.sessions.create({
       ...basePayload,
       // Proxy mode is configurable because some accounts are more stable with
       // a direct datacenter egress while others prefer managed proxy routing.
       proxies: useProxy,
-      browserSettings: {
-        viewport: { width: 430, height: 860 },
-        os: "windows",
-        blockAds: false,
-        // Login sessions may contain passwords and 2FA codes. They must
-        // never appear in Browserbase recordings or session logs.
-        recordSession: false,
-        logSession: false,
-      },
+      browserSettings: privacySettings,
     });
+    return { session, proxyActive: useProxy };
   } catch (error) {
-    log.warn("Enhanced Browserbase settings rejected, retrying with safe defaults", {
+    if (!useProxy) throw error;
+    log.warn("Browserbase proxy rejected, retrying without proxy", {
       reason: error.message,
       userId,
     });
-    return client.sessions.create(basePayload);
+    const session = await client.sessions.create({
+      ...basePayload,
+      proxies: false,
+      browserSettings: privacySettings,
+    });
+    return { session, proxyActive: false };
   }
 }
 
@@ -106,7 +114,12 @@ export async function startFacebookRemoteConnect(userId) {
     async () => {
       const client = getClient();
       try {
-        const remote = await createRemoteSession(client, userId);
+        const remoteResult = await createRemoteSession(client, userId);
+        const remote = remoteResult.session;
+        if (!remoteResult.proxyActive) {
+          entry.hint = "proxy_unavailable";
+          log.warn("Facebook login is using direct datacenter egress", { userId });
+        }
         entry.sessionId = remote.id;
         entry.browser = await chromium.connectOverCDP(remote.connectUrl);
         const context = entry.browser.contexts()[0];
