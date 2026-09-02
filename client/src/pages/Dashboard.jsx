@@ -873,6 +873,9 @@ export default function Dashboard() {
                         {facebookConnectHint === 'proxy_unavailable' && (
                           <p className="facebook-proxy-warning">תוכנית Browserbase הנוכחית לא אפשרה proxy. Facebook עלול לדחות כניסה מכתובת שרת; במקרה כזה נדרש מסלול Browserbase שתומך ב־proxy.</p>
                         )}
+                        {['facebook_security_check', 'facebook_security_retry'].includes(facebookConnectHint) && (
+                          <p className="facebook-proxy-warning">Meta הפעילה בדיקת אבטחה. המתינו לסיום הבדיקה; אם חזרתם לטופס, הזינו את פרטי הכניסה פעם נוספת באותו חלון.</p>
+                        )}
                       </div>
                       <div className="facebook-browser-actions">
                         <a href={facebookLiveUrl} target="_blank" rel="noopener noreferrer">פתח במסך מלא</a>
