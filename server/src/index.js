@@ -187,9 +187,22 @@ app.get("/health/scaling", async (_req, res) => {
   }
 });
 
-// Basic route
-app.get("/", (_req, res) => {
-  res.json({ message: "Possbo API is running" });
+// Serve the production client from the same origin as the API. Static assets
+// are resolved first; client-side routes then fall back to React's index.html.
+// Unknown API/webhook paths must remain real 404s instead of returning HTML.
+app.use(express.static(clientDistDir));
+app.get("*", (req, res, next) => {
+  if (
+    req.path.startsWith("/api/") ||
+    req.path.startsWith("/webhooks/") ||
+    req.path.startsWith("/uploads/") ||
+    req.path.startsWith("/health/")
+  ) {
+    return next();
+  }
+  const indexFile = path.join(clientDistDir, "index.html");
+  if (!fs.existsSync(indexFile)) return next();
+  res.sendFile(indexFile);
 });
 
 // Error handling middleware
