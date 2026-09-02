@@ -225,7 +225,10 @@ router.post(
   requireAuth,
   asyncHandler(async (req, res) => {
     const result = await startFacebookRemoteConnect(req.user.id);
-    res.status(result.status === "waiting" ? 201 : 409).json(result);
+    if (result.status === "busy") {
+      return res.status(409).json(result);
+    }
+    return res.status(result.status === "waiting" ? 201 : 202).json(result);
   }),
 );
 
