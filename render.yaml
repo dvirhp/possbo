@@ -58,6 +58,9 @@ projects:
                 sync: false
               - key: TURNSTILE_SECRET_KEY
                 sync: false
+              # Public site key compiled into the Vite bundle via Docker ARG.
+              - key: VITE_TURNSTILE_SITE_KEY
+                sync: false
 
           - type: worker
             name: possbo-worker
