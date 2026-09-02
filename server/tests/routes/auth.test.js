@@ -237,6 +237,23 @@ describe("POST /api/auth/register", () => {
     });
     expect(res.status).toBe(409);
   });
+
+  it("should reject an existing ID number before sending verification", async () => {
+    mockUserFindUnique.mockImplementation(async ({ where }) => {
+      if (where.idNumber === "123456789") return { id: "existing-id-owner" };
+      return null;
+    });
+
+    const res = await request(app).post("/api/auth/register").send({
+      email: "new@test.com",
+      password: "password123",
+      idNumber: "123456789",
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("ID_NUMBER_ALREADY_REGISTERED");
+    expect(mockPendingRegistrationUpsert).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/auth/login", () => {
