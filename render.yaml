@@ -33,7 +33,15 @@ projects:
               - key: SESSION_SECRET
                 generateValue: true
               - key: ENCRYPTION_KEY
-                generateValue: true
+                sync: false
+              - key: SMTP_HOST
+                sync: false
+              - key: SMTP_PORT
+                sync: false
+              - key: SMTP_USER
+                sync: false
+              - key: SMTP_PASS
+                sync: false
               - key: STORAGE_DRIVER
                 value: s3
               - key: S3_BUCKET
@@ -92,6 +100,14 @@ projects:
                 fromService: { type: web, name: possbo-api, envVarKey: SESSION_SECRET }
               - key: ENCRYPTION_KEY
                 fromService: { type: web, name: possbo-api, envVarKey: ENCRYPTION_KEY }
+              - key: SMTP_HOST
+                fromService: { type: web, name: possbo-api, envVarKey: SMTP_HOST }
+              - key: SMTP_PORT
+                fromService: { type: web, name: possbo-api, envVarKey: SMTP_PORT }
+              - key: SMTP_USER
+                fromService: { type: web, name: possbo-api, envVarKey: SMTP_USER }
+              - key: SMTP_PASS
+                fromService: { type: web, name: possbo-api, envVarKey: SMTP_PASS }
               - key: STORAGE_DRIVER
                 value: s3
               - key: S3_BUCKET
