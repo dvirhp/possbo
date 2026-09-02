@@ -5,6 +5,7 @@ import {
   refreshInstagramMetrics,
 } from "../utils/metrics-scraper.js";
 import { createLogger } from "../utils/logger.js";
+import { withUserPublishLock } from "../utils/user-publish-lock.js";
 
 const log = createLogger("metrics-job");
 
@@ -89,21 +90,25 @@ export async function collectAllMetrics() {
         log.info(
           `User ${userId}: scraping FB metrics for ${fbPublications.length} publications`,
         );
-        const results = await scrapeUserPublicationMetrics(
-          userId,
-          fbPublications,
+        const lockResult = await withUserPublishLock(userId, async () =>
+          scrapeUserPublicationMetrics(userId, fbPublications),
         );
-        for (const result of results) {
-          // A verified zero is still a successful synchronization and should
-          // advance the UI's last-synced timestamp.
-          await savePublicationMetrics(
-            result.publicationId,
-            result.likes,
-            result.comments,
-          );
-          totalSaved++;
+        if (!lockResult.acquired) {
+          log.info(`User ${userId}: skipping FB metrics while another Facebook operation is active`);
+        } else {
+          const results = lockResult.value;
+          for (const result of results) {
+            // A verified zero is still a successful synchronization and should
+            // advance the UI's last-synced timestamp.
+            await savePublicationMetrics(
+              result.publicationId,
+              result.likes,
+              result.comments,
+            );
+            totalSaved++;
+          }
+          totalScraped += results.length;
         }
-        totalScraped += results.length;
       }
 
       // Instagram metrics via Graph API

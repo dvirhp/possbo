@@ -12,6 +12,12 @@ export const groupsService = {
   getGroupPosts: (groupId) => api.get(`/groups/${groupId}/posts`),
   bootstrapSession: () =>
     api.post("/groups/session/bootstrap", {}, { timeout: 360000 }),
+  startRemoteFacebookSession: () =>
+    api.post("/groups/session/remote/start", {}, { timeout: 45000 }),
+  getRemoteFacebookSessionStatus: () =>
+    api.get("/groups/session/remote/status"),
+  cancelRemoteFacebookSession: () =>
+    api.delete("/groups/session/remote"),
   getPublicationHistory: () => api.get("/scheduler/history"),
   getPublication: (pubId) => api.get(`/scheduler/history/${pubId}`),
   getJobs: () => api.get("/scheduler/jobs"),

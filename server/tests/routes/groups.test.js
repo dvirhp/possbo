@@ -11,6 +11,13 @@ vi.mock("../../src/utils/facebook-automation.js", () => ({
   publishToGroup: vi.fn(),
 }));
 
+vi.mock("../../src/utils/user-publish-lock.js", () => ({
+  withUserPublishLock: vi.fn(async (_userId, callback) => ({
+    acquired: true,
+    value: await callback(),
+  })),
+}));
+
 vi.mock("axios", () => ({
   default: { get: vi.fn() },
 }));

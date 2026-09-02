@@ -8,6 +8,11 @@ import {
   captureGroupScreenshot,
   scrapeMyGroups,
 } from "../utils/facebook-automation.js";
+import {
+  startFacebookRemoteConnect,
+  getFacebookRemoteConnectStatus,
+  cancelFacebookRemoteConnect,
+} from "../services/facebook-remote-connect.js";
 import { queueImmediateFacebookPublication } from "../utils/immediate-publication.js";
 import { createLogger } from "../utils/logger.js";
 import {
@@ -20,6 +25,7 @@ import { asyncHandler } from "../utils/async-handler.js";
 import { requireAuth } from "../utils/auth-middleware.js";
 import { uploadSingle, uploadsDir } from "../utils/upload-service.js";
 import { persistUpload } from "../services/object-storage.js";
+import { withUserPublishLock } from "../utils/user-publish-lock.js";
 
 const router = express.Router();
 const log = createLogger("groups");
@@ -215,10 +221,42 @@ router.get(
 
 // Bootstrap Facebook session for the logged-in user
 router.post(
+  "/session/remote/start",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const result = await startFacebookRemoteConnect(req.user.id);
+    res.status(result.status === "waiting" ? 201 : 409).json(result);
+  }),
+);
+
+router.get(
+  "/session/remote/status",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    res.json(getFacebookRemoteConnectStatus(req.user.id));
+  }),
+);
+
+router.delete(
+  "/session/remote",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    res.json(await cancelFacebookRemoteConnect(req.user.id));
+  }),
+);
+
+router.post(
   "/session/bootstrap",
   requireAuth,
   asyncHandler(async (req, res) => {
-    await bootstrapFacebookSession(req.user.id);
+    const lockResult = await withUserPublishLock(
+      req.user.id,
+      () => bootstrapFacebookSession(req.user.id),
+      { leaseMs: 6 * 60 * 1000 },
+    );
+    if (!lockResult.acquired) {
+      return res.status(409).json({ error: "FACEBOOK_OPERATION_IN_PROGRESS" });
+    }
     res.json({
       success: true,
       message: "Facebook session saved successfully",
@@ -231,7 +269,13 @@ router.get(
   "/scrape-my-groups",
   requireAuth,
   asyncHandler(async (req, res) => {
-    const groups = await scrapeMyGroups(req.user.id);
+    const lockResult = await withUserPublishLock(req.user.id, async () =>
+      scrapeMyGroups(req.user.id),
+    );
+    if (!lockResult.acquired) {
+      return res.status(409).json({ error: "FACEBOOK_OPERATION_IN_PROGRESS" });
+    }
+    const groups = lockResult.value;
     let previousCount = 0;
 
     // Smart sync: compare old vs new, preserve posts for groups that still exist
