@@ -404,7 +404,11 @@ export default function Dashboard() {
             setFacebookLiveUrl(null)
             setConnectingPlatform(null)
             closePopup()
-            window.alert('חיבור Facebook לא הושלם. אפשר לנסות שוב ולהשלים גם אימות דו־שלבי אם Facebook מבקש.')
+            if (status.data?.error === 'login_loop') {
+              window.alert('Facebook החזיר אתכם שוב למסך ההתחברות. לרוב זו חסימת אבטחה מצד Meta. נסו שוב והשלימו כל אימות/Checkpoint שמופיע עד הסוף.')
+            } else {
+              window.alert('חיבור Facebook לא הושלם. אפשר לנסות שוב ולהשלים גם אימות דו־שלבי אם Facebook מבקש.')
+            }
           }
         } catch { /* keep polling while the remote browser is visible */ }
       }, 2000)
@@ -417,6 +421,8 @@ export default function Dashboard() {
         ? 'שירות החיבור המאובטח ל-Facebook עדיין לא הוגדר בשרת.'
         : reason === 'facebook_operation_in_progress'
           ? 'יש כרגע פעולה אחרת שמשתמשת בחיבור Facebook. נסו שוב בעוד כמה שניות.'
+        : reason === 'login_loop'
+          ? 'Facebook החזיר אתכם למסך ההתחברות. נסו שוב והשלימו checkpoint/אימות אם מופיע.'
         : 'לא ניתן לפתוח כרגע את חיבור Facebook. נסו שוב בעוד רגע.')
     }
   }

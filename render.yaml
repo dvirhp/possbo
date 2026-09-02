@@ -25,7 +25,7 @@ projects:
               - key: RUN_SCHEDULER
                 value: "false"
               - key: BROWSERBASE_USE_PROXY
-                value: "false"
+                value: "true"
               - key: INTERNAL_WORKER_SECRET
                 generateValue: true
               - key: CLIENT_URL

@@ -41,11 +41,12 @@ function publicStatus(entry) {
     liveUrl: entry.status === "waiting" ? entry.liveUrl : undefined,
     expiresAt: entry.expiresAt,
     error: entry.error,
+    hint: entry.hint,
   };
 }
 
 async function createRemoteSession(client, userId) {
-  const useProxy = process.env.BROWSERBASE_USE_PROXY === "true";
+  const useProxy = process.env.BROWSERBASE_USE_PROXY !== "false";
   const basePayload = {
     projectId: process.env.BROWSERBASE_PROJECT_ID || undefined,
     region: "eu-central-1",
@@ -90,6 +91,7 @@ export async function startFacebookRemoteConnect(userId) {
     sessionId: null,
     expiresAt: new Date(Date.now() + SESSION_TIMEOUT_SECONDS * 1000),
     error: null,
+    hint: null,
     browser: null,
   };
   sessions.set(userId, entry);
@@ -127,8 +129,40 @@ export async function startFacebookRemoteConnect(userId) {
         entry.status = "waiting";
         signalReady();
 
+        let previousWasLogin = true;
+        let loginReturnCount = 0;
+
         while (Date.now() < entry.expiresAt.getTime()) {
           if (entry.status === "cancelled") return;
+
+          const currentUrl = page.url() || "";
+          const normalizedUrl = currentUrl.toLowerCase();
+          const isLoginPage =
+            normalizedUrl.includes("facebook.com/login") ||
+            normalizedUrl.includes("m.facebook.com/login") ||
+            normalizedUrl.includes("mbasic.facebook.com/login") ||
+            normalizedUrl.includes("/login.php");
+          const isCheckpointPage =
+            normalizedUrl.includes("checkpoint") ||
+            normalizedUrl.includes("two_step_verification") ||
+            normalizedUrl.includes("approvals");
+
+          if (!previousWasLogin && isLoginPage && !isCheckpointPage) {
+            loginReturnCount += 1;
+            if (loginReturnCount >= 2) {
+              entry.status = "error";
+              entry.error = "login_loop";
+              entry.hint = "facebook_redirected_back_to_login";
+              log.warn("Facebook login loop detected", {
+                userId,
+                loginReturnCount,
+                currentUrl,
+              });
+              return;
+            }
+          }
+          previousWasLogin = isLoginPage;
+
           const cookies = await context.cookies("https://www.facebook.com");
           const names = new Set(cookies.map((cookie) => cookie.name));
           if (names.has("c_user") && names.has("xs")) {
