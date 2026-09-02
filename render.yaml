@@ -66,6 +66,18 @@ projects:
             envVars:
               - key: NODE_ENV
                 value: production
+              # Render Starter has 512 MB RAM. Keep Node and Chromium within a
+              # single-job budget; raise these values when upgrading the plan.
+              - key: NODE_OPTIONS
+                value: --max-old-space-size=160
+              - key: WORKER_MEMORY_LIMIT_MB
+                value: "512"
+              - key: WORKER_RESERVED_MEMORY_MB
+                value: "160"
+              - key: CHROMIUM_MEMORY_MB
+                value: "320"
+              - key: CHROMIUM_CONCURRENCY
+                value: "1"
               - key: RUN_SCHEDULER
                 value: "true"
               - key: CLIENT_URL
