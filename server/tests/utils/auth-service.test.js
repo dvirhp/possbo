@@ -78,6 +78,7 @@ describe("formatUserResponse", () => {
       whatsappSessionPhone: null,
       notificationSettings: { enabled: true },
       createdAt: baseUser.createdAt,
+      billingRequired: true,
     });
   });
 

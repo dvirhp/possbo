@@ -18,6 +18,10 @@ projects:
             envVars:
               - key: NODE_ENV
                 value: production
+              # Launch access: authenticated users can use the product while
+              # billing remains disconnected. Set to "true" to restore paywall.
+              - key: BILLING_REQUIRED
+                value: "false"
               - key: RUN_SCHEDULER
                 value: "false"
               - key: CLIENT_URL

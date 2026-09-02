@@ -67,7 +67,7 @@ export default function Register() {
         setVerificationStep(true)
       } else if (res.data?.user) {
         loginSuccess(res.data.user)
-        navigate('/subscription')
+        navigate('/dashboard')
       }
     } catch (err) {
       if (!navigator.onLine || err.code === 'ERR_NETWORK') {
@@ -92,10 +92,10 @@ export default function Register() {
       const res = await authAPI.verifyEmail({ email, code: verificationCode })
       if (res.data?.user) {
         loginSuccess(res.data.user)
-        navigate('/subscription')
+        navigate('/dashboard')
       } else {
         await checkAuth()
-        navigate('/subscription')
+        navigate('/dashboard')
       }
     } catch (err) {
       setError(err.userMessage || 'שגיאה בלתי צפויה')
