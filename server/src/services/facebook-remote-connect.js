@@ -57,6 +57,7 @@ async function createRemoteSession(client, userId) {
   const privacySettings = {
     viewport: { width: 430, height: 860 },
     blockAds: false,
+    solveCaptchas: true,
     // Login sessions may contain passwords and 2FA codes. These settings
     // must be preserved even when the selected plan rejects proxy access.
     recordSession: false,
@@ -159,20 +160,22 @@ export async function startFacebookRemoteConnect(userId) {
             normalizedUrl.includes("checkpoint") ||
             normalizedUrl.includes("two_step_verification") ||
             normalizedUrl.includes("approvals");
+          const isCaptchaPage =
+            normalizedUrl.includes("captcha") ||
+            normalizedUrl.includes("recaptcha");
 
           if (!previousWasLogin && isLoginPage && !isCheckpointPage) {
             loginReturnCount += 1;
-            if (loginReturnCount >= 2) {
-              entry.status = "error";
-              entry.error = "login_loop";
-              entry.hint = "facebook_redirected_back_to_login";
-              log.warn("Facebook login loop detected", {
-                userId,
-                loginReturnCount,
-                currentUrl,
-              });
-              return;
-            }
+            // Meta often returns to the login form after a CAPTCHA and expects
+            // the user to submit once more. Keep the session alive instead of
+            // terminating the only window where that challenge can finish.
+            entry.hint = "facebook_security_retry";
+            log.info("Facebook returned to login after a security check", {
+              userId,
+              loginReturnCount,
+            });
+          } else if (isCaptchaPage) {
+            entry.hint = "facebook_security_check";
           }
           previousWasLogin = isLoginPage;
 
