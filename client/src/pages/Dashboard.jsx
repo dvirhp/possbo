@@ -328,6 +328,10 @@ export default function Dashboard() {
   }
 
   const connectFacebook = async () => {
+    if (import.meta.env.PROD) {
+      window.alert('חיבור Facebook עדיין אינו זמין באתר הפרודקשיין. החיבור הקיים דורש דפדפן מקומי ולא ניתן לפתוח אותו מתוך Render. חיבור מאובטח דרך Meta יתווסף לפני הפעלת פרסום Facebook.')
+      return
+    }
     setShowConnectionsModal(false)
     setConnectingPlatform('facebook')
     try {
@@ -339,11 +343,18 @@ export default function Dashboard() {
 
   const connectInstagram = async () => {
     setConnectingPlatform('instagram')
+    // Open synchronously from the click event. Browsers commonly block popups
+    // created only after awaiting a network request.
+    const popup = window.open('', 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+    if (!popup) {
+      setConnectingPlatform(null)
+      window.alert('הדפדפן חסם את חלון החיבור. יש לאפשר חלונות קופצים ולנסות שוב.')
+      return
+    }
     try {
       const res = await authAPI.getInstagramAuthUrl()
       if (!res.data?.authUrl) throw new Error('Missing Instagram authorization URL')
-      const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
-      if (!popup) throw new Error('POPUP_BLOCKED')
+      popup.location.replace(res.data.authUrl)
       const handleMessage = (event) => {
         if (event.data?.type !== 'instagram-oauth-callback') return
         window.removeEventListener('message', handleMessage)
@@ -354,6 +365,7 @@ export default function Dashboard() {
       }
       window.addEventListener('message', handleMessage)
     } catch (err) {
+      popup.close()
       setConnectingPlatform(null)
       logClientError('quick_instagram_connect_failed', err, { source: 'Dashboard' })
       window.alert(err.message === 'POPUP_BLOCKED' ? 'הדפדפן חסם את חלון החיבור. יש לאפשר חלונות קופצים ולנסות שוב.' : 'לא ניתן לפתוח את חיבור Instagram')
