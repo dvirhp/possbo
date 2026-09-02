@@ -60,7 +60,7 @@ async function createRemoteSession(client, userId) {
       browserSettings: {
         viewport: { width: 1024, height: 720 },
         os: "windows",
-        blockAds: true,
+        blockAds: false,
         // Login sessions may contain passwords and 2FA codes. They must
         // never appear in Browserbase recordings or session logs.
         recordSession: false,
