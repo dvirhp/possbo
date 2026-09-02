@@ -14,6 +14,7 @@ import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
 import { createLogger } from "../utils/logger.js";
 import { encrypt, decrypt } from "../utils/encryption.js";
+import { materializeUploadPath } from "../utils/media-upload.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +34,16 @@ const connectionStatus = new Map();
 function requireAuth(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   next();
+}
+
+function hasValidInternalSecret(req) {
+  const expected = process.env.INTERNAL_WORKER_SECRET;
+  const provided = req.get("x-internal-worker-secret");
+  if (!expected || !provided) return false;
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  return expectedBuffer.length === providedBuffer.length &&
+    crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
 function getUserSessionDir(userId) {
@@ -425,6 +436,66 @@ export async function restoreWhatsAppSessions() {
 }
 
 // ─── POST /whatsapp/connect — Start QR-based connection ──────────
+export async function publishWhatsAppPost(userId, post) {
+  const sock = getWhatsAppSocket(userId);
+  if (!sock) throw new Error("NO_WHATSAPP_SESSION");
+  const targets = post.whatsappTargets || [];
+  if (!targets.length) throw new Error("NO_WHATSAPP_TARGETS");
+  const mediaUrls = (post.media || []).sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)).filter((media) => !media.igType).map((media) => media.url);
+  const mediaPaths = await Promise.all(mediaUrls.map(materializeUploadPath));
+  const content = (post.content || "").replace(/\n*https?:\/\/wa\.me\/[^\s]*/g, "").trim();
+  const message = mediaPaths[0] ? { image: { url: mediaPaths[0] }, caption: content } : { text: content };
+  const sendWithTimeout = (jid) => Promise.race([
+    sock.sendMessage(jid, message),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("WA_SEND_TIMEOUT")), 30000)),
+  ]);
+  let sent = 0;
+  let failed = 0;
+  let firstError = null;
+  for (const target of targets) {
+    try {
+      if (target.type === "broadcast") {
+        const list = await prisma.whatsAppBroadcastList.findFirst({ where: { id: String(target.id || "").replace(/^broadcast_/, ""), userId } });
+        if (!list?.members?.length) throw new Error("EMPTY_WHATSAPP_BROADCAST");
+        for (const member of list.members) {
+          let phone = String(member.phone).replace(/[^0-9]/g, "");
+          if (!phone) continue;
+          if (phone.startsWith("0") && phone.length === 10) phone = `972${phone.slice(1)}`;
+          try { await sendWithTimeout(`${phone}@s.whatsapp.net`); sent++; }
+          catch (error) { firstError ||= error; failed++; }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      } else {
+        await sendWithTimeout(target.id);
+        sent++;
+      }
+    } catch (error) {
+      firstError ||= error;
+      failed++;
+      log.warn("WA target send failed", { target: target.id, error: error.message });
+    }
+  }
+  if (sent === 0 && failed > 0) throw new Error(firstError?.message || "ALL_WHATSAPP_SENDS_FAILED");
+  return { sent, failed };
+}
+
+router.post("/internal/publish", async (req, res) => {
+  if (!hasValidInternalSecret(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { userId, postId } = req.body || {};
+    if (!userId || !postId) return res.status(400).json({ error: "Missing identifiers" });
+    const post = await prisma.post.findFirst({
+      where: { id: postId, userId },
+      select: { content: true, whatsappTargets: true, media: { select: { url: true, orderIndex: true, igType: true } } },
+    });
+    if (!post) return res.status(404).json({ error: "POST_NOT_FOUND" });
+    return res.json(await publishWhatsAppPost(userId, post));
+  } catch (error) {
+    log.warn("Internal WA publish failed", { error: error.message });
+    return res.status(409).json({ error: error.message || "WHATSAPP_SEND_FAILED" });
+  }
+});
+
 router.post("/connect", requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;

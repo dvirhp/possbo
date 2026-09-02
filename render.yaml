@@ -24,6 +24,8 @@ projects:
                 value: "false"
               - key: RUN_SCHEDULER
                 value: "false"
+              - key: INTERNAL_WORKER_SECRET
+                generateValue: true
               - key: CLIENT_URL
                 value: https://possbo-api.onrender.com
               - key: DATABASE_URL
@@ -107,6 +109,8 @@ projects:
                 value: "1"
               - key: RUN_SCHEDULER
                 value: "true"
+              - key: INTERNAL_WORKER_SECRET
+                fromService: { type: web, name: possbo-api, envVarKey: INTERNAL_WORKER_SECRET }
               - key: CLIENT_URL
                 value: https://possbo-api.onrender.com
               - key: DATABASE_URL

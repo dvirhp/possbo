@@ -2,7 +2,6 @@ import "dotenv/config";
 import { validateEnvironment } from "./config/validate-env.js";
 import prisma from "./config/prisma.js";
 import { startScheduler, stopScheduler } from "./jobs/index.js";
-import { restoreWhatsAppSessions } from "./routes/whatsapp.js";
 import { createLogger } from "./utils/logger.js";
 import { initializeOperationalEvents, stopOperationalEvents } from "./utils/operational-events.js";
 
@@ -34,7 +33,6 @@ process.on("unhandledRejection", (error) => {
 });
 
 try {
-  await restoreWhatsAppSessions();
   startScheduler();
   log.info("Publication worker started");
 } catch (error) {

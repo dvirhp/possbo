@@ -71,7 +71,20 @@ export async function startFacebookRemoteConnect(userId) {
         const remote = await client.sessions.create({
           projectId: process.env.BROWSERBASE_PROJECT_ID || undefined,
           region: "eu-central-1",
+          // Facebook commonly rejects cloud datacenter IPs during an
+          // interactive login. Browserbase's managed proxy provides a more
+          // appropriate egress path for this user-initiated session.
+          proxies: true,
           api_timeout: SESSION_TIMEOUT_SECONDS,
+          browserSettings: {
+            viewport: { width: 1024, height: 720 },
+            os: "windows",
+            blockAds: true,
+            // Login sessions may contain passwords and 2FA codes. They must
+            // never appear in Browserbase recordings or session logs.
+            recordSession: false,
+            logSession: false,
+          },
           userMetadata: { purpose: "facebook-connect", userId },
         });
         entry.sessionId = remote.id;
@@ -84,7 +97,10 @@ export async function startFacebookRemoteConnect(userId) {
         });
 
         const live = await client.sessions.debug(remote.id);
-        entry.liveUrl = `${live.debuggerFullscreenUrl}${live.debuggerFullscreenUrl.includes("?") ? "&" : "?"}navbar=false`;
+        const pageLiveUrl =
+          live.pages.find((candidate) => /facebook\.com/i.test(candidate.url))
+            ?.debuggerFullscreenUrl || live.debuggerFullscreenUrl;
+        entry.liveUrl = `${pageLiveUrl}${pageLiveUrl.includes("?") ? "&" : "?"}navbar=false`;
         entry.status = "waiting";
         signalReady();
 

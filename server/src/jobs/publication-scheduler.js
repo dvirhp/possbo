@@ -932,39 +932,19 @@ export async function processPublicationJobs() {
           };
         } else if (isWhatsAppJob) {
           // ─── WhatsApp Publishing ────────────────────────
-          const { getWhatsAppSocket } = await import("../routes/whatsapp.js");
-          const sock = getWhatsAppSocket(user.id);
-          if (!sock) throw new Error("NO_WHATSAPP_SESSION");
-
-          const waTargets = post.whatsappTargets || [];
-          if (!waTargets.length) throw new Error("NO_WHATSAPP_TARGETS");
-
-          // Helper: sendMessage with timeout to avoid hanging forever
-          const sendWithTimeout = (jid, msg, timeoutMs = 30000) =>
-            Promise.race([
-              sock.sendMessage(jid, msg),
-              new Promise((_, reject) =>
-                setTimeout(
-                  () => reject(new Error("WA_SEND_TIMEOUT")),
-                  timeoutMs,
-                ),
-              ),
-            ]);
-
-          // Get first image if available
-          const mediaUrls = (post.media || [])
-            .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-            .filter((m) => !m.igType)
-            .map((m) => m.url);
-          const mediaPaths = await Promise.all(
-            mediaUrls.map((url) => materializeUploadPath(url)),
-          );
-          const imagePath = mediaPaths[0] || null;
-
-          // Strip wa.me links from WhatsApp messages (not relevant in WA context)
-          const waContent = (post.content || "")
-            .replace(/\n*https?:\/\/wa\.me\/[^\s]*/g, "")
-            .trim();
+          const secret = process.env.INTERNAL_WORKER_SECRET;
+          const baseUrl = String(process.env.CLIENT_URL || "").replace(/\/$/, "");
+          const response = await fetch(`${baseUrl}/api/whatsapp/internal/publish`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-internal-worker-secret": secret || "",
+            },
+            body: JSON.stringify({ userId: user.id, postId: post.id }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.error || "WHATSAPP_SEND_FAILED");
+          result = payload;
 
           let sent = 0;
           let sendFailed = 0;

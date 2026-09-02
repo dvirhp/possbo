@@ -333,14 +333,20 @@ export default function Dashboard() {
     setShowConnectionsModal(false)
     setConnectingPlatform('facebook')
     try {
-      const response = await groupsService.startRemoteFacebookSession()
-      if (!response.data?.liveUrl) throw new Error(response.data?.error || 'connection_failed')
-      setFacebookLiveUrl(response.data.liveUrl)
       if (facebookConnectPollRef.current) clearInterval(facebookConnectPollRef.current)
+      const response = await groupsService.startRemoteFacebookSession()
+      const initialStatus = response.data?.status
+      if (response.data?.liveUrl) {
+        setFacebookLiveUrl(response.data.liveUrl)
+      } else if (!['starting', 'waiting', 'connected'].includes(initialStatus)) {
+        throw new Error(response.data?.error || 'connection_failed')
+      }
       facebookConnectPollRef.current = setInterval(async () => {
         try {
           const status = await groupsService.getRemoteFacebookSessionStatus()
-          if (status.data?.status === 'connected') {
+          if (status.data?.status === 'waiting' && status.data?.liveUrl) {
+            setFacebookLiveUrl(status.data.liveUrl)
+          } else if (status.data?.status === 'connected') {
             clearInterval(facebookConnectPollRef.current)
             facebookConnectPollRef.current = null
             setFacebookLiveUrl(null)
@@ -767,6 +773,16 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {connectingPlatform === 'facebook' && !facebookLiveUrl && (
+                <div className="connections-modal-backdrop facebook-browser-backdrop" role="presentation">
+                  <section className="facebook-connect-loading" role="status" aria-live="polite">
+                    <div className="wa-connect-spinner" />
+                    <h2>מכינים חיבור מאובטח ל־Facebook</h2>
+                    <p>יצירת הדפדפן עשויה להימשך מספר שניות. אין לסגור את החלון.</p>
+                  </section>
+                </div>
+              )}
+
               {facebookLiveUrl && (
                 <div className="connections-modal-backdrop facebook-browser-backdrop" role="presentation">
                   <section className="facebook-browser-modal" role="dialog" aria-modal="true" aria-labelledby="facebook-browser-title">
@@ -775,17 +791,20 @@ export default function Dashboard() {
                         <h2 id="facebook-browser-title">חיבור מאובטח ל־Facebook</h2>
                         <p>התחברו ישירות בחלון Facebook. Possbo לא שומרת את הסיסמה שלכם.</p>
                       </div>
-                      <button
-                        type="button"
-                        aria-label="סגירה"
-                        onClick={async () => {
-                          if (facebookConnectPollRef.current) clearInterval(facebookConnectPollRef.current)
-                          facebookConnectPollRef.current = null
-                          setFacebookLiveUrl(null)
-                          setConnectingPlatform(null)
-                          await groupsService.cancelRemoteFacebookSession().catch(() => {})
-                        }}
-                      >×</button>
+                      <div className="facebook-browser-actions">
+                        <a href={facebookLiveUrl} target="_blank" rel="noopener noreferrer">פתח במסך מלא</a>
+                        <button
+                          type="button"
+                          aria-label="סגירה"
+                          onClick={async () => {
+                            if (facebookConnectPollRef.current) clearInterval(facebookConnectPollRef.current)
+                            facebookConnectPollRef.current = null
+                            setFacebookLiveUrl(null)
+                            setConnectingPlatform(null)
+                            await groupsService.cancelRemoteFacebookSession().catch(() => {})
+                          }}
+                        >×</button>
+                      </div>
                     </header>
                     <iframe
                       src={facebookLiveUrl}
