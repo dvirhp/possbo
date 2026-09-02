@@ -241,6 +241,7 @@ export default function Dashboard() {
   const quickWhatsappPollRef = useRef(null)
   const [facebookLiveUrl, setFacebookLiveUrl] = useState(null)
   const facebookConnectPollRef = useRef(null)
+  const facebookPopupRef = useRef(null)
   const [dashDateRange, setDashDateRange] = useState({ from: '', to: '' })
   const [showDashDatePicker, setShowDashDatePicker] = useState(false)
   const groupFilterRef = useRef(null)
@@ -332,6 +333,29 @@ export default function Dashboard() {
   const connectFacebook = async () => {
     setShowConnectionsModal(false)
     setConnectingPlatform('facebook')
+
+    // Open a dedicated tab synchronously from the user click. Typing inside
+    // the embedded iframe is often laggy and may submit incomplete credentials.
+    if (!facebookPopupRef.current || facebookPopupRef.current.closed) {
+      facebookPopupRef.current = window.open('', 'facebook-remote', 'width=1280,height=900,left=120,top=80')
+    }
+
+    const openInPopup = (url) => {
+      const popup = facebookPopupRef.current
+      if (!popup || popup.closed || !url) return
+      try {
+        popup.location.replace(url)
+      } catch {
+        // Ignore cross-origin access errors; navigation still succeeds.
+      }
+    }
+
+    const closePopup = () => {
+      const popup = facebookPopupRef.current
+      if (!popup || popup.closed) return
+      popup.close()
+    }
+
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 
     const startRemoteWithRetry = async (maxAttempts = 4) => {
@@ -357,6 +381,7 @@ export default function Dashboard() {
       const initialStatus = response.data?.status
       if (response.data?.liveUrl) {
         setFacebookLiveUrl(response.data.liveUrl)
+        openInPopup(response.data.liveUrl)
       } else if (!['starting', 'waiting', 'connected'].includes(initialStatus)) {
         throw new Error(response.data?.error || 'connection_failed')
       }
@@ -365,17 +390,20 @@ export default function Dashboard() {
           const status = await groupsService.getRemoteFacebookSessionStatus()
           if (status.data?.status === 'waiting' && status.data?.liveUrl) {
             setFacebookLiveUrl(status.data.liveUrl)
+            openInPopup(status.data.liveUrl)
           } else if (status.data?.status === 'connected') {
             clearInterval(facebookConnectPollRef.current)
             facebookConnectPollRef.current = null
             setFacebookLiveUrl(null)
             setConnectingPlatform(null)
+            closePopup()
             setUser(prev => ({ ...prev, fbSessionValid: true }))
           } else if (['expired', 'error', 'cancelled'].includes(status.data?.status)) {
             clearInterval(facebookConnectPollRef.current)
             facebookConnectPollRef.current = null
             setFacebookLiveUrl(null)
             setConnectingPlatform(null)
+            closePopup()
             window.alert('חיבור Facebook לא הושלם. אפשר לנסות שוב ולהשלים גם אימות דו־שלבי אם Facebook מבקש.')
           }
         } catch { /* keep polling while the remote browser is visible */ }
@@ -383,6 +411,7 @@ export default function Dashboard() {
     } catch (err) {
       logClientError('quick_facebook_connect_failed', err, { source: 'Dashboard' })
       setConnectingPlatform(null)
+      closePopup()
       const reason = err.response?.data?.error || err.message
       window.alert(reason === 'not_configured'
         ? 'שירות החיבור המאובטח ל-Facebook עדיין לא הוגדר בשרת.'
@@ -474,6 +503,7 @@ export default function Dashboard() {
   useEffect(() => () => {
     if (quickWhatsappPollRef.current) clearInterval(quickWhatsappPollRef.current)
     if (facebookConnectPollRef.current) clearInterval(facebookConnectPollRef.current)
+    if (facebookPopupRef.current && !facebookPopupRef.current.closed) facebookPopupRef.current.close()
   }, [])
 
   const connections = [
@@ -829,7 +859,7 @@ export default function Dashboard() {
                     <header>
                       <div>
                         <h2 id="facebook-browser-title">חיבור מאובטח ל־Facebook</h2>
-                        <p>התחברו ישירות בחלון Facebook. Possbo לא שומרת את הסיסמה שלכם.</p>
+                        <p>התחברו ישירות בחלון Facebook. מומלץ להשתמש בטאב שנפתח למסך מלא. Possbo לא שומרת את הסיסמה שלכם.</p>
                       </div>
                       <div className="facebook-browser-actions">
                         <a href={facebookLiveUrl} target="_blank" rel="noopener noreferrer">פתח במסך מלא</a>
@@ -841,6 +871,7 @@ export default function Dashboard() {
                             facebookConnectPollRef.current = null
                             setFacebookLiveUrl(null)
                             setConnectingPlatform(null)
+                            if (facebookPopupRef.current && !facebookPopupRef.current.closed) facebookPopupRef.current.close()
                             await groupsService.cancelRemoteFacebookSession().catch(() => {})
                           }}
                         >×</button>
