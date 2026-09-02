@@ -95,6 +95,9 @@ export function formatUserResponse(user, extras = {}) {
     whatsappSessionPhone: user.whatsappSessionPhone || null,
     notificationSettings: user.notificationSettings || null,
     createdAt: user.createdAt,
+    // Explicit launch-mode entitlement. This bypasses the paywall without
+    // fabricating a paid subscription or payment record.
+    billingRequired: process.env.BILLING_REQUIRED !== "false",
     ...extras,
   };
 }
