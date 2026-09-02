@@ -2,8 +2,6 @@ projects:
   - name: Possbo
     environments:
       - name: Production
-        permissions:
-          protection: enabled
         services:
           - type: web
             name: possbo-api
