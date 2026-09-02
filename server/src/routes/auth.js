@@ -110,6 +110,19 @@ router.post("/register", async (req, res) => {
       return res.status(409).json({ error: "Email already registered" });
     }
 
+    // Reject an already-associated identity before hashing a password or
+    // sending an email that can never result in a valid registration.
+    const existingIdNumber = await prisma.user.findUnique({
+      where: { idNumber },
+      select: { id: true },
+    });
+    if (existingIdNumber) {
+      return res.status(409).json({
+        error: "תעודת הזהות כבר משויכת לחשבון קיים",
+        code: "ID_NUMBER_ALREADY_REGISTERED",
+      });
+    }
+
     // Generate and send verification code
     const code = generateCode();
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
@@ -234,6 +247,15 @@ router.post("/verify-email", async (req, res) => {
       user: formatUserResponse(user, { subscription: null }),
     });
   } catch (error) {
+    const conflictTarget = Array.isArray(error?.meta?.target)
+      ? error.meta.target.join(",")
+      : String(error?.meta?.target || "");
+    if (error?.code === "P2002" && /id_?number/i.test(conflictTarget)) {
+      return res.status(409).json({
+        error: "תעודת הזהות כבר משויכת לחשבון קיים",
+        code: "ID_NUMBER_ALREADY_REGISTERED",
+      });
+    }
     log.error("Email verification failed", error);
     res.status(500).json({ error: "Verification failed" });
   }
