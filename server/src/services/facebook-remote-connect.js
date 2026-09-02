@@ -42,6 +42,40 @@ function publicStatus(entry) {
   };
 }
 
+async function createRemoteSession(client, userId) {
+  const basePayload = {
+    projectId: process.env.BROWSERBASE_PROJECT_ID || undefined,
+    region: "eu-central-1",
+    api_timeout: SESSION_TIMEOUT_SECONDS,
+    userMetadata: { purpose: "facebook-connect", userId },
+  };
+
+  try {
+    return await client.sessions.create({
+      ...basePayload,
+      // Facebook commonly rejects cloud datacenter IPs during an
+      // interactive login. Browserbase's managed proxy provides a more
+      // appropriate egress path for this user-initiated session.
+      proxies: true,
+      browserSettings: {
+        viewport: { width: 1024, height: 720 },
+        os: "windows",
+        blockAds: true,
+        // Login sessions may contain passwords and 2FA codes. They must
+        // never appear in Browserbase recordings or session logs.
+        recordSession: false,
+        logSession: false,
+      },
+    });
+  } catch (error) {
+    log.warn("Enhanced Browserbase settings rejected, retrying with safe defaults", {
+      reason: error.message,
+      userId,
+    });
+    return client.sessions.create(basePayload);
+  }
+}
+
 export async function startFacebookRemoteConnect(userId) {
   const existing = sessions.get(userId);
   if (existing?.status === "starting" || existing?.status === "waiting") {
@@ -68,25 +102,7 @@ export async function startFacebookRemoteConnect(userId) {
     async () => {
       const client = getClient();
       try {
-        const remote = await client.sessions.create({
-          projectId: process.env.BROWSERBASE_PROJECT_ID || undefined,
-          region: "eu-central-1",
-          // Facebook commonly rejects cloud datacenter IPs during an
-          // interactive login. Browserbase's managed proxy provides a more
-          // appropriate egress path for this user-initiated session.
-          proxies: true,
-          api_timeout: SESSION_TIMEOUT_SECONDS,
-          browserSettings: {
-            viewport: { width: 1024, height: 720 },
-            os: "windows",
-            blockAds: true,
-            // Login sessions may contain passwords and 2FA codes. They must
-            // never appear in Browserbase recordings or session logs.
-            recordSession: false,
-            logSession: false,
-          },
-          userMetadata: { purpose: "facebook-connect", userId },
-        });
+        const remote = await createRemoteSession(client, userId);
         entry.sessionId = remote.id;
         entry.browser = await chromium.connectOverCDP(remote.connectUrl);
         const context = entry.browser.contexts()[0];

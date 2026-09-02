@@ -332,9 +332,28 @@ export default function Dashboard() {
   const connectFacebook = async () => {
     setShowConnectionsModal(false)
     setConnectingPlatform('facebook')
+    const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+
+    const startRemoteWithRetry = async (maxAttempts = 4) => {
+      let lastError
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          return await groupsService.startRemoteFacebookSession()
+        } catch (error) {
+          lastError = error
+          const reason = error.response?.data?.error || error.message
+          if (reason !== 'facebook_operation_in_progress' || attempt === maxAttempts) {
+            throw error
+          }
+          await wait(1500)
+        }
+      }
+      throw lastError || new Error('connection_failed')
+    }
+
     try {
       if (facebookConnectPollRef.current) clearInterval(facebookConnectPollRef.current)
-      const response = await groupsService.startRemoteFacebookSession()
+      const response = await startRemoteWithRetry()
       const initialStatus = response.data?.status
       if (response.data?.liveUrl) {
         setFacebookLiveUrl(response.data.liveUrl)
@@ -367,6 +386,8 @@ export default function Dashboard() {
       const reason = err.response?.data?.error || err.message
       window.alert(reason === 'not_configured'
         ? 'שירות החיבור המאובטח ל-Facebook עדיין לא הוגדר בשרת.'
+        : reason === 'facebook_operation_in_progress'
+          ? 'יש כרגע פעולה אחרת שמשתמשת בחיבור Facebook. נסו שוב בעוד כמה שניות.'
         : 'לא ניתן לפתוח כרגע את חיבור Facebook. נסו שוב בעוד רגע.')
     }
   }
