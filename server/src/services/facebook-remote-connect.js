@@ -8,6 +8,8 @@ import { withUserPublishLock } from "../utils/user-publish-lock.js";
 const log = createLogger("facebook-remote-connect");
 const SESSION_TIMEOUT_SECONDS = 15 * 60;
 const LOCK_LEASE_MS = 16 * 60 * 1000;
+const FACEBOOK_LOGIN_URL =
+  process.env.FACEBOOK_LOGIN_URL || "https://m.facebook.com/login.php";
 const sessions = new Map();
 
 function getClient() {
@@ -43,6 +45,7 @@ function publicStatus(entry) {
 }
 
 async function createRemoteSession(client, userId) {
+  const useProxy = process.env.BROWSERBASE_USE_PROXY === "true";
   const basePayload = {
     projectId: process.env.BROWSERBASE_PROJECT_ID || undefined,
     region: "eu-central-1",
@@ -53,12 +56,11 @@ async function createRemoteSession(client, userId) {
   try {
     return await client.sessions.create({
       ...basePayload,
-      // Facebook commonly rejects cloud datacenter IPs during an
-      // interactive login. Browserbase's managed proxy provides a more
-      // appropriate egress path for this user-initiated session.
-      proxies: true,
+      // Proxy mode is configurable because some accounts are more stable with
+      // a direct datacenter egress while others prefer managed proxy routing.
+      proxies: useProxy,
       browserSettings: {
-        viewport: { width: 1024, height: 720 },
+        viewport: { width: 430, height: 860 },
         os: "windows",
         blockAds: false,
         // Login sessions may contain passwords and 2FA codes. They must
@@ -107,10 +109,15 @@ export async function startFacebookRemoteConnect(userId) {
         entry.browser = await chromium.connectOverCDP(remote.connectUrl);
         const context = entry.browser.contexts()[0];
         const page = context.pages()[0] || (await context.newPage());
-        await page.goto("https://www.facebook.com/login", {
+        await page.goto(FACEBOOK_LOGIN_URL, {
           waitUntil: "domcontentloaded",
           timeout: 45000,
         });
+        await page
+          .waitForSelector('input[name="email"], input[name="pass"]', {
+            timeout: 15000,
+          })
+          .catch(() => {});
 
         const live = await client.sessions.debug(remote.id);
         const pageLiveUrl =

@@ -24,6 +24,8 @@ projects:
                 value: "false"
               - key: RUN_SCHEDULER
                 value: "false"
+              - key: BROWSERBASE_USE_PROXY
+                value: "false"
               - key: INTERNAL_WORKER_SECRET
                 generateValue: true
               - key: CLIENT_URL
@@ -109,6 +111,8 @@ projects:
                 value: "1"
               - key: RUN_SCHEDULER
                 value: "true"
+              - key: BROWSERBASE_USE_PROXY
+                fromService: { type: web, name: possbo-api, envVarKey: BROWSERBASE_USE_PROXY }
               - key: INTERNAL_WORKER_SECRET
                 fromService: { type: web, name: possbo-api, envVarKey: INTERNAL_WORKER_SECRET }
               - key: CLIENT_URL
