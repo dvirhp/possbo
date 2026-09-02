@@ -240,6 +240,7 @@ export default function Dashboard() {
   const [quickWhatsappQr, setQuickWhatsappQr] = useState(null)
   const quickWhatsappPollRef = useRef(null)
   const [facebookLiveUrl, setFacebookLiveUrl] = useState(null)
+  const [facebookConnectHint, setFacebookConnectHint] = useState(null)
   const facebookConnectPollRef = useRef(null)
   const facebookPopupRef = useRef(null)
   const [dashDateRange, setDashDateRange] = useState({ from: '', to: '' })
@@ -333,6 +334,7 @@ export default function Dashboard() {
   const connectFacebook = async () => {
     setShowConnectionsModal(false)
     setConnectingPlatform('facebook')
+    setFacebookConnectHint(null)
 
     // Open a dedicated tab synchronously from the user click. Typing inside
     // the embedded iframe is often laggy and may submit incomplete credentials.
@@ -379,6 +381,7 @@ export default function Dashboard() {
       if (facebookConnectPollRef.current) clearInterval(facebookConnectPollRef.current)
       const response = await startRemoteWithRetry()
       const initialStatus = response.data?.status
+      setFacebookConnectHint(response.data?.hint || null)
       if (response.data?.liveUrl) {
         setFacebookLiveUrl(response.data.liveUrl)
         openInPopup(response.data.liveUrl)
@@ -388,6 +391,7 @@ export default function Dashboard() {
       facebookConnectPollRef.current = setInterval(async () => {
         try {
           const status = await groupsService.getRemoteFacebookSessionStatus()
+          setFacebookConnectHint(status.data?.hint || null)
           if (status.data?.status === 'waiting' && status.data?.liveUrl) {
             setFacebookLiveUrl(status.data.liveUrl)
             openInPopup(status.data.liveUrl)
@@ -866,6 +870,9 @@ export default function Dashboard() {
                       <div>
                         <h2 id="facebook-browser-title">חיבור מאובטח ל־Facebook</h2>
                         <p>התחברו ישירות בחלון Facebook. מומלץ להשתמש בטאב שנפתח למסך מלא. Possbo לא שומרת את הסיסמה שלכם.</p>
+                        {facebookConnectHint === 'proxy_unavailable' && (
+                          <p className="facebook-proxy-warning">תוכנית Browserbase הנוכחית לא אפשרה proxy. Facebook עלול לדחות כניסה מכתובת שרת; במקרה כזה נדרש מסלול Browserbase שתומך ב־proxy.</p>
+                        )}
                       </div>
                       <div className="facebook-browser-actions">
                         <a href={facebookLiveUrl} target="_blank" rel="noopener noreferrer">פתח במסך מלא</a>
