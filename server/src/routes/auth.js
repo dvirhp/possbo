@@ -18,6 +18,7 @@ import {
   generateCode,
 } from "../utils/mailer.js";
 import { verifyTurnstile } from "../utils/turnstile.js";
+import { persistUpload } from "../services/object-storage.js";
 import {
   setRefreshCookie,
   formatUserResponse,
@@ -929,6 +930,7 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
     return res.status(400).json({ error: "No file uploaded" });
   }
   const profileImage = `/uploads/${req.file.filename}`;
+  await persistUpload(req.file.path, req.file.filename, req.file.mimetype);
   await prisma.user.update({
     where: { id: req.user.id },
     data: { profileImage },
