@@ -10,6 +10,7 @@ import prisma from "../config/prisma.js";
 import { invalidateDashboardCache } from "./analytics.js";
 import { createLogger } from "../utils/logger.js";
 import { dispatchPublicationNotification } from "../utils/notification-service.js";
+import { persistUpload } from "../services/object-storage.js";
 import {
   sendText,
   sendImage,
@@ -3891,7 +3892,10 @@ async function downloadBotMedia(mediaId, subdirectory = "") {
     : uploadsDir;
   await fs.mkdir(targetDirectory, { recursive: true });
   const filename = `wa-bot-${crypto.randomUUID()}${extension}`;
-  await fs.writeFile(path.join(targetDirectory, filename), buffer);
+  const localPath = path.join(targetDirectory, filename);
+  await fs.writeFile(localPath, buffer);
+  const objectKey = subdirectory ? `${subdirectory}/${filename}` : filename;
+  await persistUpload(localPath, objectKey, contentType);
   return { filename };
 }
 

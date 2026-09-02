@@ -19,6 +19,7 @@ import { isAllowedUrl, sanitizeText } from "../utils/security.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { requireAuth } from "../utils/auth-middleware.js";
 import { uploadSingle, uploadsDir } from "../utils/upload-service.js";
+import { persistUpload } from "../services/object-storage.js";
 
 const router = express.Router();
 const log = createLogger("groups");
@@ -54,6 +55,7 @@ async function downloadGroupImage(fbImageUrl, groupId) {
     const filePath = path.join(groupImagesDir, filename);
     const buffer = Buffer.from(await response.arrayBuffer());
     fs.writeFileSync(filePath, buffer);
+    await persistUpload(filePath, `groups/${filename}`, contentType);
 
     return `/uploads/groups/${filename}`;
   } catch {
