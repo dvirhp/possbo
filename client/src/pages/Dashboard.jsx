@@ -394,33 +394,52 @@ export default function Dashboard() {
 
   const connectInstagram = async () => {
     setConnectingPlatform('instagram')
-    // Open synchronously from the click event. Browsers commonly block popups
-    // created only after awaiting a network request.
-    const popup = window.open('', 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+    // Open synchronously from the click event with a server-side redirect to
+    // avoid an extra client API roundtrip before the popup navigates.
+    const popup = window.open('/api/instagram/auth-start', 'instagram-oauth', 'width=600,height=700,left=200,top=100')
     if (!popup) {
       setConnectingPlatform(null)
       window.alert('הדפדפן חסם את חלון החיבור. יש לאפשר חלונות קופצים ולנסות שוב.')
       return
     }
-    try {
-      const res = await authAPI.getInstagramAuthUrl()
-      if (!res.data?.authUrl) throw new Error('Missing Instagram authorization URL')
-      popup.location.replace(res.data.authUrl)
-      const handleMessage = (event) => {
-        if (event.data?.type !== 'instagram-oauth-callback') return
-        window.removeEventListener('message', handleMessage)
-        setConnectingPlatform(null)
-        if (event.data.success) {
-          setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
-        }
-      }
-      window.addEventListener('message', handleMessage)
-    } catch (err) {
-      popup.close()
+
+    let completed = false
+    const popupClosedWatcher = setInterval(() => {
+      if (!popup.closed || completed) return
+      clearInterval(popupClosedWatcher)
       setConnectingPlatform(null)
-      logClientError('quick_instagram_connect_failed', err, { source: 'Dashboard' })
-      window.alert(err.message === 'POPUP_BLOCKED' ? 'הדפדפן חסם את חלון החיבור. יש לאפשר חלונות קופצים ולנסות שוב.' : 'לא ניתן לפתוח את חיבור Instagram')
+    }, 700)
+
+    const finalize = () => {
+      completed = true
+      clearInterval(popupClosedWatcher)
+      window.removeEventListener('message', handleMessage)
     }
+
+    const mapInstagramError = (errorCode) => {
+      if (!errorCode) return 'חיבור Instagram בוטל או נכשל. נסו שוב.'
+      if (errorCode === 'not_configured') return 'שירות Instagram עדיין לא הוגדר בשרת.'
+      if (errorCode === 'access_denied') return 'ההרשאה ל-Instagram נדחתה. נסו שוב ואשרו את כל ההרשאות.'
+      if (errorCode === 'server_error' || errorCode === 'auth_start_failed') return 'אירעה שגיאת שרת בחיבור Instagram. נסו שוב בעוד רגע.'
+      return `חיבור Instagram נכשל: ${errorCode}`
+    }
+
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type !== 'instagram-oauth-callback') return
+
+      finalize()
+      setConnectingPlatform(null)
+
+      if (event.data.success) {
+        setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
+        return
+      }
+
+      window.alert(mapInstagramError(event.data.error))
+    }
+
+    window.addEventListener('message', handleMessage)
   }
 
   const connectWhatsapp = async () => {

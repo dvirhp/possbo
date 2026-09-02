@@ -8,6 +8,30 @@ import { dispatchPublicationNotification } from "../utils/notification-service.j
 const router = express.Router();
 const log = createLogger("instagram");
 
+function buildInstagramAuthUrl(userId) {
+  const appId = process.env.INSTAGRAM_APP_ID;
+  const redirectUri = process.env.INSTAGRAM_REDIRECT_URI;
+  if (!appId || !redirectUri) {
+    const err = new Error("INSTAGRAM_NOT_CONFIGURED");
+    err.code = "INSTAGRAM_NOT_CONFIGURED";
+    throw err;
+  }
+
+  // Insights are required for post, Reel and Story performance reporting.
+  // The permission must also be enabled for the Instagram use case in Meta.
+  const scope =
+    "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights";
+
+  return (
+    `https://www.instagram.com/oauth/authorize` +
+    `?client_id=${appId}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=${scope}` +
+    `&response_type=code` +
+    `&state=${encodeURIComponent(String(userId || ""))}`
+  );
+}
+
 // Auth middleware
 function requireAuth(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
@@ -106,26 +130,44 @@ router.get("/status", requireAuth, async (req, res) => {
 
 // ─── GET /instagram/auth-url — Generate Instagram OAuth URL ─────────
 router.get("/auth-url", requireAuth, (req, res) => {
-  const appId = process.env.INSTAGRAM_APP_ID;
-  const redirectUri = process.env.INSTAGRAM_REDIRECT_URI;
-
-  if (!appId || !redirectUri) {
-    return res.status(500).json({ error: "Instagram API not configured" });
+  try {
+    const authUrl = buildInstagramAuthUrl(req.user.id);
+    return res.json({ success: true, authUrl });
+  } catch (error) {
+    log.error("Instagram auth-url generation failed", error, {
+      userId: req.user?.id,
+    });
+    return res.status(500).json({
+      error:
+        error.code === "INSTAGRAM_NOT_CONFIGURED"
+          ? "שירות Instagram עדיין לא הוגדר בשרת"
+          : "לא ניתן לפתוח את חלון ההתחברות ל-Instagram כרגע",
+    });
   }
+});
 
-  // Insights are required for post, Reel and Story performance reporting.
-  // The permission must also be enabled for the Instagram use case in Meta.
-  const scope =
-    "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights";
-  const authUrl =
-    `https://www.instagram.com/oauth/authorize` +
-    `?client_id=${appId}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=${scope}` +
-    `&response_type=code` +
-    `&state=${req.user.id}`;
-
-  res.json({ success: true, authUrl });
+// ─── GET /instagram/auth-start — Redirect popup directly to Instagram OAuth ─
+router.get("/auth-start", requireAuth, (req, res) => {
+  try {
+    return res.redirect(302, buildInstagramAuthUrl(req.user.id));
+  } catch (error) {
+    log.error("Instagram auth-start redirect failed", error, {
+      userId: req.user?.id,
+    });
+    const clientUrl = process.env.CLIENT_URL || "";
+    if (clientUrl) {
+      return res.redirect(
+        `${clientUrl}/oauth/instagram/callback?error=${encodeURIComponent(
+          error.code === "INSTAGRAM_NOT_CONFIGURED"
+            ? "not_configured"
+            : "auth_start_failed",
+        )}`,
+      );
+    }
+    return res
+      .status(500)
+      .send("Instagram auth could not be started. Missing CLIENT_URL.");
+  }
 });
 
 // ─── POST /instagram/connect — Exchange code for token (popup flow) ─
