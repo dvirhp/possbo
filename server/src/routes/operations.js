@@ -3,6 +3,7 @@ import prisma from "../config/prisma.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { requireAdmin } from "../utils/auth-middleware.js";
 import { getBrowserResourceStats } from "../utils/browser-factory.js";
+import { getContainerMemoryUsage } from "../utils/container-memory.js";
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -28,7 +29,7 @@ router.get("/health-metrics", asyncHandler(async (req, res) => {
     return acc;
   }, {})).map((item) => ({ ...item, successRate: percent(item.success, item.total) }));
   const heartbeatAgeSeconds = heartbeat ? Math.round((Date.now() - heartbeat.timestamp.getTime()) / 1000) : null;
-  res.json({ windowHours: hours, http: { p95Ms: Math.round(latencyRows[0]?.p95 || 0), p99Ms: Math.round(latencyRows[0]?.p99 || 0) }, queue: queueRows[0] || {}, jobs: statuses, platforms: byPlatform, worker: { healthy: heartbeatAgeSeconds != null && heartbeatAgeSeconds < 180, heartbeatAgeSeconds }, chromium: getBrowserResourceStats(), process: { rssMb: Math.round(process.memoryUsage().rss / 1048576), cpu: process.cpuUsage() } });
+  res.json({ windowHours: hours, http: { p95Ms: Math.round(latencyRows[0]?.p95 || 0), p99Ms: Math.round(latencyRows[0]?.p99 || 0) }, queue: queueRows[0] || {}, jobs: statuses, platforms: byPlatform, worker: { healthy: heartbeatAgeSeconds != null && heartbeatAgeSeconds < 180, heartbeatAgeSeconds }, chromium: getBrowserResourceStats(), process: { ...getContainerMemoryUsage(), cpu: process.cpuUsage() } });
 }));
 
 router.get("/insights", asyncHandler(async (req, res) => {

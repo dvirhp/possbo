@@ -109,6 +109,16 @@ projects:
                 value: "320"
               - key: CHROMIUM_CONCURRENCY
                 value: "1"
+              - key: BROWSER_PAGE_CONCURRENCY
+                value: "1"
+              - key: PUBLICATION_USER_CONCURRENCY
+                value: "1"
+              - key: PUBLICATION_CLAIM_LIMIT
+                value: "2"
+              - key: CHROMIUM_MIN_HEADROOM_MB
+                value: "220"
+              - key: WORKER_MEMORY_HIGH_WATERMARK
+                value: "0.88"
               - key: RUN_SCHEDULER
                 value: "true"
               - key: BROWSERBASE_USE_PROXY

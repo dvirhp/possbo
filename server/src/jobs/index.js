@@ -15,6 +15,7 @@ import { createLogger } from "../utils/logger.js";
 import prisma from "../config/prisma.js";
 import { runRetentionCleanup } from "./retention-cleanup.js";
 import { sendExternalAlert } from "../utils/external-alerts.js";
+import { getContainerMemoryUsage } from "../utils/container-memory.js";
 
 const log = createLogger("scheduler");
 
@@ -64,7 +65,8 @@ export function startScheduler() {
         prisma.publicationJob.count({ where: { status: "RUNNING" } }),
         prisma.publicationJob.count({ where: { status: "FAILED", updatedAt: { gte: new Date(Date.now() - 3600000) } } }),
       ]);
-      const meta = { event: "worker_heartbeat", pendingJobs: pending, runningJobs: running, failedJobsLastHour: failed, runningTasks: [...runningTasks], memoryMb: Math.round(process.memoryUsage().rss / 1048576) };
+      const memory = getContainerMemoryUsage();
+      const meta = { event: "worker_heartbeat", pendingJobs: pending, runningJobs: running, failedJobsLastHour: failed, runningTasks: [...runningTasks], memoryMb: memory.processRssMb, containerMemory: memory };
       if (failed >= Number(process.env.ALERT_FAILED_JOBS_PER_HOUR || 5)) {
         log.warn("Worker failure threshold exceeded", { ...meta, event: "worker_failure_threshold" });
         void sendExternalAlert("worker_failure_threshold", meta);
