@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import { createLogger } from "./logger.js";
+import { getContainerMemoryUsage } from "./container-memory.js";
 
 const log = createLogger("browser");
 
@@ -9,6 +10,14 @@ const MEMORY_LIMIT_MB = Math.max(256, Number(process.env.WORKER_MEMORY_LIMIT_MB 
 const RESERVED_MEMORY_MB = Math.max(128, Number(process.env.WORKER_RESERVED_MEMORY_MB || 256));
 const CHROMIUM_MEMORY_MB = Math.max(128, Number(process.env.CHROMIUM_MEMORY_MB || 350));
 const configuredConcurrency = Number(process.env.CHROMIUM_CONCURRENCY || 0);
+const MIN_BROWSER_HEADROOM_MB = Math.max(
+  128,
+  Number(process.env.CHROMIUM_MIN_HEADROOM_MB || 220),
+);
+const MEMORY_HIGH_WATERMARK = Math.min(
+  0.97,
+  Math.max(0.7, Number(process.env.WORKER_MEMORY_HIGH_WATERMARK || 0.88)),
+);
 export const CHROMIUM_CONCURRENCY = Math.max(
   1,
   configuredConcurrency || Math.floor((MEMORY_LIMIT_MB - RESERVED_MEMORY_MB) / CHROMIUM_MEMORY_MB),
@@ -176,6 +185,12 @@ const COMMON_ARGS = [
   // letting Chromium crash when a Facebook page fills shared memory.
   "--disable-dev-shm-usage",
   "--no-sandbox",
+  "--renderer-process-limit=1",
+  "--disable-background-networking",
+  "--disable-component-update",
+  "--disable-default-apps",
+  "--disable-extensions",
+  "--no-first-run",
 ];
 
 /**
@@ -198,11 +213,44 @@ export async function launchBrowser(options = {}) {
 
   await acquireBrowserSlot();
   try {
+    const before = getContainerMemoryUsage();
+    if (
+      before.availableMb !== null &&
+      before.availableMb < MIN_BROWSER_HEADROOM_MB
+    ) {
+      throw new Error(
+        `BROWSER_MEMORY_BUDGET_EXCEEDED:${before.availableMb}MB_AVAILABLE`,
+      );
+    }
+    log.info("Launching Chromium", {
+      containerMemory: before,
+      minimumHeadroomMb: MIN_BROWSER_HEADROOM_MB,
+    });
     const browser = await chromium.launch(launchOpts);
     let released = false;
+    let closingForMemory = false;
+    const memoryWatchdog = setInterval(() => {
+      const usage = getContainerMemoryUsage();
+      if (
+        closingForMemory ||
+        usage.usagePercent === null ||
+        usage.usagePercent < MEMORY_HIGH_WATERMARK * 100
+      ) {
+        return;
+      }
+      closingForMemory = true;
+      log.error("Closing Chromium before container memory exhaustion", {
+        event: "chromium_memory_guard_triggered",
+        containerMemory: usage,
+        highWatermarkPercent: MEMORY_HIGH_WATERMARK * 100,
+      });
+      void browser.close().catch(() => {});
+    }, 250);
+    memoryWatchdog.unref?.();
     browser.on("disconnected", () => {
       if (released) return;
       released = true;
+      clearInterval(memoryWatchdog);
       releaseBrowserSlot();
     });
     return browser;

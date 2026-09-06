@@ -751,7 +751,10 @@ export async function scrapeUserPublicationMetrics(userId, publications) {
   const browser = await launchBrowser();
 
   const results = [];
-  const CONCURRENCY = 3;
+  const CONCURRENCY = Math.max(
+    1,
+    Number.parseInt(process.env.BROWSER_PAGE_CONCURRENCY || "1", 10),
+  );
 
   try {
     const context = await createBrowserContext(browser, {
