@@ -472,6 +472,7 @@ export default function Dashboard() {
       if (!errorCode) return 'חיבור Instagram בוטל או נכשל. נסו שוב.'
       if (errorCode === 'not_configured') return 'שירות Instagram עדיין לא הוגדר בשרת.'
       if (errorCode === 'access_denied') return 'ההרשאה ל-Instagram נדחתה. נסו שוב ואשרו את כל ההרשאות.'
+      if (errorCode === 'account_already_connected') return 'חשבון Instagram הזה כבר מחובר לחשבון Possbo אחר. יש להתנתק מהחשבון הקודם ולנתק שם את Instagram, או לפנות לתמיכה להעברת החיבור.'
       if (errorCode === 'server_error' || errorCode === 'auth_start_failed') return 'אירעה שגיאת שרת בחיבור Instagram. נסו שוב בעוד רגע.'
       return `חיבור Instagram נכשל: ${errorCode}`
     }

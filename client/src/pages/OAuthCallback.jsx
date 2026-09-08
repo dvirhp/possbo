@@ -36,6 +36,9 @@ export default function OAuthCallback() {
       const success = params.get('success') === 'true'
       const username = params.get('username')
       const error = params.get('error')
+      const errorMessage = error === 'account_already_connected'
+        ? 'חשבון Instagram הזה כבר מחובר לחשבון Possbo אחר. יש לנתק אותו מהחשבון הקודם או לפנות לתמיכה.'
+        : 'חיבור Instagram נכשל. נסו שוב או פנו לתמיכה.'
 
       if (window.opener) {
         window.opener.postMessage({
@@ -44,8 +47,8 @@ export default function OAuthCallback() {
           username,
           error,
         }, window.location.origin)
-        setStatus(success ? 'הצלחה! סוגר חלון...' : 'שגיאה: ' + (error || 'unknown'))
-        setTimeout(() => window.close(), 500)
+        setStatus(success ? 'הצלחה! סוגר חלון...' : errorMessage)
+        setTimeout(() => window.close(), success ? 500 : 2500)
       } else {
         logClientWarning('instagram_oauth_callback_without_opener', success ? 'OAuth callback opened without opener after success' : 'OAuth callback opened without opener after error', {
           source: 'OAuthCallback',
@@ -56,7 +59,7 @@ export default function OAuthCallback() {
           // Try to close, if can't — show message
           setTimeout(() => window.close(), 1000)
         } else {
-          setStatus('שגיאה: ' + (error || 'unknown'))
+          setStatus(errorMessage)
         }
       }
       return

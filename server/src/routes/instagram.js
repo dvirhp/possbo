@@ -469,7 +469,11 @@ router.get("/callback", async (req, res) => {
     );
   } catch (err) {
     log.error("Instagram callback error", err);
-    res.redirect(`${clientUrl}/oauth/instagram/callback?error=server_error`);
+    const errorCode =
+      err?.code === "P2002" ? "account_already_connected" : "server_error";
+    res.redirect(
+      `${clientUrl}/oauth/instagram/callback?error=${errorCode}`,
+    );
   }
 });
 
