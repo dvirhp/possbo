@@ -269,21 +269,32 @@ router.post("/connect", requireAuth, async (req, res) => {
     const encryptedToken = encrypt(longToken);
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
 
-    // Upsert by userId + provider (delete old record if providerUserId changed due to precision fix)
-    await prisma.connectedAccount.deleteMany({
-      where: { userId, provider: "INSTAGRAM" },
-    });
-    await prisma.connectedAccount.create({
-      data: {
-        userId,
-        provider: "INSTAGRAM",
-        providerUserId: graphUserId,
-        providerUserName: username,
-        accessTokenEncrypted: encryptedToken,
-        tokenExpiresAt,
-        status: "ACTIVE",
-      },
-    });
+    // A stale EXPIRED/DISCONNECTED owner must not block a fresh OAuth proof.
+    // Keep ACTIVE ownership protected so one Instagram account cannot be used
+    // concurrently by two Possbo users.
+    await prisma.$transaction([
+      prisma.connectedAccount.deleteMany({
+        where: {
+          provider: "INSTAGRAM",
+          providerUserId: graphUserId,
+          status: { in: ["EXPIRED", "DISCONNECTED"] },
+        },
+      }),
+      prisma.connectedAccount.deleteMany({
+        where: { userId, provider: "INSTAGRAM" },
+      }),
+      prisma.connectedAccount.create({
+        data: {
+          userId,
+          provider: "INSTAGRAM",
+          providerUserId: graphUserId,
+          providerUserName: username,
+          accessTokenEncrypted: encryptedToken,
+          tokenExpiresAt,
+          status: "ACTIVE",
+        },
+      }),
+    ]);
 
     // If user has no profile picture, use the Instagram one
     if (igProfilePicture) {
@@ -424,21 +435,29 @@ router.get("/callback", async (req, res) => {
     const encryptedToken = encrypt(longToken);
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
 
-    // Delete + create instead of upsert (providerUserId may have changed due to precision fix)
-    await prisma.connectedAccount.deleteMany({
-      where: { userId, provider: "INSTAGRAM" },
-    });
-    await prisma.connectedAccount.create({
-      data: {
-        userId,
-        provider: "INSTAGRAM",
-        providerUserId: graphUserId,
-        providerUserName: username,
-        accessTokenEncrypted: encryptedToken,
-        tokenExpiresAt,
-        status: "ACTIVE",
-      },
-    });
+    await prisma.$transaction([
+      prisma.connectedAccount.deleteMany({
+        where: {
+          provider: "INSTAGRAM",
+          providerUserId: graphUserId,
+          status: { in: ["EXPIRED", "DISCONNECTED"] },
+        },
+      }),
+      prisma.connectedAccount.deleteMany({
+        where: { userId, provider: "INSTAGRAM" },
+      }),
+      prisma.connectedAccount.create({
+        data: {
+          userId,
+          provider: "INSTAGRAM",
+          providerUserId: graphUserId,
+          providerUserName: username,
+          accessTokenEncrypted: encryptedToken,
+          tokenExpiresAt,
+          status: "ACTIVE",
+        },
+      }),
+    ]);
 
     // If user has no profile picture, use the Instagram one
     if (igProfilePicture) {
@@ -480,9 +499,8 @@ router.get("/callback", async (req, res) => {
 // ─── POST /instagram/disconnect — Disconnect Instagram ──────────────
 router.post("/disconnect", requireAuth, async (req, res) => {
   try {
-    await prisma.connectedAccount.updateMany({
+    await prisma.connectedAccount.deleteMany({
       where: { userId: req.user.id, provider: "INSTAGRAM" },
-      data: { status: "DISCONNECTED" },
     });
 
     res.json({ success: true });
