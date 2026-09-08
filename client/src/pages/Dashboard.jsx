@@ -4,7 +4,7 @@ import { useAppData } from '../context/DataProvider'
 import { useTheme } from '../context/ThemeProvider'
 import { groupsService } from '../services/groupsService'
 import { authAPI } from '../services/api'
-import { logClientError, logClientWarning } from '../services/clientLogger'
+import { logClientError } from '../services/clientLogger'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 import DashboardOverview from '../components/DashboardOverview'
@@ -456,15 +456,26 @@ export default function Dashboard() {
     }
 
     let completed = false
+    let statusPoll = null
     const popupClosedWatcher = setInterval(() => {
       if (!popup.closed || completed) return
-      clearInterval(popupClosedWatcher)
-      setConnectingPlatform(null)
+      // The OAuth callback can lose window.opener after crossing Instagram.
+      // Do one final server check before treating a closed popup as cancelled.
+      authAPI.getInstagramStatus().then(statusResponse => {
+        if (statusResponse.data?.connected) {
+          const account = statusResponse.data.account
+          setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: account?.username }))
+        }
+      }).catch(() => {}).finally(() => {
+        finalize()
+        setConnectingPlatform(null)
+      })
     }, 700)
 
     const finalize = () => {
       completed = true
       clearInterval(popupClosedWatcher)
+      if (statusPoll) clearInterval(statusPoll)
       window.removeEventListener('message', handleMessage)
     }
 
@@ -493,6 +504,18 @@ export default function Dashboard() {
     }
 
     window.addEventListener('message', handleMessage)
+    statusPoll = setInterval(async () => {
+      if (completed) return
+      try {
+        const statusResponse = await authAPI.getInstagramStatus()
+        if (!statusResponse.data?.connected) return
+        finalize()
+        setConnectingPlatform(null)
+        const account = statusResponse.data.account
+        setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: account?.username }))
+        if (!popup.closed) popup.close()
+      } catch { /* keep polling while OAuth is in progress */ }
+    }, 1500)
   }
 
   const connectWhatsapp = async () => {
@@ -3911,6 +3934,8 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
   const [pwSuccess, setPwSuccess] = useState(false)
   // Facebook
   const [disconnecting, setDisconnecting] = useState(false)
+  const [igConnecting, setIgConnecting] = useState(false)
+  const igConnectPollRef = useRef(null)
   // WhatsApp
   const [waNumber, setWaNumber] = useState(user?.whatsappNumber || '')
   const [waMessage, setWaMessage] = useState(user?.whatsappMessage || '')
@@ -3927,7 +3952,51 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
   const waConnectPollRef = useRef(null)
 
   // Clean up WA connect polling on unmount
-  useEffect(() => () => { if (waConnectPollRef.current) clearInterval(waConnectPollRef.current) }, [])
+  useEffect(() => () => {
+    if (waConnectPollRef.current) clearInterval(waConnectPollRef.current)
+    if (igConnectPollRef.current) clearInterval(igConnectPollRef.current)
+  }, [])
+
+  const connectInstagramFromSettings = async () => {
+    setIgConnecting(true)
+    const popup = window.open('', 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+    if (!popup) {
+      setIgConnecting(false)
+      window.alert('הדפדפן חסם את חלון החיבור. יש לאפשר חלונות קופצים ולנסות שוב.')
+      return
+    }
+
+    try {
+      const response = await authAPI.getInstagramAuthUrl()
+      if (!response.data?.authUrl) throw new Error('Missing Instagram OAuth URL')
+      popup.location.replace(response.data.authUrl)
+
+      const startedAt = Date.now()
+      if (igConnectPollRef.current) clearInterval(igConnectPollRef.current)
+      igConnectPollRef.current = setInterval(async () => {
+        try {
+          const statusResponse = await authAPI.getInstagramStatus()
+          if (statusResponse.data?.connected) {
+            clearInterval(igConnectPollRef.current)
+            igConnectPollRef.current = null
+            const account = statusResponse.data.account
+            setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: account?.username }))
+            setIgConnecting(false)
+            if (!popup.closed) popup.close()
+          } else if (popup.closed || Date.now() - startedAt > 5 * 60 * 1000) {
+            clearInterval(igConnectPollRef.current)
+            igConnectPollRef.current = null
+            setIgConnecting(false)
+          }
+        } catch { /* keep polling while OAuth is in progress */ }
+      }, 1500)
+    } catch (error) {
+      popup.close()
+      setIgConnecting(false)
+      logClientError('instagram_auth_url_failed', error, { source: 'SettingsPanel' })
+      window.alert(error.userMessage || 'לא ניתן לפתוח כרגע את החיבור ל־Instagram. נסו שוב בעוד רגע.')
+    }
+  }
 
   // WhatsApp number validation
   const validateWaNumber = (num) => {
@@ -4295,43 +4364,8 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                       </button>
                     </>
                   ) : (
-                    <button className="conn-btn conn-btn--primary" onClick={async () => {
-                      try {
-                        const res = await authAPI.getInstagramAuthUrl()
-                        if (res.data.authUrl) {
-                          const popup = window.open(res.data.authUrl, 'instagram-oauth', 'width=600,height=700,left=200,top=100')
-                          if (!popup) {
-                            logClientWarning('instagram_popup_blocked', 'Instagram OAuth popup could not be opened', { source: 'Dashboard' })
-                          }
-                          const handleMessage = (event) => {
-                            if (!event.data || event.data.type !== 'instagram-oauth-callback') return
-                            window.removeEventListener('message', handleMessage)
-                            if (event.data.success) {
-                              setUser(prev => ({ ...prev, instagramConnected: true, instagramUsername: event.data.username }))
-                            }
-                          }
-                          window.addEventListener('message', handleMessage)
-                          const timer = setInterval(async () => {
-                            if (popup?.closed) {
-                              clearInterval(timer)
-                              window.removeEventListener('message', handleMessage)
-                              try {
-                                const statusRes = await authAPI.getInstagramStatus()
-                                if (statusRes?.data?.connected) {
-                                  const updates = { instagramConnected: true, instagramUsername: statusRes.data.account?.username }
-                                  if (statusRes.data.avatarUrl) updates.avatarUrl = statusRes.data.avatarUrl
-                                  setUser(prev => ({ ...prev, ...updates }))
-                                }
-                              } catch (err) { logClientError('instagram_status_check_failed', err, { source: 'Dashboard' }) }
-                            }
-                          }, 500)
-                        }
-                      } catch (err) {
-                        logClientError('instagram_auth_url_failed', err, { source: 'Dashboard' })
-                        window.alert(err?.response?.data?.error || err?.userMessage || 'שגיאה ביצירת קישור חיבור')
-                      }
-                    }}>
-                      חבר
+                    <button className="conn-btn conn-btn--primary" onClick={connectInstagramFromSettings} disabled={igConnecting}>
+                      {igConnecting ? 'מתחבר...' : 'חבר'}
                     </button>
                   )}
                 </div>
