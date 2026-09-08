@@ -78,6 +78,14 @@ projects:
                 sync: false
               - key: FACEBOOK_APP_SECRET
                 sync: false
+              # Instagram Login can use a dedicated Meta app. When these are
+              # omitted, the API falls back to the Facebook Meta app above.
+              - key: INSTAGRAM_APP_ID
+                sync: false
+              - key: INSTAGRAM_APP_SECRET
+                sync: false
+              - key: INSTAGRAM_REDIRECT_URI
+                value: https://possbo-api.onrender.com/api/instagram/callback
               # Public site key compiled into the Vite bundle via Docker ARG.
               - key: VITE_TURNSTILE_SITE_KEY
                 sync: false
