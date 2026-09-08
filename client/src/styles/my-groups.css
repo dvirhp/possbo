@@ -25,6 +25,21 @@
   margin-bottom: 20px;
 }
 
+.my-groups-page .page-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.my-groups-page .page-header h2 {
+  margin: 0;
+}
+
+.groups-header-sync {
+  white-space: nowrap;
+}
+
 .refresh-btn {
   padding: 12px 24px;
   border: none;
@@ -45,6 +60,17 @@
 .refresh-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+  .my-groups-page .page-header {
+    grid-template-columns: auto 1fr;
+  }
+
+  .groups-header-sync {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
 }
 
 .error-message {

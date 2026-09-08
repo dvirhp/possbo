@@ -67,6 +67,13 @@ export default function MyGroups() {
       <div className="page-header">
         <BackButton />
         <h2>👥 קבוצות פייסבוק</h2>
+        <button
+          onClick={refreshGroups}
+          disabled={refreshing || loadingGroups}
+          className="refresh-btn groups-header-sync"
+        >
+          {refreshing ? 'מסנכרן קבוצות...' : 'סנכרון קבוצות'}
+        </button>
       </div>
 
       {/* Profile Publishing Section */}
@@ -86,16 +93,6 @@ export default function MyGroups() {
             ✍️ צור פוסט לפרופיל
           </button>
         </div>
-      </div>
-
-      <div className="groups-actions">
-        <button
-          onClick={refreshGroups}
-          disabled={refreshing || loadingGroups}
-          className="refresh-btn"
-        >
-          {refreshing ? '🔄 טוען קבוצות...' : groups.length > 0 ? '🔄 רענן קבוצות' : '📋 טען את הקבוצות שלי'}
-        </button>
       </div>
 
       {error && <div className="error-message">{error}</div>}

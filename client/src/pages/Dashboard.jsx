@@ -433,12 +433,25 @@ export default function Dashboard() {
 
   const connectInstagram = async () => {
     setConnectingPlatform('instagram')
-    // Open synchronously from the click event with a server-side redirect to
-    // avoid an extra client API roundtrip before the popup navigates.
-    const popup = window.open('/api/instagram/auth-start', 'instagram-oauth', 'width=600,height=700,left=200,top=100')
+    // Reserve the popup synchronously so it is not blocked. The OAuth URL must
+    // be fetched through the API because navigation cannot carry our JWT
+    // Authorization header.
+    const popup = window.open('', 'instagram-oauth', 'width=600,height=700,left=200,top=100')
     if (!popup) {
       setConnectingPlatform(null)
       window.alert('הדפדפן חסם את חלון החיבור. יש לאפשר חלונות קופצים ולנסות שוב.')
+      return
+    }
+
+    try {
+      const response = await authAPI.getInstagramAuthUrl()
+      if (!response.data?.authUrl) throw new Error('Missing Instagram OAuth URL')
+      popup.location.replace(response.data.authUrl)
+    } catch (error) {
+      popup.close()
+      setConnectingPlatform(null)
+      logClientError('instagram_auth_url_failed', error, { source: 'Dashboard' })
+      window.alert(error.userMessage || 'לא ניתן לפתוח כרגע את החיבור ל־Instagram. נסו שוב בעוד רגע.')
       return
     }
 
@@ -868,8 +881,8 @@ export default function Dashboard() {
                   <section className="facebook-browser-modal" role="dialog" aria-modal="true" aria-labelledby="facebook-browser-title">
                     <header>
                       <div>
-                        <h2 id="facebook-browser-title">חיבור מאובטח ל־Facebook</h2>
-                        <p>התחברו ישירות בחלון Facebook. מומלץ להשתמש בטאב שנפתח למסך מלא. Possbo לא שומרת את הסיסמה שלכם.</p>
+                        <h2 id="facebook-browser-title">ההתחברות נפתחה בחלון חדש</h2>
+                        <p>השלימו את ההתחברות ואת בדיקות האבטחה בחלון Facebook שנפתח. בסיום חזרו לכאן — החלון ייסגר והקבוצות יסונכרנו אוטומטית.</p>
                         {facebookConnectHint === 'proxy_unavailable' && (
                           <p className="facebook-proxy-warning">תוכנית Browserbase הנוכחית לא אפשרה proxy. Facebook עלול לדחות כניסה מכתובת שרת; במקרה כזה נדרש מסלול Browserbase שתומך ב־proxy.</p>
                         )}
@@ -878,7 +891,7 @@ export default function Dashboard() {
                         )}
                       </div>
                       <div className="facebook-browser-actions">
-                        <a href={facebookLiveUrl} target="_blank" rel="noopener noreferrer">פתח במסך מלא</a>
+                        <a href={facebookLiveUrl} target="facebook-remote" rel="noopener noreferrer">פתח שוב את חלון Facebook</a>
                         <button
                           type="button"
                           aria-label="סגירה"
@@ -893,13 +906,12 @@ export default function Dashboard() {
                         >×</button>
                       </div>
                     </header>
-                    <iframe
-                      src={facebookLiveUrl}
-                      title="Facebook secure connection"
-                      allow="clipboard-read; clipboard-write"
-                      referrerPolicy="no-referrer"
-                    />
-                    <footer>החלון ייסגר אוטומטית לאחר השלמת הכניסה. ניתן להשלים גם 2FA או checkpoint.</footer>
+                    <div className="facebook-connect-loading" role="status" aria-live="polite">
+                      <div className="wa-connect-spinner" />
+                      <h3>ממתינים להשלמת החיבור...</h3>
+                      <p>אפשר להשלים בחלון החדש גם אימות דו־שלבי או checkpoint של Meta.</p>
+                    </div>
+                    <footer>אין לסגור את חלון Facebook עד שההתחברות הושלמה.</footer>
                   </section>
                 </div>
               )}
