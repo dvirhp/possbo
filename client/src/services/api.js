@@ -48,7 +48,7 @@ export const authAPI = {
     const res = await axios.post(
       `${API_BASE_URL}/auth/refresh`,
       {},
-      { withCredentials: true },
+      { withCredentials: true, timeout: 15000 },
     );
     if (res.data.accessToken) {
       setAccessToken(res.data.accessToken);
