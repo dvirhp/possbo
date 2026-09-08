@@ -4,6 +4,7 @@ import prisma from "../config/prisma.js";
 import { encrypt } from "../utils/encryption.js";
 import { createLogger } from "../utils/logger.js";
 import { withUserPublishLock } from "../utils/user-publish-lock.js";
+import { scrapeMyGroups } from "../utils/facebook-automation.js";
 
 const log = createLogger("facebook-remote-connect");
 const SESSION_TIMEOUT_SECONDS = 15 * 60;
@@ -11,6 +12,27 @@ const LOCK_LEASE_MS = 16 * 60 * 1000;
 const FACEBOOK_LOGIN_URL =
   process.env.FACEBOOK_LOGIN_URL || "https://m.facebook.com/login.php";
 const sessions = new Map();
+
+export function classifyFacebookAuthUrl(rawUrl = "") {
+  const url = rawUrl.toLowerCase();
+  const isLoginPage =
+    url.includes("facebook.com/login") ||
+    url.includes("m.facebook.com/login") ||
+    url.includes("mbasic.facebook.com/login") ||
+    url.includes("/login.php");
+  const isSecurityPage =
+    url.includes("checkpoint") ||
+    url.includes("two_factor") ||
+    url.includes("two_step_verification") ||
+    url.includes("remember_browser") ||
+    url.includes("approvals") ||
+    url.includes("recover/") ||
+    url.includes("login/identify");
+  const isCaptchaPage =
+    url.includes("captcha") || url.includes("recaptcha");
+
+  return { isLoginPage, isSecurityPage, isCaptchaPage };
+}
 
 function getClient() {
   if (!process.env.BROWSERBASE_API_KEY) {
@@ -145,26 +167,16 @@ export async function startFacebookRemoteConnect(userId) {
 
         let previousWasLogin = true;
         let loginReturnCount = 0;
+        let authenticatedPageObservations = 0;
 
         while (Date.now() < entry.expiresAt.getTime()) {
           if (entry.status === "cancelled") return;
 
           const currentUrl = page.url() || "";
-          const normalizedUrl = currentUrl.toLowerCase();
-          const isLoginPage =
-            normalizedUrl.includes("facebook.com/login") ||
-            normalizedUrl.includes("m.facebook.com/login") ||
-            normalizedUrl.includes("mbasic.facebook.com/login") ||
-            normalizedUrl.includes("/login.php");
-          const isCheckpointPage =
-            normalizedUrl.includes("checkpoint") ||
-            normalizedUrl.includes("two_step_verification") ||
-            normalizedUrl.includes("approvals");
-          const isCaptchaPage =
-            normalizedUrl.includes("captcha") ||
-            normalizedUrl.includes("recaptcha");
+          const { isLoginPage, isSecurityPage, isCaptchaPage } =
+            classifyFacebookAuthUrl(currentUrl);
 
-          if (!previousWasLogin && isLoginPage && !isCheckpointPage) {
+          if (!previousWasLogin && isLoginPage && !isSecurityPage) {
             loginReturnCount += 1;
             // Meta often returns to the login form after a CAPTCHA and expects
             // the user to submit once more. Keep the session alive instead of
@@ -176,12 +188,33 @@ export async function startFacebookRemoteConnect(userId) {
             });
           } else if (isCaptchaPage) {
             entry.hint = "facebook_security_check";
+          } else if (isSecurityPage) {
+            // Facebook sets c_user/xs before the final 2FA "remember browser"
+            // step. Keep the live browser open until that flow has really
+            // finished, otherwise Browserbase's DevTools disconnects while the
+            // user is still approving the login.
+            entry.hint = "facebook_security_check";
           }
           previousWasLogin = isLoginPage;
 
           const cookies = await context.cookies("https://www.facebook.com");
           const names = new Set(cookies.map((cookie) => cookie.name));
-          if (names.has("c_user") && names.has("xs")) {
+          const hasAuthenticatedCookies =
+            names.has("c_user") && names.has("xs");
+          if (
+            hasAuthenticatedCookies &&
+            !isLoginPage &&
+            !isSecurityPage &&
+            !isCaptchaPage
+          ) {
+            authenticatedPageObservations += 1;
+          } else {
+            authenticatedPageObservations = 0;
+          }
+
+          // Require two consecutive observations on a normal Facebook page so
+          // a transient redirect between 2FA screens cannot close the session.
+          if (authenticatedPageObservations >= 2) {
             const storageState = await context.storageState();
             await prisma.user.update({
               where: { id: userId },
@@ -215,12 +248,35 @@ export async function startFacebookRemoteConnect(userId) {
       }
     },
     { leaseMs: LOCK_LEASE_MS },
-  ).then((result) => {
+  ).then(async (result) => {
     if (!result.acquired) {
       entry.status = "busy";
       entry.error = "facebook_operation_in_progress";
       signalReady();
+      return;
     }
+
+    if (entry.status === "connected") {
+      const syncResult = await withUserPublishLock(userId, () =>
+        scrapeMyGroups(userId),
+      );
+      if (syncResult.acquired) {
+        log.info("Facebook groups auto-sync completed after connection", {
+          userId,
+          groupCount: syncResult.value?.length || 0,
+        });
+      } else {
+        log.warn("Facebook groups auto-sync skipped because the user is busy", {
+          userId,
+        });
+      }
+    }
+  }).catch((error) => {
+    // The Facebook session was saved successfully; group-import failure is
+    // logged separately and must not invalidate the account connection.
+    log.error("Facebook groups auto-sync failed after connection", error, {
+      userId,
+    });
   });
 
   await Promise.race([
