@@ -8,9 +8,20 @@ import { dispatchPublicationNotification } from "../utils/notification-service.j
 const router = express.Router();
 const log = createLogger("instagram");
 
+function getInstagramOAuthConfig() {
+  const clientUrl = (process.env.CLIENT_URL || "").replace(/\/$/, "");
+  return {
+    appId: process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID,
+    appSecret:
+      process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET,
+    redirectUri:
+      process.env.INSTAGRAM_REDIRECT_URI ||
+      (clientUrl ? `${clientUrl}/api/instagram/callback` : ""),
+  };
+}
+
 function buildInstagramAuthUrl(userId) {
-  const appId = process.env.INSTAGRAM_APP_ID;
-  const redirectUri = process.env.INSTAGRAM_REDIRECT_URI;
+  const { appId, redirectUri } = getInstagramOAuthConfig();
   if (!appId || !redirectUri) {
     const err = new Error("INSTAGRAM_NOT_CONFIGURED");
     err.code = "INSTAGRAM_NOT_CONFIGURED";
@@ -180,9 +191,7 @@ router.post("/connect", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Missing authorization code" });
     }
 
-    const appId = process.env.INSTAGRAM_APP_ID;
-    const appSecret = process.env.INSTAGRAM_APP_SECRET;
-    const redirectUri = process.env.INSTAGRAM_REDIRECT_URI;
+    const { appId, appSecret, redirectUri } = getInstagramOAuthConfig();
 
     // Exchange code for short-lived token
     const tokenRes = await fetch(
@@ -334,9 +343,7 @@ router.get("/callback", async (req, res) => {
   }
 
   try {
-    const appId = process.env.INSTAGRAM_APP_ID;
-    const appSecret = process.env.INSTAGRAM_APP_SECRET;
-    const redirectUri = process.env.INSTAGRAM_REDIRECT_URI;
+    const { appId, appSecret, redirectUri } = getInstagramOAuthConfig();
 
     // Exchange code for short-lived token
     const tokenRes = await fetch(
