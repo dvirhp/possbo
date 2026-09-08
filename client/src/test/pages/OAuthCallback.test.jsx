@@ -105,7 +105,18 @@ describe('OAuthCallback page', () => {
         <OAuthCallback />
       </MemoryRouter>
     );
-    expect(screen.getByText(/שגיאה|token_expired|מעבד/)).toBeInTheDocument();
+    expect(screen.getByText(/חיבור Instagram נכשל/)).toBeInTheDocument();
+  });
+
+  it('explains when instagram is already connected to another Possbo account', () => {
+    delete window.location;
+    window.location = { ...originalLocation, pathname: '/oauth/callback/instagram', hash: '' };
+    render(
+      <MemoryRouter initialEntries={['/oauth/callback/instagram?success=false&error=account_already_connected']}>
+        <OAuthCallback />
+      </MemoryRouter>
+    );
+    expect(screen.getByText(/כבר מחובר לחשבון Possbo אחר/)).toBeInTheDocument();
   });
 
   it('handles github with code parameter and sends postMessage', () => {
