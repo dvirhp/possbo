@@ -261,9 +261,41 @@ export async function startFacebookRemoteConnect(userId) {
         scrapeMyGroups(userId),
       );
       if (syncResult.acquired) {
+        const groups = (syncResult.value || []).filter(
+          (group) => group.id && group.name,
+        );
+        for (let offset = 0; offset < groups.length; offset += 20) {
+          await Promise.all(
+            groups.slice(offset, offset + 20).map((group) =>
+              prisma.facebookGroup.upsert({
+                where: {
+                  userId_groupId: { userId, groupId: group.id },
+                },
+                update: {
+                  groupName: group.name,
+                  groupImage: group.image || null,
+                  ...(group.memberCount && {
+                    memberCount: group.memberCount,
+                  }),
+                  ...(group.privacyType && {
+                    privacyType: group.privacyType,
+                  }),
+                },
+                create: {
+                  userId,
+                  groupId: group.id,
+                  groupName: group.name,
+                  groupImage: group.image || null,
+                  memberCount: group.memberCount || null,
+                  privacyType: group.privacyType || null,
+                },
+              }),
+            ),
+          );
+        }
         log.info("Facebook groups auto-sync completed after connection", {
           userId,
-          groupCount: syncResult.value?.length || 0,
+          groupCount: groups.length,
         });
       } else {
         log.warn("Facebook groups auto-sync skipped because the user is busy", {

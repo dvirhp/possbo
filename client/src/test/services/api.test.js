@@ -122,7 +122,7 @@ describe("authAPI", () => {
       expect(axios.post).toHaveBeenCalledWith(
         expect.stringContaining("/auth/refresh"),
         {},
-        { withCredentials: true },
+        { withCredentials: true, timeout: 15000 },
       );
       expect(setAccessToken).toHaveBeenCalledWith("new-tok");
     });

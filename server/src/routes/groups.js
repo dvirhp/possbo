@@ -325,9 +325,14 @@ router.get(
         await prisma.facebookGroup.deleteMany({ where: { id: g.id } });
       }
 
-      // Upsert groups that exist in the new list (save FB image URL for now)
-      for (const g of groups) {
-        if (g.id && g.name) {
+      // Upsert in small concurrent batches. Doing three sequential DB round
+      // trips for hundreds of groups kept Chromium and the HTTP request alive
+      // for minutes on production and could exhaust the Starter container.
+      const validGroups = groups.filter((g) => g.id && g.name);
+      const batchSize = 10;
+      for (let offset = 0; offset < validGroups.length; offset += batchSize) {
+        const batch = validGroups.slice(offset, offset + batchSize);
+        await Promise.all(batch.map(async (g) => {
           // On update: only overwrite memberCount/privacyType if we have new values
           const updateData = {
             groupName: g.name,
@@ -351,7 +356,7 @@ router.get(
             },
           });
 
-          if (!prisma.group?.upsert || !prisma.userGroup?.upsert) continue;
+          if (!prisma.group?.upsert || !prisma.userGroup?.upsert) return;
           const canonicalGroup = await prisma.group.upsert({
             where: { externalGroupId: g.id },
             update: {
@@ -375,7 +380,7 @@ router.get(
             update: {},
             create: { userId, groupId: canonicalGroup.id },
           });
-        }
+        }));
       }
 
       // Download images in background (don't block the response)
