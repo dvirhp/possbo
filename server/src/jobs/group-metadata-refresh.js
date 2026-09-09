@@ -26,7 +26,7 @@ export function getRefreshProgress(userId) {
  * Called on-demand (refresh button, new registration) or by daily job.
  * Uses a per-user lock to prevent duplicate concurrent runs.
  */
-export async function refreshGroupsMetadataForUser(userId) {
+export async function refreshGroupsMetadataForUser(userId, { refreshExisting = false } = {}) {
   // Prevent concurrent refreshes for the same user
   if (activeRefreshes.has(userId)) {
     log.info("Metadata refresh already in progress, skipping", { userId });
@@ -34,9 +34,13 @@ export async function refreshGroupsMetadataForUser(userId) {
   }
 
   const groups = await prisma.facebookGroup.findMany({
-    where: { userId },
-    select: { groupId: true },
+    where: { userId, ...(!refreshExisting && { memberCount: null }) },
+    select: { groupId: true, memberCount: true },
   });
+
+  // Resume interrupted large-account refreshes before revisiting values that
+  // were already collected successfully.
+  groups.sort((a, b) => Number(a.memberCount !== null) - Number(b.memberCount !== null));
 
   if (groups.length === 0) {
     log.debug("No groups to refresh for user", { userId });
@@ -63,9 +67,21 @@ export async function refreshGroupsMetadataForUser(userId) {
   });
 
   try {
-    const lockResult = await withUserPublishLock(userId, async () =>
-      scrapeGroupsMetadata(userId, groupsToScrape),
-    );
+    const lockResult = await withUserPublishLock(userId, async () => {
+      // Browserbase sessions are intentionally short-lived. Large accounts
+      // must rotate sessions or a 300+ group refresh is disconnected before
+      // it can finish. Each scraper chunk persists its own batches as it goes.
+      const results = [];
+      const sessionChunkSize = 100;
+      for (let offset = 0; offset < groupsToScrape.length; offset += sessionChunkSize) {
+        const chunk = groupsToScrape.slice(offset, offset + sessionChunkSize);
+        results.push(...await scrapeGroupsMetadata(userId, chunk));
+        if (offset + sessionChunkSize < groupsToScrape.length) {
+          await new Promise((resolve) => setTimeout(resolve, 12_000));
+        }
+      }
+      return results;
+    });
     if (!lockResult.acquired) {
       return { updated: 0, skipped: true, reason: "facebook_operation_in_progress" };
     }
@@ -128,7 +144,7 @@ export async function runDailyGroupMetadataRefresh() {
   let totalUpdated = 0;
   for (const user of users) {
     try {
-      const result = await refreshGroupsMetadataForUser(user.id);
+      const result = await refreshGroupsMetadataForUser(user.id, { refreshExisting: true });
       totalUpdated += result.updated;
     } catch (err) {
       log.error("Failed to refresh metadata for user", {

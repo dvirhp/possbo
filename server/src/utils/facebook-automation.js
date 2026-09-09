@@ -1832,6 +1832,22 @@ export async function scrapeGroupsMetadata(userId, groups) {
 
       results.push(...batchResults);
 
+      // Persist each completed batch immediately. A full account can contain
+      // hundreds of groups; keeping all updates until the very end meant a
+      // transient browser disconnect discarded several minutes of good data.
+      if (userId) {
+        await Promise.all(batchResults.map((result) => {
+          const data = {};
+          if (result.memberCount) data.memberCount = result.memberCount;
+          if (result.privacyType) data.privacyType = result.privacyType;
+          if (Object.keys(data).length === 0) return Promise.resolve();
+          return prisma.facebookGroup.updateMany({
+            where: { userId, groupId: result.groupId },
+            data,
+          });
+        }));
+      }
+
       // Small delay between batches to avoid rate limiting
       if (i + CONCURRENCY < groups.length) {
         await new Promise((r) => setTimeout(r, 1000));
