@@ -4,6 +4,7 @@ import prisma from "../config/prisma.js";
 import { encrypt } from "../utils/encryption.js";
 import { createLogger } from "../utils/logger.js";
 import { withUserPublishLock } from "../utils/user-publish-lock.js";
+import { reconcileFacebookGroupHierarchy } from "./facebook-group-hierarchy.js";
 import { scrapeMyGroups } from "../utils/facebook-automation.js";
 
 const log = createLogger("facebook-remote-connect");
@@ -293,6 +294,7 @@ export async function startFacebookRemoteConnect(userId) {
             ),
           );
         }
+        await reconcileFacebookGroupHierarchy(userId);
         log.info("Facebook groups auto-sync completed after connection", {
           userId,
           groupCount: groups.length,
