@@ -4,7 +4,11 @@ import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
 import { encrypt, decrypt } from "./encryption.js";
 import { createLogger } from "./logger.js";
-import { launchBrowser, createBrowserContext } from "./browser-factory.js";
+import {
+  launchBrowser,
+  createBrowserContext,
+  openFacebookScrapeBrowser,
+} from "./browser-factory.js";
 
 const log = createLogger("fb-auto");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -239,14 +243,10 @@ export async function bootstrapFacebookSession(userId) {
  */
 export async function scrapeMyGroups(userId) {
   const storageState = await getStorageState(userId);
-
-  const browser = await launchBrowser();
+  const scrapeBrowser = await openFacebookScrapeBrowser({ userId, storageState });
+  const { context } = scrapeBrowser;
 
   try {
-    const context = await createBrowserContext(browser, {
-      userId,
-      storageState,
-    });
     const page = await context.newPage();
 
     // Go to user's groups page
@@ -569,7 +569,7 @@ export async function scrapeMyGroups(userId) {
 
     return groups;
   } finally {
-    await browser.close();
+    await scrapeBrowser.close();
   }
 }
 

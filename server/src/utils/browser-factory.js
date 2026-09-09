@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import Browserbase from "@browserbasehq/sdk";
 import { createLogger } from "./logger.js";
 import { getContainerMemoryUsage } from "./container-memory.js";
 
@@ -290,6 +291,72 @@ export async function createBrowserContext(browser, options = {}) {
   }
 
   return browser.newContext(contextOpts);
+}
+
+/**
+ * Open a browser for an interactive Facebook scrape. In production the API
+ * service has only 512 MB, so prefer Browserbase instead of launching a local
+ * Chromium process that can terminate the web service mid-request.
+ */
+export async function openFacebookScrapeBrowser({ userId, storageState }) {
+  if (!process.env.BROWSERBASE_API_KEY) {
+    const browser = await launchBrowser();
+    const context = await createBrowserContext(browser, { userId, storageState });
+    return { browser, context, remote: false, close: () => browser.close() };
+  }
+
+  const client = new Browserbase({ apiKey: process.env.BROWSERBASE_API_KEY });
+  const baseSession = {
+    projectId: process.env.BROWSERBASE_PROJECT_ID || undefined,
+    region: "eu-central-1",
+    api_timeout: 5 * 60,
+    browserSettings: {
+      viewport: { width: 1366, height: 900 },
+      blockAds: false,
+      recordSession: false,
+      logSession: false,
+    },
+    userMetadata: { purpose: "facebook-groups-sync", userId },
+  };
+  const useProxy = process.env.BROWSERBASE_USE_PROXY !== "false";
+  let session;
+  try {
+    session = await client.sessions.create({ ...baseSession, proxies: useProxy });
+  } catch (error) {
+    if (!useProxy) throw error;
+    log.warn("Browserbase proxy rejected for group sync; retrying directly", {
+      userId,
+      reason: error.message,
+    });
+    session = await client.sessions.create({ ...baseSession, proxies: false });
+  }
+
+  try {
+    const browser = await chromium.connectOverCDP(session.connectUrl);
+    const context = browser.contexts()[0];
+    if (!context) throw new Error("BROWSERBASE_CONTEXT_MISSING");
+    if (storageState?.cookies?.length) {
+      await context.addCookies(storageState.cookies);
+    }
+    return {
+      browser,
+      context,
+      remote: true,
+      close: async () => {
+        await browser.close().catch(() => {});
+        await client.sessions.update(session.id, {
+          status: "REQUEST_RELEASE",
+          projectId: process.env.BROWSERBASE_PROJECT_ID || undefined,
+        }).catch(() => {});
+      },
+    };
+  } catch (error) {
+    await client.sessions.update(session.id, {
+      status: "REQUEST_RELEASE",
+      projectId: process.env.BROWSERBASE_PROJECT_ID || undefined,
+    }).catch(() => {});
+    throw error;
+  }
 }
 
 // ─── Exports for testing ──────────────────────────────────
