@@ -699,7 +699,7 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
     { id: 'groups', label: 'קבוצות', value: kpiData?.groups?.value ?? groupsCount, Icon: Users, color: 'kpi-orange', change: kpiData?.groups?.change, nav: { path: '/dashboard?tab=groups' } },
     { id: 'posts', label: 'קמפיינים', value: kpiData?.posts?.value ?? postsCount, Icon: Send, color: 'kpi-blue', change: kpiData?.posts?.change, nav: { path: '/dashboard?tab=campaigns' } },
     { id: 'scheduled', label: 'קמפיינים מתוזמנים', value: kpiData?.scheduled?.value ?? scheduledCount, Icon: Clock3, color: 'kpi-green', change: kpiData?.scheduled?.change, nav: { path: '/dashboard?tab=campaigns&subTab=scheduled' } },
-    { id: 'published', label: 'פוסטים שפורסמו', value: kpiData?.published?.value ?? publishedCount, Icon: CheckCircle2, color: 'kpi-red', change: kpiData?.published?.change, nav: { path: '/dashboard?tab=campaigns&subTab=published' } },
+    { id: 'published', label: 'פוסטים שפורסמו', value: stats?.publishedCount ?? publishedCount, Icon: CheckCircle2, color: 'kpi-red', change: kpiData?.published?.change, nav: { path: '/dashboard?tab=campaigns&subTab=published' } },
     { id: 'exposure', label: 'חשיפה', value: formatNumber(kpiData?.exposure?.value ?? 0), Icon: Heart, color: 'kpi-pink', change: kpiData?.exposure?.change, nav: { path: '/dashboard?tab=stats' } },
   ]
 

@@ -798,7 +798,7 @@ export default function Dashboard() {
   const kpiData = {
     campaigns: filteredCampaigns.length,
     scheduled: filteredCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring' || c.status === 'both').length,
-    published: filteredCampaigns.reduce((sum, c) => sum + (c.publishedCount || 0), 0),
+    published: stats?.publishedCount ?? filteredCampaigns.reduce((sum, c) => sum + (c.publishedCount || 0), 0),
     groups: groups.length,
   }
 
@@ -1609,6 +1609,7 @@ export default function Dashboard() {
 function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdated, viewMode, subTab }) {
   const [tooltipId, setTooltipId] = useState(null)
   const [menuId, setMenuId] = useState(null)
+  const [menuPosition, setMenuPosition] = useState(null)
   const [editCampaign, setEditCampaign] = useState(null)
   const [detailCampaign, setDetailCampaign] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -1617,6 +1618,23 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
   const [sortKey, setSortKey] = useState(null)
   const [sortDir, setSortDir] = useState('desc')
   const menuRef = useRef(null)
+
+  const toggleCampaignMenu = (event, campaignId) => {
+    event.stopPropagation()
+    if (menuId === campaignId) {
+      setMenuId(null)
+      setMenuPosition(null)
+      return
+    }
+    const rect = event.currentTarget.getBoundingClientRect()
+    const menuWidth = 180
+    const estimatedHeight = 280
+    const left = Math.min(Math.max(8, rect.right - menuWidth), window.innerWidth - menuWidth - 8)
+    const below = window.innerHeight - rect.bottom >= estimatedHeight
+    const top = below ? rect.bottom + 6 : Math.max(8, rect.top - estimatedHeight - 6)
+    setMenuPosition({ left, top })
+    setMenuId(campaignId)
+  }
 
   useEffect(() => { setLocalCampaigns(campaigns) }, [campaigns])
 
@@ -1686,6 +1704,17 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [menuId])
+
+  useEffect(() => {
+    if (!menuId) return
+    const close = () => { setMenuId(null); setMenuPosition(null) }
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
   }, [menuId])
 
   const handlePause = async (campaign) => {
@@ -1929,7 +1958,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
                 <div className="actions-menu-wrap" ref={menuId === campaign.id ? menuRef : undefined}>
                   <button
                     className="actions-dots-btn"
-                    onClick={(e) => { e.stopPropagation(); setMenuId(menuId === campaign.id ? null : campaign.id) }}
+                    onClick={(e) => toggleCampaignMenu(e, campaign.id)}
                     aria-label="פתח תפריט פעולות"
                     aria-haspopup="menu"
                     aria-expanded={menuId === campaign.id}
@@ -1937,7 +1966,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                   </button>
                   {menuId === campaign.id && (
-                    <div className="actions-dropdown" role="menu" aria-label="פעולות קמפיין">
+                    <div className="actions-dropdown actions-dropdown-fixed" style={menuPosition || undefined} role="menu" aria-label="פעולות קמפיין">
                       {campaign.publishedCount > 0 && (
                         <button onClick={() => setDetailCampaign(campaign)}>היסטוריית פרסומים</button>
                       )}
@@ -2005,7 +2034,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
               <div className="actions-menu-wrap" ref={menuId === campaign.id ? menuRef : undefined}>
                 <button
                   className="actions-dots-btn"
-                  onClick={(e) => { e.stopPropagation(); setMenuId(menuId === campaign.id ? null : campaign.id) }}
+                  onClick={(e) => toggleCampaignMenu(e, campaign.id)}
                   aria-label="פתח תפריט פעולות"
                   aria-haspopup="menu"
                   aria-expanded={menuId === campaign.id}
@@ -2013,7 +2042,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                 </button>
                 {menuId === campaign.id && (
-                  <div className="actions-dropdown" role="menu" aria-label="פעולות קמפיין">
+                  <div className="actions-dropdown actions-dropdown-fixed" style={menuPosition || undefined} role="menu" aria-label="פעולות קמפיין">
                     {campaign.status !== 'draft' && (
                       <button onClick={() => handleEdit(campaign)}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>

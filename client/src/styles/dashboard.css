@@ -7337,6 +7337,15 @@
   padding: 4px;
   animation: fadeInMenu 0.12s ease;
 }
+.actions-dropdown.actions-dropdown-fixed {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  width: min(180px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  z-index: 10050;
+}
 @keyframes fadeInMenu {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
