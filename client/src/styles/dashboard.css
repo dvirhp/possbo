@@ -2309,8 +2309,11 @@
 
 .fb-groups-view-toggle,
 .fb-groups-refresh {
-  width: 36px;
+  width: auto;
+  min-width: 36px;
   height: 36px;
+  padding: 0 12px;
+  gap: 7px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-card);
@@ -2461,8 +2464,11 @@
 }
 
 .wa-sync-refresh {
-  width: 36px;
+  width: auto;
+  min-width: 36px;
   height: 36px;
+  padding: 0 12px;
+  gap: 7px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-card);

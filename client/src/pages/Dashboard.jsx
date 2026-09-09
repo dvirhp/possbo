@@ -825,7 +825,7 @@ export default function Dashboard() {
           ) : (
             <>
               {/* Connection banner — a direct action for one missing account, a hub for several */}
-              {user && missingConnections.length > 0 && dataReady && !refreshing && (
+              {user && missingConnections.length > 0 && dataReady && (
                 <div className="session-banner">
                   <span>
                     ⚠️ {missingConnections.length === 1
@@ -2449,6 +2449,7 @@ function WhatsAppSyncPanel({ user }) {
                 <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115.45-6.36L21 8"/>
                 <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15.45 6.36L3 16"/>
               </svg>
+              <span>{syncing ? 'מסנכרן...' : 'רענן קבוצות'}</span>
             </button>
           </div>
 
@@ -2800,7 +2801,10 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
         </svg>
       </div>
       <h3>אין קבוצות שמורות</h3>
-      <p>סנכרן את הקבוצות שלך מפייסבוק באמצעות כפתור "רענן קבוצות" למעלה</p>
+      <p>סנכרן את הקבוצות שלך מפייסבוק כדי להתחיל לבחור יעדי פרסום</p>
+      <button className="refresh-groups-btn" onClick={onRefresh} disabled={refreshing}>
+        {refreshing ? 'מסנכרן קבוצות...' : 'רענן קבוצות Facebook'}
+      </button>
     </div>
     </div>
   )
@@ -2851,6 +2855,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={refreshing ? 'spinning' : ''}>
             <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
           </svg>
+          <span>{refreshing ? 'מסנכרן...' : 'רענן קבוצות'}</span>
         </button>
       </div>
 
