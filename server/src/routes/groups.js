@@ -26,6 +26,7 @@ import { requireAuth } from "../utils/auth-middleware.js";
 import { uploadSingle, uploadsDir } from "../utils/upload-service.js";
 import { persistUpload } from "../services/object-storage.js";
 import { withUserPublishLock } from "../utils/user-publish-lock.js";
+import { reconcileFacebookGroupHierarchy } from "../services/facebook-group-hierarchy.js";
 
 const router = express.Router();
 const log = createLogger("groups");
@@ -305,9 +306,21 @@ router.get(
       });
       previousCount = existingGroups.length;
       // Delete groups that no longer exist (and their related data)
-      const groupsToDelete = existingGroups.filter(
-        (g) => !newGroupIds.has(g.groupId),
-      );
+      // A transient Facebook scroll/network failure can return a partial list.
+      // Never interpret a sharply smaller scrape as hundreds of group removals.
+      const scrapeLooksComplete =
+        existingGroups.length === 0 ||
+        newGroupIds.size >= Math.floor(existingGroups.length * 0.8);
+      const groupsToDelete = scrapeLooksComplete
+        ? existingGroups.filter((g) => !newGroupIds.has(g.groupId))
+        : [];
+      if (!scrapeLooksComplete) {
+        log.warn("Skipping Facebook group removals after partial scrape", {
+          userId,
+          previousCount: existingGroups.length,
+          scrapedCount: newGroupIds.size,
+        });
+      }
       for (const g of groupsToDelete) {
         // Find Group record by URL pattern for this facebook group
         const dbGroup = await prisma.group.findFirst({
@@ -331,6 +344,11 @@ router.get(
           await prisma.postGroup.deleteMany({
             where: { groupId: dbGroup.id, userId },
           });
+          // Remove only this user's canonical membership. The Group row may
+          // still be shared by other users and must not be deleted here.
+          await prisma.userGroup.deleteMany({
+            where: { groupId: dbGroup.id, userId },
+          });
         }
         // Delete the FacebookGroup record
         await prisma.facebookGroup.deleteMany({ where: { id: g.id } });
@@ -347,7 +365,7 @@ router.get(
           // On update: only overwrite memberCount/privacyType if we have new values
           const updateData = {
             groupName: g.name,
-            groupImage: g.image || null,
+            ...(g.image && { groupImage: g.image }),
           };
           if (g.memberCount) updateData.memberCount = g.memberCount;
           if (g.privacyType) updateData.privacyType = g.privacyType;
@@ -419,6 +437,7 @@ router.get(
           log.info("Group images download complete");
         })();
       }
+      await reconcileFacebookGroupHierarchy(userId);
     }
 
     if (prisma.groupSyncHistory?.create) {
@@ -539,7 +558,7 @@ router.post(
     }
 
     // Start in background, return immediately
-    refreshGroupsMetadataForUser(userId).catch((err) => {
+    refreshGroupsMetadataForUser(userId, { refreshExisting: true }).catch((err) => {
       log.error("Background metadata refresh failed", {
         userId,
         error: err.message,
