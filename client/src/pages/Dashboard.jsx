@@ -798,7 +798,7 @@ export default function Dashboard() {
   const kpiData = {
     campaigns: filteredCampaigns.length,
     scheduled: filteredCampaigns.filter(c => c.status === 'scheduled' || c.status === 'recurring' || c.status === 'both').length,
-    published: filteredCampaigns.reduce((sum, c) => sum + (c.publishedCount || 0), 0),
+    published: stats?.publishedCount ?? filteredCampaigns.reduce((sum, c) => sum + (c.publishedCount || 0), 0),
     groups: groups.length,
   }
 
@@ -1609,6 +1609,7 @@ export default function Dashboard() {
 function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdated, viewMode, subTab }) {
   const [tooltipId, setTooltipId] = useState(null)
   const [menuId, setMenuId] = useState(null)
+  const [menuPosition, setMenuPosition] = useState(null)
   const [editCampaign, setEditCampaign] = useState(null)
   const [detailCampaign, setDetailCampaign] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -1617,6 +1618,23 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
   const [sortKey, setSortKey] = useState(null)
   const [sortDir, setSortDir] = useState('desc')
   const menuRef = useRef(null)
+
+  const toggleCampaignMenu = (event, campaignId) => {
+    event.stopPropagation()
+    if (menuId === campaignId) {
+      setMenuId(null)
+      setMenuPosition(null)
+      return
+    }
+    const rect = event.currentTarget.getBoundingClientRect()
+    const menuWidth = 180
+    const estimatedHeight = 280
+    const left = Math.min(Math.max(8, rect.right - menuWidth), window.innerWidth - menuWidth - 8)
+    const below = window.innerHeight - rect.bottom >= estimatedHeight
+    const top = below ? rect.bottom + 6 : Math.max(8, rect.top - estimatedHeight - 6)
+    setMenuPosition({ left, top })
+    setMenuId(campaignId)
+  }
 
   useEffect(() => { setLocalCampaigns(campaigns) }, [campaigns])
 
@@ -1686,6 +1704,17 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [menuId])
+
+  useEffect(() => {
+    if (!menuId) return
+    const close = () => { setMenuId(null); setMenuPosition(null) }
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
   }, [menuId])
 
   const handlePause = async (campaign) => {
@@ -1929,7 +1958,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
                 <div className="actions-menu-wrap" ref={menuId === campaign.id ? menuRef : undefined}>
                   <button
                     className="actions-dots-btn"
-                    onClick={(e) => { e.stopPropagation(); setMenuId(menuId === campaign.id ? null : campaign.id) }}
+                    onClick={(e) => toggleCampaignMenu(e, campaign.id)}
                     aria-label="פתח תפריט פעולות"
                     aria-haspopup="menu"
                     aria-expanded={menuId === campaign.id}
@@ -1937,7 +1966,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                   </button>
                   {menuId === campaign.id && (
-                    <div className="actions-dropdown" role="menu" aria-label="פעולות קמפיין">
+                    <div className="actions-dropdown actions-dropdown-fixed" style={menuPosition || undefined} role="menu" aria-label="פעולות קמפיין">
                       {campaign.publishedCount > 0 && (
                         <button onClick={() => setDetailCampaign(campaign)}>היסטוריית פרסומים</button>
                       )}
@@ -2005,7 +2034,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
               <div className="actions-menu-wrap" ref={menuId === campaign.id ? menuRef : undefined}>
                 <button
                   className="actions-dots-btn"
-                  onClick={(e) => { e.stopPropagation(); setMenuId(menuId === campaign.id ? null : campaign.id) }}
+                  onClick={(e) => toggleCampaignMenu(e, campaign.id)}
                   aria-label="פתח תפריט פעולות"
                   aria-haspopup="menu"
                   aria-expanded={menuId === campaign.id}
@@ -2013,7 +2042,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                 </button>
                 {menuId === campaign.id && (
-                  <div className="actions-dropdown" role="menu" aria-label="פעולות קמפיין">
+                  <div className="actions-dropdown actions-dropdown-fixed" style={menuPosition || undefined} role="menu" aria-label="פעולות קמפיין">
                     {campaign.status !== 'draft' && (
                       <button onClick={() => handleEdit(campaign)}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -2061,7 +2090,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
               <div className="campaign-card-avatars">
                 {(campaign.groups || []).slice(0, 3).map((g, i) => (
                   <div key={i} className="campaign-card-avatar" title={g.name}>
-                    {g.image ? <img src={g.image} alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex') }} /> : null}
+                    {g.image ? <img src={resolveImg(g.image)} referrerPolicy="no-referrer" alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex') }} /> : null}
                     <span style={g.image ? { display: 'none' } : {}}>{g.name?.[0] || '?'}</span>
                   </div>
                 ))}
@@ -2882,7 +2911,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
               <div className="gl-col gl-col-name">
                 <div className="gl-thumb">
                   {group.image
-                    ? <img src={group.image} alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
+                    ? <img src={resolveImg(group.image)} referrerPolicy="no-referrer" alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
                     : null}
                   <div className="gl-thumb-fallback" style={group.image ? { display: 'none' } : undefined}>👥</div>
                 </div>
@@ -2918,7 +2947,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
             <div key={group.id} className="group-grid-card" onClick={() => setDetailGroup(group)}>
               <div className="group-grid-thumb">
                 {group.image
-                  ? <img src={group.image} alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
+                  ? <img src={resolveImg(group.image)} referrerPolicy="no-referrer" alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
                   : null}
                 <div className="group-grid-fallback" style={group.image ? { display: 'none' } : undefined}>👥</div>
               </div>
@@ -2955,11 +2984,11 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
             <button className="modal-close" onClick={() => setDetailGroup(null)} aria-label="סגור פרטי קבוצה">✕</button>
             {/* Hero */}
             <div className="gd-hero">
-              {detailGroup.image && <img src={detailGroup.image} alt="" className="gd-hero-img" onError={e => e.target.style.display = 'none'} />}
+              {detailGroup.image && <img src={resolveImg(detailGroup.image)} referrerPolicy="no-referrer" alt="" className="gd-hero-img" onError={e => e.target.style.display = 'none'} />}
               <div className="gd-hero-overlay">
                 <div className="gd-hero-thumb">
                   {detailGroup.image
-                    ? <img src={detailGroup.image} alt="" onError={e => e.target.style.display = 'none'} />
+                    ? <img src={resolveImg(detailGroup.image)} referrerPolicy="no-referrer" alt="" onError={e => e.target.style.display = 'none'} />
                     : <span>👥</span>}
                 </div>
                 <h3 className="gd-hero-title">{normalizeFancyText(detailGroup.name)}</h3>
@@ -3927,6 +3956,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
   const [editEmail, setEditEmail] = useState(user?.email || '')
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState(null)
+  const [avatarMessage, setAvatarMessage] = useState(null)
   // Password
   const [showPassword, setShowPassword] = useState(false)
   const [pwStep, setPwStep] = useState(1) // 1=current password, 2=code+new password
@@ -4198,7 +4228,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
             <div className="settings-avatar-wrap">
               <div className="settings-avatar">
                 {(user?.profileImage || user?.avatarUrl) && (
-                  <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('uploads/')) return `/${v}`; return v })()} alt="" className="settings-avatar-img" onError={e => { e.target.style.display = 'none' }} />
+                  <img src={resolveImg(user.profileImage || user.avatarUrl)} alt="" className="settings-avatar-img" onError={e => { e.target.style.display = 'none' }} />
                 )}
                 <span className="settings-avatar-letter">{user?.name?.[0] || '?'}</span>
               </div>
@@ -4206,16 +4236,23 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                 <input type="file" accept="image/*" hidden aria-label="בחר תמונת פרופיל" onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (!file) return
+                  setAvatarMessage({ type: 'info', text: 'מעלה את התמונה...' })
                   try {
                     const res = await authAPI.uploadAvatar(file)
                     if (res.data.success) {
                       setUser(prev => ({ ...prev, profileImage: res.data.profileImage }))
+                      setAvatarMessage({ type: 'success', text: 'תמונת הפרופיל נשמרה' })
                     }
-                  } catch { /* ignore */ }
+                  } catch (err) {
+                    setAvatarMessage({ type: 'error', text: err.userMessage || 'לא הצלחנו לשמור את תמונת הפרופיל' })
+                  } finally {
+                    e.target.value = ''
+                  }
                 }} />
                 📷
               </label>
             </div>
+            {avatarMessage && <div className={`settings-msg settings-msg-${avatarMessage.type}`}>{avatarMessage.text}</div>}
           </div>
           {/* Info — RIGHT aligned in RTL */}
           <div className="settings-hero-info">

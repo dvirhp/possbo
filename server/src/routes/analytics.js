@@ -241,7 +241,7 @@ router.get(
       // Per-post published counts (all statuses, so history always shows)
       prisma.publicationHistory.groupBy({
         by: ["postId"],
-        where: { userId },
+        where: { userId, status: "SUCCESS" },
         _count: { id: true },
       }),
     ]);

@@ -46,7 +46,14 @@ async function downloadGroupImage(fbImageUrl, groupId) {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
-    const response = await fetch(fbImageUrl, { signal: controller.signal });
+    const response = await fetch(fbImageUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128 Safari/537.36",
+        Referer: "https://www.facebook.com/",
+        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      },
+    });
     clearTimeout(timeout);
     if (!response.ok) return null;
 
@@ -64,7 +71,11 @@ async function downloadGroupImage(fbImageUrl, groupId) {
     await persistUpload(filePath, `groups/${filename}`, contentType);
 
     return `/uploads/groups/${filename}`;
-  } catch {
+  } catch (error) {
+    log.warn("Could not persist Facebook group image", {
+      groupId,
+      error: error.message,
+    });
     return null;
   }
 }

@@ -11,6 +11,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
 import { generateAccessToken, generateRefreshToken } from "./jwt.js";
+import { storageConfigured } from "../services/object-storage.js";
 
 const SALT_ROUNDS = 12;
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -20,6 +21,9 @@ const uploadsDir = path.join(__dirname, "..", "..", "uploads");
 function validImageUrl(value) {
   if (!value) return null;
   if (!value.startsWith("/uploads/")) return value;
+  // Render's filesystem is ephemeral. When uploads are persisted to object
+  // storage, the local file may disappear after a deploy while the URL remains valid.
+  if (storageConfigured()) return value;
   const localPath = path.join(uploadsDir, value.replace(/^\/uploads\/+/, ""));
   return fs.existsSync(localPath) ? value : null;
 }

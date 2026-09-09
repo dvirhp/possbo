@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Circle, RefreshCw, ShieldCheck, PlugZap } from 'lucide-react'
+import { Check, Circle, RefreshCw, ShieldCheck, PlugZap, Send, LayoutList, BarChart3 } from 'lucide-react'
 import { useAppData } from '../context/DataProvider'
 import '../styles/onboarding.css'
 
@@ -30,9 +30,10 @@ export default function Onboarding() {
     try { await checkAuth(); await forceRefresh() } finally { setChecking(false) }
   }
 
-  return <main className="onboarding-page" dir="rtl">
-    <header className="onboarding-header"><div><span>התחלה מהירה</span><h1>מכינים את Possbo לפרסום</h1><p>ההתקדמות מתעדכנת אוטומטית לפי מצב החשבון.</p></div><div className="onboarding-score"><b>{percent}%</b><small>{completed} מתוך {steps.length}</small></div></header>
+  return <main className={`onboarding-page ${percent === 100 ? 'onboarding-complete' : ''}`} dir="rtl">
+    <header className="onboarding-header"><div><span>{percent === 100 ? 'החשבון מוכן' : 'התחלה מהירה'}</span><h1>{percent === 100 ? 'הכול מוכן — ממשיכים ליצור ולפרסם' : 'מכינים את Possbo לפרסום'}</h1><p>{percent === 100 ? 'סיימתם את ההגדרה הראשונית. מכאן אפשר לנהל את הפעילות השוטפת.' : 'ההתקדמות מתעדכנת אוטומטית לפי מצב החשבון.'}</p></div><div className="onboarding-score" style={{ '--progress': `${percent * 3.6}deg` }}><div><b>{percent}%</b><small>{completed} מתוך {steps.length}</small></div></div></header>
     <div className="onboarding-progress" aria-label={`${percent}% הושלמו`}><span style={{ width: `${percent}%` }}/></div>
+    {percent === 100 && <section className="onboarding-next-actions" aria-label="פעולות מומלצות"><button type="button" onClick={() => navigate('/create-post')}><Send/><span><b>יצירת פוסט חדש</b><small>מתחילים קמפיין או פרסום חדש</small></span></button><button type="button" onClick={() => navigate('/dashboard?tab=campaigns')}><LayoutList/><span><b>ניהול קמפיינים</b><small>צפייה בפרסומים ובתזמונים</small></span></button><button type="button" onClick={() => navigate('/dashboard?tab=stats')}><BarChart3/><span><b>צפייה בביצועים</b><small>מעקב אחר חשיפה ומעורבות</small></span></button></section>}
     <section className="onboarding-grid">
       <div className="onboarding-card"><h2><ShieldCheck/> Checklist</h2>{steps.map(step => <div className={`onboarding-step ${step.done ? 'done' : ''}`} key={step.label}><span className="onboarding-step-icon">{step.done ? <Check/> : <Circle/>}</span><div><strong>{step.label}</strong><p>{step.description}</p></div>{!step.done && <button type="button" onClick={step.action}>{step.actionLabel}</button>}</div>)}</div>
       <div className="onboarding-card"><div className="onboarding-card-title"><h2><PlugZap/> תקינות חיבורים</h2><button type="button" className="onboarding-refresh" onClick={refreshHealth} disabled={checking || refreshing}><RefreshCw className={checking || refreshing ? 'spin' : ''}/> בדיקה מחדש</button></div>{connections.map(connection => <div className={`onboarding-connection ${connection.connected ? 'healthy' : ''}`} key={connection.name}><span/><div><strong>{connection.name}</strong><p>{connection.detail}</p></div><b>{connection.connected ? 'תקין' : 'לא מחובר'}</b></div>)}<p className="onboarding-optional">אין חובה לחבר את כל הפלטפורמות. חברו רק את הערוצים שבהם אתם מפרסמים.</p></div>

@@ -1591,7 +1591,8 @@ export async function publishToProfile(text, imagePath, options = {}) {
 export async function scrapeGroupsMetadata(userId, groups) {
   const storageState = await getStorageState(userId);
 
-  const browser = await launchBrowser();
+  const scrapeBrowser = await openFacebookScrapeBrowser({ userId, storageState });
+  const { context } = scrapeBrowser;
 
   const results = [];
   const CONCURRENCY = Math.max(
@@ -1600,11 +1601,6 @@ export async function scrapeGroupsMetadata(userId, groups) {
   );
 
   try {
-    const context = await createBrowserContext(browser, {
-      userId,
-      storageState,
-    });
-
     // Verify we're logged in with a temp page
     const checkPage = await context.newPage();
     await checkPage.goto("https://www.facebook.com/", {
@@ -1849,6 +1845,6 @@ export async function scrapeGroupsMetadata(userId, groups) {
 
     return results;
   } finally {
-    await browser.close();
+    await scrapeBrowser.close();
   }
 }
