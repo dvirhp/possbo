@@ -1595,10 +1595,11 @@ export async function scrapeGroupsMetadata(userId, groups) {
   const { context } = scrapeBrowser;
 
   const results = [];
-  const CONCURRENCY = Math.max(
+  const defaultConcurrency = scrapeBrowser.remote ? 4 : 1;
+  const CONCURRENCY = Math.min(5, Math.max(
     1,
-    Number.parseInt(process.env.BROWSER_PAGE_CONCURRENCY || "1", 10),
-  );
+    Number.parseInt(process.env.BROWSER_PAGE_CONCURRENCY || String(defaultConcurrency), 10),
+  ));
 
   try {
     // Verify we're logged in with a temp page
