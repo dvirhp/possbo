@@ -5,7 +5,6 @@ import { useNavigationGuard } from '../context/NavigationGuard'
 import { groupsService } from '../services/groupsService'
 import { templatesService } from '../services/templatesService'
 import { authAPI } from '../services/api'
-import { aiService } from '../services/aiService'
 import confetti from 'canvas-confetti'
 import LocationAutocomplete from '../components/LocationAutocomplete'
 import FacebookPreview from '../components/FacebookPreview'
@@ -453,9 +452,6 @@ export default function CreatePost() {
 
   const [campaignTitle, setCampaignTitle] = useState(fromTemplate?.title || republishData?.title || '')
   const [postText, setPostText] = useState(fromTemplate?.content || republishData?.content || generatedContent || createPostDraft?.postText || '')
-  const [aiTransforming, setAiTransforming] = useState('')
-  const [aiTone, setAiTone] = useState('professional')
-  const [aiTargetPlatform, setAiTargetPlatform] = useState('facebook')
   const [postImages, setPostImages] = useState([])
   const [postImagePreviews, setPostImagePreviews] = useState([])
   const [restoredImageUrls, setRestoredImageUrls] = useState(fromTemplate?.imageUrls || [])
@@ -1309,25 +1305,6 @@ export default function CreatePost() {
     navigate('/generate-post', { state: { fromCreatePost: true, createPostDraft: draft } })
   }
 
-  const handleAiTransform = async (operation) => {
-    if (!postText.trim() || aiTransforming) return
-    setAiTransforming(operation)
-    setError(null)
-    try {
-      const response = await aiService.transformPost({
-        text: postText,
-        operation,
-        tone: aiTone,
-        platform: aiTargetPlatform,
-      })
-      if (response.data?.post) setPostText(response.data.post)
-    } catch (err) {
-      setError(err.response?.data?.error || err.userMessage || 'לא הצלחנו לעבד את הפוסט עם AI כרגע.')
-    } finally {
-      setAiTransforming('')
-    }
-  }
-
   // Clear errors automatically when user fixes the issue
   useEffect(() => {
     if (Object.keys(stepErrors).length === 0) return
@@ -1799,34 +1776,6 @@ export default function CreatePost() {
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2L12 3Z"/><path d="m19 14-.8 2.2L16 17l2.2.8L19 20l.8-2.2L22 17l-2.2-.8L19 14Z"/></svg>
                     יצירת תוכן עם AI
                   </button>
-                  <div className="cp-ai-transform-tools" aria-label="כלי עריכת AI">
-                    <div className="cp-ai-transform-settings">
-                      <select value={aiTone} onChange={(event) => setAiTone(event.target.value)} aria-label="טון לכתיבת AI">
-                        <option value="professional">מקצועי</option>
-                        <option value="casual">קליל</option>
-                        <option value="inspiring">מעורר השראה</option>
-                        <option value="humorous">הומוריסטי</option>
-                        <option value="urgent">דחוף ומניע לפעולה</option>
-                      </select>
-                      <select value={aiTargetPlatform} onChange={(event) => setAiTargetPlatform(event.target.value)} aria-label="פלטפורמת יעד ל-AI">
-                        <option value="facebook">Facebook</option>
-                        <option value="instagram">Instagram</option>
-                        <option value="whatsapp">WhatsApp</option>
-                      </select>
-                    </div>
-                    <div className="cp-ai-transform-actions">
-                      {[
-                        ['rewrite', 'שכתוב'],
-                        ['shorten', 'קיצור'],
-                        ['tone', 'שינוי טון'],
-                        ['repurpose', 'התאמה לפלטפורמה'],
-                      ].map(([operation, label]) => (
-                        <button key={operation} type="button" disabled={!postText.trim() || Boolean(aiTransforming)} onClick={() => handleAiTransform(operation)}>
-                          {aiTransforming === operation ? 'מעבד…' : label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                   </div>
 
                   {postImagePreviews.length > 0 && (

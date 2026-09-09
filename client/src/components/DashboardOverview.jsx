@@ -807,7 +807,15 @@ export default function DashboardOverview({ campaigns, groups, posts, jobs, stat
             </div>
             <div className="ov2-top-posts-list">
               {topPosts.map((post) => (
-                <div key={post.id} className="ov2-top-post-row" onClick={() => navigate(`/post/${post.postId || post.id}`)}>
+                <div
+                  key={post.id}
+                  className="ov2-top-post-row"
+                  onClick={() => {
+                    const campaign = (campaigns || []).find((item) => item.id === post.postId)
+                    if (campaign && onViewCampaign) onViewCampaign(campaign)
+                    else navigate(`/dashboard?tab=campaigns`)
+                  }}
+                >
                   <div className="ov2-top-post-thumb">
                     <span>{post.platform === 'INSTAGRAM' ? '📸' : post.platform === 'WHATSAPP' ? '💬' : '📝'}</span>
                   </div>

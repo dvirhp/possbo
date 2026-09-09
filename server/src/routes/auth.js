@@ -19,6 +19,7 @@ import {
 } from "../utils/mailer.js";
 import { verifyTurnstile } from "../utils/turnstile.js";
 import { persistUpload } from "../services/object-storage.js";
+import { asyncHandler } from "../utils/async-handler.js";
 import {
   setRefreshCookie,
   formatUserResponse,
@@ -944,7 +945,7 @@ const avatarUpload = multer({
   },
 });
 
-router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
+router.post("/avatar", avatarUpload.single("avatar"), asyncHandler(async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: "Not authenticated" });
   }
@@ -958,7 +959,7 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
     data: { profileImage },
   });
   res.json({ success: true, profileImage });
-});
+}));
 
 // Disconnect Facebook session
 router.post("/disconnect-facebook", async (req, res) => {

@@ -2061,7 +2061,7 @@ function CampaignsPanel({ campaigns, navigate, groups, onUpdate, onCampaignUpdat
               <div className="campaign-card-avatars">
                 {(campaign.groups || []).slice(0, 3).map((g, i) => (
                   <div key={i} className="campaign-card-avatar" title={g.name}>
-                    {g.image ? <img src={g.image} alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex') }} /> : null}
+                    {g.image ? <img src={resolveImg(g.image)} referrerPolicy="no-referrer" alt="" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex') }} /> : null}
                     <span style={g.image ? { display: 'none' } : {}}>{g.name?.[0] || '?'}</span>
                   </div>
                 ))}
@@ -2882,7 +2882,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
               <div className="gl-col gl-col-name">
                 <div className="gl-thumb">
                   {group.image
-                    ? <img src={group.image} alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
+                    ? <img src={resolveImg(group.image)} referrerPolicy="no-referrer" alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
                     : null}
                   <div className="gl-thumb-fallback" style={group.image ? { display: 'none' } : undefined}>👥</div>
                 </div>
@@ -2918,7 +2918,7 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
             <div key={group.id} className="group-grid-card" onClick={() => setDetailGroup(group)}>
               <div className="group-grid-thumb">
                 {group.image
-                  ? <img src={group.image} alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
+                  ? <img src={resolveImg(group.image)} referrerPolicy="no-referrer" alt="" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
                   : null}
                 <div className="group-grid-fallback" style={group.image ? { display: 'none' } : undefined}>👥</div>
               </div>
@@ -2955,11 +2955,11 @@ function GroupsPanel({ groups, navigate, sessionRequired, onRefresh, refreshing 
             <button className="modal-close" onClick={() => setDetailGroup(null)} aria-label="סגור פרטי קבוצה">✕</button>
             {/* Hero */}
             <div className="gd-hero">
-              {detailGroup.image && <img src={detailGroup.image} alt="" className="gd-hero-img" onError={e => e.target.style.display = 'none'} />}
+              {detailGroup.image && <img src={resolveImg(detailGroup.image)} referrerPolicy="no-referrer" alt="" className="gd-hero-img" onError={e => e.target.style.display = 'none'} />}
               <div className="gd-hero-overlay">
                 <div className="gd-hero-thumb">
                   {detailGroup.image
-                    ? <img src={detailGroup.image} alt="" onError={e => e.target.style.display = 'none'} />
+                    ? <img src={resolveImg(detailGroup.image)} referrerPolicy="no-referrer" alt="" onError={e => e.target.style.display = 'none'} />
                     : <span>👥</span>}
                 </div>
                 <h3 className="gd-hero-title">{normalizeFancyText(detailGroup.name)}</h3>
@@ -3927,6 +3927,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
   const [editEmail, setEditEmail] = useState(user?.email || '')
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState(null)
+  const [avatarMessage, setAvatarMessage] = useState(null)
   // Password
   const [showPassword, setShowPassword] = useState(false)
   const [pwStep, setPwStep] = useState(1) // 1=current password, 2=code+new password
@@ -4198,7 +4199,7 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
             <div className="settings-avatar-wrap">
               <div className="settings-avatar">
                 {(user?.profileImage || user?.avatarUrl) && (
-                  <img src={(() => { const v = user.profileImage || user.avatarUrl; if (v.startsWith('uploads/')) return `/${v}`; return v })()} alt="" className="settings-avatar-img" onError={e => { e.target.style.display = 'none' }} />
+                  <img src={resolveImg(user.profileImage || user.avatarUrl)} alt="" className="settings-avatar-img" onError={e => { e.target.style.display = 'none' }} />
                 )}
                 <span className="settings-avatar-letter">{user?.name?.[0] || '?'}</span>
               </div>
@@ -4206,16 +4207,23 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                 <input type="file" accept="image/*" hidden aria-label="בחר תמונת פרופיל" onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (!file) return
+                  setAvatarMessage({ type: 'info', text: 'מעלה את התמונה...' })
                   try {
                     const res = await authAPI.uploadAvatar(file)
                     if (res.data.success) {
                       setUser(prev => ({ ...prev, profileImage: res.data.profileImage }))
+                      setAvatarMessage({ type: 'success', text: 'תמונת הפרופיל נשמרה' })
                     }
-                  } catch { /* ignore */ }
+                  } catch (err) {
+                    setAvatarMessage({ type: 'error', text: err.userMessage || 'לא הצלחנו לשמור את תמונת הפרופיל' })
+                  } finally {
+                    e.target.value = ''
+                  }
                 }} />
                 📷
               </label>
             </div>
+            {avatarMessage && <div className={`settings-msg settings-msg-${avatarMessage.type}`}>{avatarMessage.text}</div>}
           </div>
           {/* Info — RIGHT aligned in RTL */}
           <div className="settings-hero-info">

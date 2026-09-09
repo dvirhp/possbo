@@ -2865,9 +2865,14 @@
   border-color: rgba(255, 255, 255, 0.1);
 }
 
+[data-theme="dark"] .wa-mode-tab {
+  color: #cbd5e1;
+}
+
 [data-theme="dark"] .wa-mode-tab.active {
   background: rgba(37, 211, 102, 0.1);
   border-color: rgba(37, 211, 102, 0.36);
+  color: #f8fafc;
 }
 
 @media (max-width: 480px) {
