@@ -568,8 +568,11 @@ export async function scrapeMyGroups(userId) {
     // by the refreshGroupsMetadata job (runs in background, not blocking sync)
 
     // Save updated storage state back to DB
-    const updatedState = await context.storageState();
-    if (userId) {
+    const updatedState = await Promise.race([
+      context.storageState().catch(() => null),
+      new Promise((resolve) => setTimeout(() => resolve(null), 10_000)),
+    ]);
+    if (userId && updatedState) {
       await saveUserStorageState(userId, updatedState);
     }
     // Also update legacy file
@@ -577,7 +580,10 @@ export async function scrapeMyGroups(userId) {
 
     return groups;
   } finally {
-    await scrapeBrowser.close();
+    await Promise.race([
+      scrapeBrowser.close().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 10_000)),
+    ]);
   }
 }
 
