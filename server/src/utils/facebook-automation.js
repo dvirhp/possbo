@@ -50,11 +50,19 @@ async function loadUserStorageState(userId) {
 async function saveUserStorageState(userId, storageState) {
   const json = JSON.stringify(storageState);
   const encrypted = encrypt(json);
+  const facebookId = facebookUserIdFromStorageState(storageState);
 
   await prisma.user.update({
     where: { id: userId },
-    data: { facebookStorageState: encrypted },
+    data: {
+      facebookStorageState: encrypted,
+      ...(facebookId && { facebookId }),
+    },
   });
+}
+
+export function facebookUserIdFromStorageState(storageState) {
+  return storageState?.cookies?.find((cookie) => cookie.name === "c_user")?.value || null;
 }
 
 /**
@@ -1621,17 +1629,23 @@ export async function scrapeGroupsMetadata(userId, groups) {
       const batchResults = await Promise.all(
         batch.map(async (group) => {
           const page = await context.newPage();
+          let groupTimeout;
           try {
-            const url =
-              group.groupUrl ||
-              `https://www.facebook.com/groups/${group.groupId}/`;
-            await page.goto(url, {
-              waitUntil: "domcontentloaded",
-              timeout: 20000,
-            });
-            await page.waitForTimeout(2500);
+            // A damaged Facebook page/renderer must not hold the entire batch
+            // forever. Individual Playwright calls have timeouts, but the full
+            // sequence (including evaluation) previously had no upper bound.
+            const metadata = await Promise.race([
+              (async () => {
+                const url =
+                  group.groupUrl ||
+                  `https://www.facebook.com/groups/${group.groupId}/`;
+                await page.goto(url, {
+                  waitUntil: "domcontentloaded",
+                  timeout: 20000,
+                });
+                await page.waitForTimeout(2500);
 
-            const metadata = await page.evaluate(() => {
+                return page.evaluate(() => {
               let memberCount = null;
               let privacyType = null;
 
@@ -1801,8 +1815,16 @@ export async function scrapeGroupsMetadata(userId, groups) {
                 }
               }
 
-              return { memberCount, privacyType };
-            });
+                  return { memberCount, privacyType };
+                });
+              })(),
+              new Promise((_, reject) => {
+                groupTimeout = setTimeout(
+                  () => reject(new Error("GROUP_METADATA_TIMEOUT")),
+                  35_000,
+                );
+              }),
+            ]);
 
             log.debug("Group metadata scraped", {
               groupId: group.groupId,
@@ -1825,7 +1847,13 @@ export async function scrapeGroupsMetadata(userId, groups) {
               privacyType: null,
             };
           } finally {
-            await page.close();
+            clearTimeout(groupTimeout);
+            // Browser renderer shutdown can itself stall. The context will
+            // reclaim any page that does not close within this short window.
+            await Promise.race([
+              page.close().catch(() => {}),
+              new Promise((resolve) => setTimeout(resolve, 5_000)),
+            ]);
           }
         }),
       );
