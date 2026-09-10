@@ -5,7 +5,8 @@ import { encrypt } from "../utils/encryption.js";
 import { createLogger } from "../utils/logger.js";
 import { withUserPublishLock } from "../utils/user-publish-lock.js";
 import { reconcileFacebookGroupHierarchy } from "./facebook-group-hierarchy.js";
-import { scrapeMyGroups } from "../utils/facebook-automation.js";
+import { refreshGroupsMetadataForUser } from "../jobs/group-metadata-refresh.js";
+import { facebookUserIdFromStorageState, scrapeMyGroups } from "../utils/facebook-automation.js";
 
 const log = createLogger("facebook-remote-connect");
 const SESSION_TIMEOUT_SECONDS = 15 * 60;
@@ -217,10 +218,12 @@ export async function startFacebookRemoteConnect(userId) {
           // a transient redirect between 2FA screens cannot close the session.
           if (authenticatedPageObservations >= 2) {
             const storageState = await context.storageState();
+            const facebookId = facebookUserIdFromStorageState(storageState);
             await prisma.user.update({
               where: { id: userId },
               data: {
                 facebookStorageState: encrypt(JSON.stringify(storageState)),
+                ...(facebookId && { facebookId }),
                 fbSessionValid: true,
               },
             });
@@ -299,6 +302,9 @@ export async function startFacebookRemoteConnect(userId) {
           userId,
           groupCount: groups.length,
         });
+        // A first connection is not complete until group metadata is populated.
+        // Refresh every group because member counts can change over time.
+        await refreshGroupsMetadataForUser(userId, { refreshExisting: true });
       } else {
         log.warn("Facebook groups auto-sync skipped because the user is busy", {
           userId,
