@@ -234,7 +234,6 @@ export default function Dashboard() {
   const [sheetTemplateExpand, setSheetTemplateExpand] = useState(false)
   const [sheetGroupSearch, setSheetGroupSearch] = useState('')
   const [sheetTemplateSearch, setSheetTemplateSearch] = useState('')
-  const [bootstrapping, setBootstrapping] = useState(false)
   const [showConnectionsModal, setShowConnectionsModal] = useState(false)
   const [connectingPlatform, setConnectingPlatform] = useState(null)
   const [quickWhatsappQr, setQuickWhatsappQr] = useState(null)
@@ -317,22 +316,6 @@ export default function Dashboard() {
   const [sessionRequired, setSessionRequired] = useState(false)
   const [overviewDetail, setOverviewDetail] = useState(null)
   const [overviewEditMode, setOverviewEditMode] = useState(false)
-
-  const handleBootstrap = async () => {
-    setBootstrapping(true)
-    try {
-      await groupsService.bootstrapSession()
-      // A Facebook account can have a completely different group catalogue.
-      // Always rebuild it immediately after a successful (re)connection.
-      await groupsService.scrapeMyGroups()
-      window.location.reload()
-    } catch (err) {
-      setBootstrapping(false)
-      if (err.response?.data?.error === 'FACEBOOK_SESSION_NOT_COMPLETED') {
-        window.alert('החיבור לא הושלם, יש להתחבר לפייסבוק בדפדפן שנפתח')
-      }
-    }
-  }
 
   const connectFacebook = async () => {
     setShowConnectionsModal(false)
@@ -846,19 +829,13 @@ export default function Dashboard() {
                   </span>
                   <button
                     className="session-banner-btn"
-                    disabled={missingConnections.length === 1 && (
-                      connectingPlatform === missingConnections[0].id ||
-                      (missingConnections[0].id === 'facebook' && bootstrapping)
-                    )}
+                    disabled={missingConnections.length === 1 && connectingPlatform === missingConnections[0].id}
                     onClick={() => {
                       if (missingConnections.length === 1) missingConnections[0].action()
                       else setShowConnectionsModal(true)
                     }}
                   >
-                    {missingConnections.length === 1 && (
-                      connectingPlatform === missingConnections[0].id ||
-                      (missingConnections[0].id === 'facebook' && bootstrapping)
-                    )
+                    {missingConnections.length === 1 && connectingPlatform === missingConnections[0].id
                       ? '⏳ מתחבר...'
                       : missingConnections.length === 1 ? '🔗 חבר עכשיו' : '🔗 חברו חשבונות'}
                   </button>
@@ -887,8 +864,8 @@ export default function Dashboard() {
                           {connection.connected ? (
                             <span className="connection-ready">✓ מחובר</span>
                           ) : (
-                            <button type="button" disabled={connectingPlatform === connection.id || (connection.id === 'facebook' && bootstrapping)} onClick={connection.action}>
-                              {connectingPlatform === connection.id || (connection.id === 'facebook' && bootstrapping) ? 'מתחבר...' : 'חבר חשבון'}
+                            <button type="button" disabled={connectingPlatform === connection.id} onClick={connection.action}>
+                              {connectingPlatform === connection.id ? 'מתחבר...' : 'חבר חשבון'}
                             </button>
                           )}
                         </div>
@@ -1553,7 +1530,7 @@ export default function Dashboard() {
                 {activeTab === 'stats' && (
                   <StatsPanel stats={stats} posts={posts} />
                 )}
-                {activeTab === 'account' && <AccountPanel user={user} logout={logout} setUser={setUser} navigate={navigate} handleBootstrap={handleBootstrap} bootstrapping={bootstrapping} />}
+                {activeTab === 'account' && <AccountPanel user={user} logout={logout} setUser={setUser} navigate={navigate} connectFacebook={connectFacebook} connectingPlatform={connectingPlatform} />}
               </div>
             </>
           )}
@@ -3950,15 +3927,15 @@ function StatsPanel({ stats }) {
   )
 }
 
-function AccountPanel({ user, logout, setUser, navigate, handleBootstrap, bootstrapping }) {
+function AccountPanel({ user, logout, setUser, navigate, connectFacebook, connectingPlatform }) {
   return (
-    <SettingsPanel user={user} logout={logout} setUser={setUser} navigate={navigate} handleBootstrap={handleBootstrap} bootstrapping={bootstrapping} />
+    <SettingsPanel user={user} logout={logout} setUser={setUser} navigate={navigate} connectFacebook={connectFacebook} connectingPlatform={connectingPlatform} />
   )
 }
 
 
 
-function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, bootstrapping }) {
+function SettingsPanel({ user, logout, setUser, navigate, connectFacebook, connectingPlatform }) {
   const {  themeMode, setTheme } = useTheme()
   const { cancelWaSync } = useAppData()
   const [confirmAction, setConfirmAction] = useState(null)
@@ -4334,16 +4311,16 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                 <div className="conn-row-actions">
                   {user?.fbSessionValid ? (
                     <>
-                      <button className="conn-btn conn-btn--outline" onClick={handleBootstrap} disabled={bootstrapping}>
-                        {bootstrapping ? '⏳' : 'החלף'}
+                      <button className="conn-btn conn-btn--outline" onClick={connectFacebook} disabled={connectingPlatform === 'facebook'}>
+                        {connectingPlatform === 'facebook' ? '⏳' : 'החלף'}
                       </button>
                       <button className="conn-btn conn-btn--ghost-danger" onClick={handleDisconnectFB} disabled={disconnecting}>
                         {disconnecting ? '⏳' : 'נתק'}
                       </button>
                     </>
                   ) : (
-                    <button className="conn-btn conn-btn--primary" onClick={handleBootstrap} disabled={bootstrapping}>
-                      {bootstrapping ? '⏳ ממתין...' : 'חבר'}
+                    <button className="conn-btn conn-btn--primary" onClick={connectFacebook} disabled={connectingPlatform === 'facebook'}>
+                      {connectingPlatform === 'facebook' ? '⏳ ממתין...' : 'חבר'}
                     </button>
                   )}
                 </div>
