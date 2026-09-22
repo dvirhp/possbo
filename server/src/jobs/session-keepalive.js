@@ -1,4 +1,5 @@
 import prisma from "../config/prisma.js";
+import { clearFacebookConnectionData } from "../services/platform-connection-cleanup.js";
 import { decrypt, encrypt } from "../utils/encryption.js";
 import { createLogger } from "../utils/logger.js";
 import {
@@ -77,21 +78,16 @@ export async function runSessionKeepAlive() {
           return { status: "refreshed" };
         }
 
-        await prisma.$transaction([
-          prisma.notification.create({
-            data: {
-              userId: user.id,
-              type: "SESSION_EXPIRED",
-              title: "חיבור Facebook פג תוקף",
-              message:
-                "החיבור שלך ל-Facebook פג. יש להתחבר מחדש כדי שהפרסומים המתוזמנים ימשיכו לפעול.",
-            },
-          }),
-          prisma.user.update({
-            where: { id: user.id },
-            data: { facebookStorageState: null, fbSessionValid: false },
-          }),
-        ]);
+        await clearFacebookConnectionData(user.id);
+        await prisma.notification.create({
+          data: {
+            userId: user.id,
+            type: "SESSION_EXPIRED",
+            title: "חיבור Facebook פג תוקף",
+            message:
+              "החיבור שלך ל-Facebook פג. יש להתחבר מחדש כדי שהפרסומים המתוזמנים ימשיכו לפעול.",
+          },
+        });
         return { status: "expired" };
       });
 

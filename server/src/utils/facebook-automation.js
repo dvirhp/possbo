@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
+import { clearFacebookConnectionData } from "../services/platform-connection-cleanup.js";
 import { encrypt, decrypt } from "./encryption.js";
 import { createLogger } from "./logger.js";
 import {
@@ -288,12 +289,7 @@ export async function scrapeMyGroups(userId) {
       log.warn("Facebook session expired — login page detected");
       // Mark session as invalid in DB
       if (userId) {
-        await prisma.user
-          .update({
-            where: { id: userId },
-            data: { fbSessionValid: false, facebookStorageState: null },
-          })
-          .catch(() => {});
+        await clearFacebookConnectionData(userId).catch(() => {});
       }
       throw new Error("FACEBOOK_SESSION_REQUIRED");
     }

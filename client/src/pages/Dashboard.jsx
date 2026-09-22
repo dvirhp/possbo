@@ -322,6 +322,9 @@ export default function Dashboard() {
     setBootstrapping(true)
     try {
       await groupsService.bootstrapSession()
+      // A Facebook account can have a completely different group catalogue.
+      // Always rebuild it immediately after a successful (re)connection.
+      await groupsService.scrapeMyGroups()
       window.location.reload()
     } catch (err) {
       setBootstrapping(false)
@@ -402,6 +405,9 @@ export default function Dashboard() {
             setConnectingPlatform(null)
             closePopup()
             setUser(prev => ({ ...prev, fbSessionValid: true }))
+            // The server performs the full sync in the background after saving
+            // the session. Refresh once it has had time to persist the groups.
+            setTimeout(() => forceRefresh(), 8000)
           } else if (['expired', 'error', 'cancelled'].includes(status.data?.status)) {
             clearInterval(facebookConnectPollRef.current)
             facebookConnectPollRef.current = null
@@ -422,7 +428,13 @@ export default function Dashboard() {
       closePopup()
       const reason = err.response?.data?.error || err.message
       window.alert(reason === 'not_configured'
-        ? 'שירות החיבור המאובטח ל-Facebook עדיין לא הוגדר בשרת.'
+        ? 'שירות החיבור ל-Facebook אינו מוגדר כרגע בשרת. יש לבדוק את הגדרות Browserbase.'
+        : reason === 'browser_service_auth_failed'
+          ? 'פרטי החיבור לשירות הדפדפן אינם תקינים. יש לעדכן את מפתח Browserbase בשרת.'
+        : reason === 'browser_service_project_invalid'
+          ? 'מזהה פרויקט Browserbase חסר או אינו תקין.'
+        : reason === 'browser_service_limit'
+          ? 'שירות הדפדפן הגיע כרגע למגבלת שימוש או חיבורים. יש לבדוק את המכסה ב-Browserbase.'
         : reason === 'facebook_operation_in_progress'
           ? 'יש כרגע פעולה אחרת שמשתמשת בחיבור Facebook. נסו שוב בעוד כמה שניות.'
         : reason === 'login_loop'
@@ -4425,8 +4437,23 @@ function SettingsPanel({ user, logout, setUser, navigate, handleBootstrap, boots
                 <div className="conn-row-actions">
                   {user?.whatsappSessionConnected ? (
                     <>
-                      <button className="conn-btn conn-btn--outline" onClick={handleBootstrap} disabled={bootstrapping}>
-                        {bootstrapping ? '⏳' : 'החלף'}
+                      <button className="conn-btn conn-btn--outline" onClick={() => {
+                        setConfirmAction({
+                          title: 'החלפת חיבור וואטסאפ',
+                          message: 'החיבור הקיים ינותק והיעדים המסונכרנים יימחקו. לאחר מכן יהיה ניתן לחבר את החשבון החדש.',
+                          action: async () => {
+                            cancelWaSync()
+                            setDisconnecting(true)
+                            try {
+                              await authAPI.disconnectWhatsapp()
+                              setUser(prev => ({ ...prev, whatsappSessionConnected: false, whatsappSessionPhone: null }))
+                            } finally {
+                              setDisconnecting(false)
+                            }
+                          },
+                        })
+                      }} disabled={disconnecting}>
+                        {disconnecting ? '⏳' : 'החלף'}
                       </button>
                       <button className="conn-btn conn-btn--ghost-danger" disabled={disconnecting} onClick={() => {
                         setConfirmAction({

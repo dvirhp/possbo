@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { classifyFacebookAuthUrl } from "./facebook-remote-connect.js";
+import {
+  classifyFacebookAuthUrl,
+  classifyRemoteConnectError,
+} from "./facebook-remote-connect.js";
 
 describe("classifyFacebookAuthUrl", () => {
   it.each([
@@ -19,5 +22,26 @@ describe("classifyFacebookAuthUrl", () => {
       isSecurityPage: false,
       isCaptchaPage: false,
     });
+  });
+});
+
+describe("classifyRemoteConnectError", () => {
+  it("reports missing server configuration", () => {
+    expect(classifyRemoteConnectError(new Error("FACEBOOK_REMOTE_CONNECT_NOT_CONFIGURED")))
+      .toBe("not_configured");
+  });
+
+  it("reports credentials and quota failures without exposing provider text", () => {
+    expect(classifyRemoteConnectError({ status: 401, message: "Unauthorized" }))
+      .toBe("browser_service_auth_failed");
+    expect(classifyRemoteConnectError({ status: 429, message: "Concurrent session limit" }))
+      .toBe("browser_service_limit");
+  });
+
+  it("classifies Browserbase free-minute exhaustion as a service limit", () => {
+    expect(classifyRemoteConnectError({
+      status: 402,
+      message: "Free plan browser minutes limit reached",
+    })).toBe("browser_service_limit");
   });
 });

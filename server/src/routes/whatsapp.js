@@ -12,6 +12,7 @@ import fsPromises from "fs/promises";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import prisma from "../config/prisma.js";
+import { clearWhatsAppConnectionData } from "../services/platform-connection-cleanup.js";
 import { createLogger } from "../utils/logger.js";
 import { encrypt, decrypt } from "../utils/encryption.js";
 import { materializeUploadPath } from "../utils/media-upload.js";
@@ -270,13 +271,7 @@ async function initSocket(userId, { isRestore = false } = {}) {
             pendingQRs.delete(userId);
             connectionStatus.set(userId, { status: "disconnected" });
             try {
-              await prisma.user.update({
-                where: { id: userId },
-                data: {
-                  whatsappSessionConnected: false,
-                  whatsappSessionPhone: null,
-                },
-              });
+              await clearWhatsAppConnectionData(userId);
             } catch {
               /* ignore */
             }
@@ -356,17 +351,10 @@ async function initSocket(userId, { isRestore = false } = {}) {
           connectionStatus.set(userId, { status: "disconnected" });
           activeSockets.delete(userId);
           try {
-            await prisma.user.update({
-              where: { id: userId },
-              data: {
-                whatsappSessionConnected: false,
-                whatsappSessionPhone: null,
-              },
-            });
+            await clearWhatsAppConnectionData(userId);
             if (fs.existsSync(sessionDir)) {
               fs.rmSync(sessionDir, { recursive: true, force: true });
             }
-            await prisma.whatsAppSession.deleteMany({ where: { userId } });
           } catch {
             /* ignore */
           }
@@ -421,13 +409,7 @@ export async function restoreWhatsAppSessions() {
           });
         }
       } else {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            whatsappSessionConnected: false,
-            whatsappSessionPhone: null,
-          },
-        });
+        await clearWhatsAppConnectionData(user.id);
       }
     }
   } catch (err) {
@@ -621,13 +603,7 @@ router.get("/status", requireAuth, async (req, res) => {
           }
         }
 
-        await prisma.user.update({
-          where: { id: userId },
-          data: {
-            whatsappSessionConnected: false,
-            whatsappSessionPhone: null,
-          },
-        });
+        await clearWhatsAppConnectionData(userId);
         return res.json({ connected: false, phone: null });
       }
 
@@ -676,15 +652,9 @@ router.post("/disconnect", requireAuth, async (req, res) => {
       await fs.promises.rm(sessionDir, { recursive: true, force: true });
     }
 
-    // Clean up DB — remove WA groups & update user
-    await prisma.$transaction([
-      prisma.whatsAppContact.deleteMany({ where: { userId, isGroup: true } }),
-      prisma.whatsAppSession.deleteMany({ where: { userId } }),
-      prisma.user.update({
-        where: { id: userId },
-        data: { whatsappSessionConnected: false, whatsappSessionPhone: null },
-      }),
-    ]);
+    // Remove all targets from the disconnected account. They will be rebuilt
+    // from WhatsApp after the next successful connection.
+    await clearWhatsAppConnectionData(userId);
 
     log.info("WhatsApp disconnected", { userId });
     res.json({ success: true });

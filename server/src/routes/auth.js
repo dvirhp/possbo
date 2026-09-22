@@ -19,6 +19,7 @@ import {
 } from "../utils/mailer.js";
 import { verifyTurnstile } from "../utils/turnstile.js";
 import { persistUpload } from "../services/object-storage.js";
+import { clearFacebookConnectionData } from "../services/platform-connection-cleanup.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import {
   setRefreshCookie,
@@ -582,12 +583,7 @@ router.post("/verify-facebook", async (req, res) => {
 
     // If no FB token and no storage state — not connected at all
     if (!user.facebookAccessToken && !user.facebookStorageState) {
-      if (user.fbSessionValid) {
-        await prisma.user.update({
-          where: { id: req.user.id },
-          data: { fbSessionValid: false },
-        });
-      }
+      await clearFacebookConnectionData(req.user.id);
       return res.json({ fbSessionValid: false, reason: "not_connected" });
     }
 
@@ -657,6 +653,7 @@ router.post("/verify-facebook", async (req, res) => {
             },
           })
           .catch(() => {});
+        await clearFacebookConnectionData(req.user.id);
       }
     }
 
@@ -683,12 +680,7 @@ router.get("/me", async (req, res) => {
     });
     if (!hasState?.facebookStorageState) {
       fbSessionValid = false;
-      await prisma.user
-        .update({
-          where: { id: req.user.id },
-          data: { fbSessionValid: false },
-        })
-        .catch(() => {});
+      await clearFacebookConnectionData(req.user.id).catch(() => {});
     }
   }
 
@@ -967,10 +959,7 @@ router.post("/disconnect-facebook", async (req, res) => {
     return res.status(401).json({ error: "Not authenticated" });
   }
 
-  await prisma.user.update({
-    where: { id: req.user.id },
-    data: { facebookStorageState: null, fbSessionValid: false },
-  });
+  await clearFacebookConnectionData(req.user.id);
 
   res.json({ success: true, message: "חיבור הפייסבוק נותק" });
 });

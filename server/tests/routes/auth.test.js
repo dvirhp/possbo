@@ -23,6 +23,9 @@ const mockUserFindFirst = vi.fn();
 const mockUserUpdate = vi.fn();
 const mockSubscriptionFindFirst = vi.fn();
 const mockConnectedAccountFindFirst = vi.fn();
+const mockFacebookGroupDeleteMany = vi.fn();
+const mockUserGroupDeleteMany = vi.fn();
+const mockGroupSyncHistoryDeleteMany = vi.fn();
 const mockPendingRegistrationUpsert = vi.fn();
 const mockPendingRegistrationFindUnique = vi.fn();
 const mockPendingRegistrationDelete = vi.fn();
@@ -48,6 +51,9 @@ vi.mock("@prisma/client", () => ({
     connectedAccount: {
       findFirst: mockConnectedAccountFindFirst,
     },
+    facebookGroup: { deleteMany: mockFacebookGroupDeleteMany },
+    userGroup: { deleteMany: mockUserGroupDeleteMany },
+    groupSyncHistory: { deleteMany: mockGroupSyncHistoryDeleteMany },
     pendingRegistration: {
       upsert: mockPendingRegistrationUpsert,
       findUnique: mockPendingRegistrationFindUnique,
@@ -150,10 +156,13 @@ beforeEach(async () => {
     passwordResetTokens.set(where.id, record);
     return record;
   });
-  mockTransaction.mockReset().mockImplementation(async (callback) => callback({
-    user: { create: mockUserCreate, update: mockUserUpdate },
-    pendingRegistration: { delete: mockPendingRegistrationDelete },
-  }));
+  mockTransaction.mockReset().mockImplementation(async (operation) => {
+    if (Array.isArray(operation)) return Promise.all(operation);
+    return operation({
+      user: { create: mockUserCreate, update: mockUserUpdate },
+      pendingRegistration: { delete: mockPendingRegistrationDelete },
+    });
+  });
 
   const authModule = await import("../../src/routes/auth.js");
 

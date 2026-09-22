@@ -66,6 +66,7 @@ export function DataProvider({ children }) {
   const userRef = useRef(cachedUser)
   const pollTimerRef = useRef(null)
   const waStatusCheckedRef = useRef(false)
+  const previousConnectionsRef = useRef(null)
 
   // ── WhatsApp sync state (persists across page navigation) ──
   const [waGroups, setWaGroups] = useState(() => {
@@ -129,6 +130,32 @@ export function DataProvider({ children }) {
   }, [])
 
   const clearWaQr = useCallback(() => setWaQrDataUrl(null), [])
+
+  // Connection-derived target lists must never survive a disconnect. Apart
+  // from avoiding stale selections, this makes a reconnect visibly start from
+  // a fresh platform sync.
+  useEffect(() => {
+    if (!user) return
+    const current = {
+      facebook: Boolean(user.fbSessionValid),
+      instagram: Boolean(user.instagramConnected),
+      whatsapp: Boolean(user.whatsappSessionConnected),
+    }
+    const previous = previousConnectionsRef.current
+    previousConnectionsRef.current = current
+
+    if (!current.facebook && previous?.facebook !== false) {
+      setGroups([])
+    }
+    if (!current.whatsapp && previous?.whatsapp !== false) {
+      cancelWaSync()
+      setWaGroups([])
+      setWaBroadcastLists([])
+      waGroupsLoadedRef.current = false
+      try { localStorage.removeItem(WA_CONTACTS_CACHE_KEY) } catch { /* ignore */ }
+      try { localStorage.removeItem(WA_BROADCASTS_CACHE_KEY) } catch { /* ignore */ }
+    }
+  }, [user, cancelWaSync])
 
   // Track previous connection state to detect new connections
   const prevWaConnectedRef = useRef(user?.whatsappSessionConnected)
@@ -258,6 +285,29 @@ export function DataProvider({ children }) {
     return false
   }, [fetchAll])
 
+  // Reconcile all platform flags with the server. Background workers may
+  // discover an expired/revoked session while the SPA remains open; updating
+  // the user here makes the connection banner appear without a page reload.
+  const refreshConnectionStates = useCallback(async () => {
+    if (!userRef.current || !authVerifiedRef.current) return
+    try {
+      const [meRes, waRes] = await Promise.all([
+        authAPI.getMe(),
+        authAPI.getWhatsappStatus().catch(() => null),
+      ])
+      const serverUser = meRes?.data
+      if (!serverUser) return
+      setUser(current => current ? {
+        ...current,
+        ...serverUser,
+        ...(waRes ? {
+          whatsappSessionConnected: Boolean(waRes.data?.connected),
+          whatsappSessionPhone: waRes.data?.phone || null,
+        } : {}),
+      } : current)
+    } catch { /* regular auth handling remains in the HTTP interceptor */ }
+  }, [])
+
   // Check auth on mount (guard against Strict Mode double invocation)
   const authCheckStartedRef = useRef(false)
   useEffect(() => {
@@ -343,6 +393,7 @@ export function DataProvider({ children }) {
     pollTimerRef.current = setInterval(() => {
       if (!userRef.current) return
       if (document.hidden) return // Don't poll when tab is hidden
+      refreshConnectionStates()
       const last = lastFetchRef.current.all || 0
       if (Date.now() - last > CACHE_TTL) {
         fetchAll(true)
@@ -362,13 +413,14 @@ export function DataProvider({ children }) {
       window.removeEventListener('possbo-publish-done', handlePublishDone)
       window.removeEventListener('possbo-op-done', handlePublishDone)
     }
-  }, [user, fetchAll])
+  }, [user, fetchAll, refreshConnectionStates])
 
   // ── Visibility-based refresh: refresh when user comes back to tab ──
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) return
       if (!userRef.current) return
+      refreshConnectionStates()
       const last = lastFetchRef.current.all || 0
       // If data is stale when tab becomes visible, refresh
       if (Date.now() - last > CACHE_TTL) {
@@ -389,7 +441,7 @@ export function DataProvider({ children }) {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('online', handleOnline)
     }
-  }, [fetchAll])
+  }, [fetchAll, refreshConnectionStates])
 
   // Refresh if data is stale (called on page navigation)
   const ensureFresh = useCallback(() => {

@@ -37,10 +37,26 @@ export function classifyFacebookAuthUrl(rawUrl = "") {
 }
 
 function getClient() {
-  if (!process.env.BROWSERBASE_API_KEY) {
+  if (!process.env.BROWSERBASE_API_KEY || !process.env.BROWSERBASE_PROJECT_ID) {
     throw new Error("FACEBOOK_REMOTE_CONNECT_NOT_CONFIGURED");
   }
   return new Browserbase({ apiKey: process.env.BROWSERBASE_API_KEY });
+}
+
+export function classifyRemoteConnectError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
+  if (message.includes("facebook_remote_connect_not_configured")) return "not_configured";
+  if (status === 401 || status === 403 || message.includes("unauthorized") || message.includes("api key")) {
+    return "browser_service_auth_failed";
+  }
+  if (status === 402 || status === 429 || message.includes("quota") || message.includes("limit") || message.includes("concurrent")) {
+    return "browser_service_limit";
+  }
+  if (message.includes("project") && (message.includes("invalid") || message.includes("not found") || message.includes("required"))) {
+    return "browser_service_project_invalid";
+  }
+  return "connection_failed";
 }
 
 async function releaseRemoteSession(client, sessionId) {
@@ -98,7 +114,16 @@ async function createRemoteSession(client, userId) {
     });
     return { session, proxyActive: useProxy };
   } catch (error) {
-    if (!useProxy) throw error;
+    const message = String(error?.message || "").toLowerCase();
+    const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
+    // Retry only when Browserbase specifically rejects proxy access. Billing,
+    // quota, authentication and project errors affect both modes; retrying
+    // those used another API call and only hid the real failure from users.
+    const proxyRejected =
+      status === 400 &&
+      message.includes("prox") &&
+      (message.includes("plan") || message.includes("support") || message.includes("available"));
+    if (!useProxy || !proxyRejected) throw error;
     log.warn("Browserbase proxy rejected, retrying without proxy", {
       reason: error.message,
       userId,
@@ -137,8 +162,9 @@ export async function startFacebookRemoteConnect(userId) {
   void withUserPublishLock(
     userId,
     async () => {
-      const client = getClient();
+      let client = null;
       try {
+        client = getClient();
         const remoteResult = await createRemoteSession(client, userId);
         const remote = remoteResult.session;
         if (!remoteResult.proxyActive) {
@@ -236,16 +262,13 @@ export async function startFacebookRemoteConnect(userId) {
         entry.status = "expired";
       } catch (error) {
         entry.status = "error";
-        entry.error =
-          error.message === "FACEBOOK_REMOTE_CONNECT_NOT_CONFIGURED"
-            ? "not_configured"
-            : "connection_failed";
+        entry.error = classifyRemoteConnectError(error);
         log.error("Facebook remote connection failed", error, { userId });
         signalReady();
       } finally {
         await entry.browser?.close().catch(() => {});
         entry.browser = null;
-        await releaseRemoteSession(client, entry.sessionId);
+        if (client) await releaseRemoteSession(client, entry.sessionId);
         setTimeout(() => {
           if (sessions.get(userId) === entry) sessions.delete(userId);
         }, 60_000).unref?.();
